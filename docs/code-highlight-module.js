@@ -50,7 +50,7 @@
     .tok-number { color: #b35900; }
     .tok-comment { color: #8a8a8a; font-style: italic; }
     .tok-ident { color: #1a4b8c; }
-    .tok-selected { background: #ffd54a; border-radius: 2px; box-shadow: 0 0 0 1px #e0ad00; }
+    .tok-selected { background: rgba(255, 213, 74, 0.4); }
   `;
   document.head.appendChild(styleEl);
 
