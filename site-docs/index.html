@@ -275,11 +275,21 @@
           <tr><td><code>edgeLengths</code></td><td><code>false</code></td><td>show each edge's length by default</td></tr>
         </table>
         <p><code>module "name.js"</code> loads extra rendering or interactivity from a file — three modules load into every plan automatically (labels/dimensions, drag-and-drop, and the code-highlighting you're using right now if you're in the app), so you'll rarely need to write this yourself.</p>
+
+        <h3>Custom (external) modules</h3>
+        <p>A module doesn't have to be one of the three built-in ones — <code>module</code> also accepts a full URL, fetched and run alongside a plan's own three:</p>
+        <pre class="code-block"><span class="k">module</span> <span class="s">"https://example.com/campervan-kit.js"</span></pre>
+        <p>A module loaded this way can add new rendering (a shape kind the core language doesn't have), new interactivity, or a reusable higher-level building block composed from ordinary elements and connections — a "wall with a door" that expands from a few parameters instead of being written out corner by corner, for example.</p>
+        <div class="callout">
+          <strong>You'll be asked before it loads</strong>
+          The first time a plan declares a module that isn't one of the three built-in ones, the app asks whether to trust the URL before fetching and running it — module code runs with full access to the page, the same as any script you'd choose to add yourself, so only accept one from somewhere you actually trust.
+        </div>
+        <p>Writing your own module means working directly against the app's own JavaScript API — that's developer territory, not covered here; see <a href="https://github.com/tminder/2DPlaner/blob/master/documentation/modules.md">modules.md</a> in the repository for the full surface a module can hook into.</p>
       </section>
 
       <section id="saving">
         <h2>Saving &amp; the cloud</h2>
-        <p>Every plan you touch is saved automatically in your browser — no account needed. Use <em>Open…</em>/<em>Save as…</em> to move a plan to and from a file on your computer.</p>
+        <p>Every plan you touch is saved automatically in your browser — no account needed. Use <em>Import…</em>/<em>Export…</em> to move a plan to and from a file on your computer.</p>
         <p>Sign in with a WordPress account (top of the app) to also explicitly push the plan you're working on to the cloud, or pull one you saved earlier back in — useful for picking up the same plan on a different device. This is optional and separate from the automatic local save, which always happens regardless of whether you're signed in.</p>
       </section>
 
