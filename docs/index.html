@@ -518,6 +518,7 @@ function trySolveBackward(fn, parentNode, desiredValue, edits, warnings) {
 const loadedExternal = new Set();
 const loadedInternal = new Set();
 const moduleCleanups = new Map();
+const declinedExternal = new Set();
 
 function deactivateRemovedModules(currentModuleNames) {
   for (const [name, cleanup] of [...moduleCleanups]) {
@@ -526,11 +527,23 @@ function deactivateRemovedModules(currentModuleNames) {
       moduleCleanups.delete(name);
       loadedExternal.delete(name);
       loadedInternal.delete(name);
+      declinedExternal.delete(name);
     }
   }
 }
 
 function isUrlLike(name) { return name.includes("/") || name.endsWith(".js") || name.includes("://"); }
+
+// The three modules this app ships and auto-injects itself (AUTO_MODULES) run with the
+// same trust as core — a plan declaring exactly one of these by name never prompts, no
+// matter how it was declared (auto-injected or written out explicitly). Anything else
+// URL-like is code from wherever the plan's author (often an AI, D-003) pointed it,
+// fetched and run with full page access and no sandboxing (D-020) — see project-overview.md's
+// risk #2. Not solved here (no sandbox added, none is possible without a real trust
+// model), just moved from "happens silently" to "a deliberate choice", asked once per
+// session per URL — loadedExternal's existing dedup means this never re-prompts for a
+// module already accepted this session.
+function isTrustedModule(name) { return AUTO_MODULES.includes(name); }
 
 function loadExternalScript(src) {
   return new Promise((resolve, reject) => {
@@ -545,7 +558,23 @@ function loadExternalScript(src) {
 async function ensureModulesLoaded(moduleNames) {
   for (const name of moduleNames) {
     if (isUrlLike(name)) {
+      if (declinedExternal.has(name)) {
+        // Already asked and declined this session, and the plan still declares it
+        // unchanged — re-asking on every keystroke (rerender runs on every edit) would
+        // pop a native confirm() dialog while the user is mid-typing something unrelated
+        // elsewhere in the plan. Stays declined until the line is actually removed and
+        // re-added (deactivateRemovedModules clears this) or the page reloads.
+        throw new Error(`Module '${name}' not loaded — declined earlier. Remove and re-add its module line to be asked again.`);
+      }
       if (!loadedExternal.has(name)) {
+        if (!isTrustedModule(name) && !confirm(
+          `This plan wants to load code from an external module:\n\n${name}\n\n` +
+          `Module code runs in this page with full access, unsandboxed. Only allow ` +
+          `this if you trust where it came from.\n\nLoad it?`
+        )) {
+          declinedExternal.add(name);
+          throw new Error(`Module '${name}' not loaded — declined.`);
+        }
         await loadExternalScript(name);
         loadedExternal.add(name);
       }

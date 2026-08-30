@@ -65,7 +65,7 @@ interactivity does, so its labels land in the SVG *before* interactivity's own
 icons/scale-bar/fit-button (see "The annotations module" below); code-highlight has to run
 after interactivity since it reads a signal interactivity's own render pass sets (see "The
 code-highlight module" below). **This ordering only holds when a plan declares none of them
-itself** — `loadPlan()` only ever prepends what's *missing*, so a plan that already
+itself** — `withAutoModules()` only ever prepends what's *missing*, so a plan that already
 explicitly declares one out of order (e.g. only `interactivity-module.js`, mid-file) can
 still end up with the others auto-inserted ahead of it in the wrong relative order; the
 fix used for `docs/`'s own `utility` example was to stop declaring any of them explicitly
@@ -74,11 +74,25 @@ interleave with an already-partially-declared list.
 
 ## Trust model
 
-**External modules are trusted by default — no sandboxing.** Loading one runs that code
-directly in the page: no sandboxed iframe or worker, no permissions prompt, no allowlist.
-This matches D-003 (an AI is the primary author, with a technical human reviewing the
-result) — closer to a developer choosing an npm package than an end user clicking an
-untrusted link. Whether that model still holds if the audience broadens is F-009, open.
+**External modules run unsandboxed — no iframe, no worker, no permissions system.** Loading
+one runs that code directly in the page with full access to it. This matches D-003 (an AI
+is the primary author, with a technical human reviewing the result) — closer to a developer
+choosing an npm package than an end user clicking an untrusted link. Whether that model
+still holds if the audience broadens is F-009, open.
+
+**One real gate, added directly in response to project-overview.md's risk review, not a
+sandbox:** the first time a session would load a module that isn't one of the three
+`AUTO_MODULES` this app ships and injects itself, `ensureModulesLoaded()` shows a native
+`confirm()` naming the exact URL before fetching/running it. Declining throws instead of
+loading — the plan simply doesn't render past that point, same as any other unresolved
+error (D-015). This doesn't make the code any safer to run once accepted (still no
+sandboxing, still full page access) — it only turns "runs automatically because a plan
+declared it" into a deliberate per-URL choice, asked once per session (`loadedExternal`'s
+existing dedup) and remembered if declined too (`declinedExternal`, cleared only if the
+module's declaration is actually removed from the plan and re-added, or the page reloads —
+otherwise a declined module would re-prompt on every keystroke, since `rerender()` runs on
+every edit). The three shipped modules never prompt, however they're declared (auto-injected
+or written out explicitly) — they run with the same trust as core itself.
 
 ## Loading and lifecycle
 

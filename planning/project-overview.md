@@ -113,6 +113,14 @@ would execute silently. This doesn't need solving before every other feature, bu
 should move from "open question" to "flagged risk with an owner" rather than sitting
 alongside F-013's metric/imperial toggle in priority.
 
+**Update, 2026-08-30: a first mitigation shipped (D-045).** Loading anything URL-like that
+isn't one of the three modules this app ships itself now shows a native `confirm()` naming
+the exact URL before fetching/running it; declining stops the plan from rendering rather
+than silently loading. This is real, not cosmetic — it closes the "happens automatically,
+no confirmation at all" framing above — but it's still not a sandbox: accepted code still
+runs with full, unrestricted page access, same as before. The risk moves from "silent" to
+"one click past silent," which is the honest extent of what this closes.
+
 **3. Drag-time constraints are accumulating as independently-sequenced heuristic clamps,
 with no unified model and no test of their combinations.** Collision (D-041), containment
 (D-044), connection propagation (D-014), wall-sliding (D-032 mode 2), and
