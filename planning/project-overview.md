@@ -93,6 +93,13 @@ shipped examples rather than a spot check. If that's not feasible in this enviro
 it's worth explicitly deciding to accept that risk rather than continuing to build on an
 unverified base by default.
 
+**Update, 2026-08-30: done, partially.** A real-browser pass happened — reported back as
+"pretty good," with some minor unspecified issues noted but not detailed yet (deliberately
+set aside for later rather than dropped). This substantially de-risks the "never run at
+all" concern above; it doesn't yet close it fully, since a spot-check isn't the same as
+the systematic pass through every shipped example this note originally asked for, and
+whatever the noted minor issues are hasn't been triaged.
+
 **2. External modules execute with zero sandboxing, and the trust model doesn't match how
 plans actually arrive.** `docs/index.html`'s module loader (`loadExternalScript`) injects
 any `module "https://..."` URL a plan declares as a live `<script src>` tag — full page
