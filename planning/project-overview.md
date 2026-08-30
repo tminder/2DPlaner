@@ -29,10 +29,10 @@ token-efficient generation over hand-typing ergonomics (D-017).
 
 **Live:** [tminder.github.io/2DPlaner](https://tminder.github.io/2DPlaner/) — still
 static files, `localStorage` as the default, no forced accounts. `docs/` now has a
-minimal, optional connection to the backend (D-050): sign in, explicitly save/load the
-active plan to the cloud via a third group in the existing plan-switcher — not automatic
-cross-device sync, not a replacement for `localStorage`. Written and hand-traced, **not
-yet confirmed working in a real browser.**
+minimal, optional connection to the backend (D-050, confirmed working in a real browser):
+sign in, explicitly save/load the active plan to the cloud via a third group in the
+existing plan-switcher — not automatic cross-device sync, not a replacement for
+`localStorage`.
 
 - **Language** (`documentation/language.md`, 517 lines): two primitives, Element and
   Connection (D-013); real-world units (D-005); expressions with backward-solving on drag
@@ -71,6 +71,11 @@ yet confirmed working in a real browser.**
   hand-traced. The originally-written Node.js storage service (`storage-service/`)
   couldn't run on this specific hosting at all (its SSH shell has no `libc.so.6`) and
   stays only as a design reference for a future VPS scenario.
+- **`docs/` wired to that backend, minimally (D-050), confirmed working in a real
+  browser** — Sign in/Save to Cloud/Sign out controls, a third "Cloud" group in the
+  plan-switcher. `localStorage` remains the default; this is an explicit, optional
+  action, not automatic sync. This closes out the entire D-019/D-021/D-050 backend arc —
+  every piece, server-side and frontend, is now both built and genuinely tested.
 
 ## What's decided but not built
 
@@ -79,11 +84,6 @@ yet confirmed working in a real browser.**
   WordPress and the storage service ended up on separate subdomains of the same shared
   hosting account (`auth.planagonia.com`, `test.planagonia.com`) rather than sharing one
   domain — not written up as a formal decision update yet.
-- **`docs/` is now wired to the backend, minimally (D-050)** — Sign in/Save to Cloud/Sign
-  out controls, a third "Cloud" group in the plan-switcher. **Not yet confirmed working
-  in a real browser** — written and hand-traced only, the one piece of this entire
-  backend arc that hasn't been exercised for real yet (every backend piece before it was
-  tested directly via `curl` against the live server).
 
 ## Independent risk assessment
 

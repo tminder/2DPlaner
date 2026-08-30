@@ -9,12 +9,12 @@ A browser-based 2D plan generator where the plan is defined by code: editing the
 The language, renderer, drag-and-drop sync, connections, and module loading were each
 validated in throwaway prototypes (see [Prototypes/](Prototypes/)) before [docs/](docs/)
 turned that into the first real, hosted app (D-034). `localStorage` is still the default,
-but `docs/` now has an optional, minimal connection to a real backend (D-050): sign in
-with a WordPress account, explicitly save/load the active plan to the cloud. Auth (D-019,
-a self-hosted WordPress instance at `auth.planagonia.com`) and storage (D-021,
-[storage-service-php/](storage-service-php/) at `test.planagonia.com`) are both live and
-tested on the server side — the frontend wiring itself is written and hand-traced but
-**not yet confirmed working in a real browser.**
+but `docs/` now has an optional, minimal connection to a real backend (D-050, confirmed
+working end to end in a real browser): sign in with a WordPress account, explicitly
+save/load the active plan to the cloud. Auth (D-019, a self-hosted WordPress instance at
+`auth.planagonia.com`) and storage (D-021, [storage-service-php/](storage-service-php/)
+at `test.planagonia.com`) are both live and tested too — the full backend arc (D-047
+through D-050) is built and genuinely exercised, not just designed.
 
 - **[docs/](docs/)** — the app itself, meant to be used, not thrown away. Hosted via GitHub
   Pages (Settings → Pages → Deploy from a branch → `master` / `/docs`), live at the link
