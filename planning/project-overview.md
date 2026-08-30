@@ -65,13 +65,11 @@ static files, no backend, no accounts, `localStorage` for persistence.
   `verify_credentials()` stubs this (see D-048).
 - **D-021** — a separate, minimal storage service. **Now live and tested**
   (`storage-service-php/`, D-048: PHP, MySQL, plain PDO) on the actual target hosting —
-  full login/CRUD cycle exercised over real HTTP against `test.planagonia.com`. The
-  originally-written Node.js version (`storage-service/`, D-047) turned out undeployable
-  on this specific hosting — its SSH shell is missing even `libc.so.6`, so no downloaded
-  Node binary can run there at all — and stays in the repo only as a design reference for
-  a future VPS scenario. One real gap left even on the live PHP version: the subdomain
-  has no valid HTTPS certificate yet, so it's only been exercised with certificate
-  verification disabled.
+  full login/CRUD cycle exercised over real HTTPS, with a valid certificate, against
+  `test.planagonia.com`. The originally-written Node.js version (`storage-service/`,
+  D-047) turned out undeployable on this specific hosting — its SSH shell is missing even
+  `libc.so.6`, so no downloaded Node binary can run there at all — and stays in the repo
+  only as a design reference for a future VPS scenario.
 - **D-025** — deployment topology. Partially answered in practice: shared hosting under a
   hostfactory.ch-branded Plesk skin, SSH on a non-standard port behind an IP allowlist.
   Not written up as a formal decision yet.

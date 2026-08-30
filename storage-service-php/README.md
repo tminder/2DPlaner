@@ -9,16 +9,14 @@ but this PHP version is what's actually being deployed, since that's what the ta
 hosting (shared, under Plesk, PHP-only) can run.
 
 **Status: live and tested end to end**, on the real target server
-(`test.planagonia.com`), over real HTTP: login, create, list, get, update, delete, and the
-401/400 error paths were all exercised directly via `curl` against the deployed app, not
-just hand-traced. Two real deployment bugs were found and fixed this way — see
-"Deploying" and "Troubleshooting" below — neither would have been caught by code review
-alone. **Still open:** `test.planagonia.com` doesn't have a valid HTTPS certificate yet
-(the hosting portal's "HTTPS Optionen" shows "Unverschlüsselt, jetzt Sichern") — every
-test so far used `curl -k` to skip certificate verification. Issue a real certificate via
-the portal before relying on this from anything that won't skip verification (i.e.
-anything other than manual `curl -k` testing) — a real browser or `docs/` calling this API
-would refuse the connection as-is.
+(`test.planagonia.com`), over real HTTPS with a valid certificate: login, create, list,
+get, update, delete, and the 401/400 error paths were all exercised directly via `curl`
+against the deployed app, not just hand-traced. Two real deployment bugs were found and
+fixed this way — see "Deploying" and "Troubleshooting" below — neither would have been
+caught by code review alone. A real certificate has since been issued for the subdomain
+(confirmed: `curl` without `-k` now succeeds) — the examples below no longer need it,
+kept only as a note in case a future redeploy to a different subdomain hits the same
+"HTTPS Optionen: Unverschlüsselt" state again.
 
 ## What's real vs. stubbed
 
@@ -70,16 +68,18 @@ gitignored) by copying `app/config.example.php` and filling in real values: a ra
 
 **4. Test:**
 ```
-curl -k -X POST https://test.planagonia.com/session.php \
+curl -X POST https://test.planagonia.com/session.php \
   -H "Content-Type: application/json" \
   -d '{"username":"<dev_username>","password":"<dev_password>"}'
 ```
-Should return `{"token":"...","expiresIn":3600}` (`-k` only needed until a real
-certificate is issued for the subdomain — see the status note above). Then:
+Should return `{"token":"...","expiresIn":3600}`. Then:
 ```
-curl -k https://test.planagonia.com/plans.php -H "Authorization: Bearer <token>"
+curl https://test.planagonia.com/plans.php -H "Authorization: Bearer <token>"
 ```
-Should return `{"plans":[]}`.
+Should return `{"plans":[]}`. If a fresh subdomain's certificate isn't issued yet (the
+hosting portal's "HTTPS Optionen" would show "Unverschlüsselt, jetzt Sichern"), add `-k`
+to skip verification temporarily until it is — don't rely on that for anything beyond
+manual testing.
 
 ## Authorization header — confirmed needed, not just a theoretical fallback
 
