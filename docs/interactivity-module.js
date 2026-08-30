@@ -11,6 +11,9 @@
 
   function injectStyles(styleEl) {
     styleEl.textContent = `
+      #plan-root { position: relative; } /* anchors the scale bar / fit button overlays */
+      #plan-root svg { cursor: grab; } /* empty canvas: click-drag pans */
+      #plan-root.dragging svg { cursor: grabbing; }
       #plan-root svg [data-id] { cursor: grab; }
       #plan-root svg [data-id]:active { cursor: grabbing; }
       #plan-root:not(.dragging) svg .obj:hover { filter: drop-shadow(0 0 2px #37f) drop-shadow(0 0 2px #37f); }
@@ -32,6 +35,18 @@
       .context-menu li { padding: 6px 16px; cursor: pointer; }
       .context-menu li:hover { background: #eef2ff; }
       .context-menu li.danger { color: #a11; }
+
+      #interactivity-scale-bar { position: absolute; right: 10px; bottom: 10px;
+        display: flex; flex-direction: column; align-items: center; pointer-events: none;
+        font-family: system-ui, sans-serif; font-size: 11px; color: #333; }
+      #interactivity-scale-bar .bar { height: 6px; border-left: 1.5px solid #333;
+        border-right: 1.5px solid #333; border-bottom: 1.5px solid #333; }
+      #interactivity-scale-bar .label { margin-top: 2px; background: rgba(255,255,255,0.85);
+        padding: 0 4px; border-radius: 2px; }
+      #interactivity-fit-btn { position: absolute; right: 10px; top: 10px; z-index: 1;
+        font: inherit; font-size: 0.8rem; padding: 0.3rem 0.6rem; border: 1px solid #ccc;
+        border-radius: 5px; background: rgba(255,255,255,0.9); cursor: pointer; }
+      #interactivity-fit-btn:hover { background: #fff; }
     `;
   }
 
@@ -44,6 +59,8 @@
   // from a clean slate rather than risk a duplicate if one somehow did.
   document.getElementById("interactivity-context-menu")?.remove();
   document.getElementById("interactivity-module-style")?.remove();
+  document.getElementById("interactivity-scale-bar")?.remove();
+  document.getElementById("interactivity-fit-btn")?.remove();
 
   const styleEl = document.createElement("style");
   styleEl.id = "interactivity-module-style";
@@ -56,12 +73,36 @@
   contextMenuEl.hidden = true;
   document.body.appendChild(contextMenuEl);
 
+  const scaleBarEl = document.createElement("div");
+  scaleBarEl.id = "interactivity-scale-bar";
+  scaleBarEl.innerHTML = `<div class="bar"></div><div class="label"></div>`;
+  core.rootEl.appendChild(scaleBarEl);
+  const scaleBarBarEl = scaleBarEl.querySelector(".bar");
+  const scaleBarLabelEl = scaleBarEl.querySelector(".label");
+
+  const fitBtnEl = document.createElement("button");
+  fitBtnEl.id = "interactivity-fit-btn";
+  fitBtnEl.type = "button";
+  fitBtnEl.textContent = "Fit";
+  fitBtnEl.title = "Reset zoom and pan";
+  core.rootEl.appendChild(fitBtnEl);
+
   // ---------- Module-owned state — core has none of this. ----------
   let program = null;
   let lastBboxes = {};
   let selectedId = null;
   let drag = null;
   let contextMenuItems = [];
+
+  // ---------- Pan/zoom state ----------
+  // viewState: the viewBox {x,y,width,height} currently applied on top of whatever core
+  // just rendered, or null to mean "use core's own fit as-is". lastCoreFit: core's fit box
+  // as of the most recent render, captured *before* viewState is applied over it — needed
+  // both to detect "core just re-fit the content" (compared against the previous value, see
+  // handleRendered) and as the stable reference to clamp zoom range against.
+  let viewState = null;
+  let lastCoreFit = null;
+  let canvasDrag = null; // pointerdown on empty space: pending pan-or-click, see handlePointerDown
 
   // ---------- Adjacency / contact-point / snap geometry ----------
   const TOUCH_TOLERANCE = 0.05;
@@ -415,6 +456,33 @@
     const svgEl = core.rootEl.querySelector("svg");
     if (!svgEl) return;
 
+    // core's rerender() just replaced #plan-root's *entire* innerHTML with the fresh SVG,
+    // which silently destroys these two overlay elements too, not just old shape markup —
+    // they're plain children of the same container, appended once at module load, so they
+    // need re-adding after every single render, not just the first. appendChild moves an
+    // already-existing node rather than erroring, so this is safe to call unconditionally.
+    core.rootEl.appendChild(scaleBarEl);
+    core.rootEl.appendChild(fitBtnEl);
+
+    // core just replaced #plan-root's innerHTML, so svgEl's viewBox is core's own fresh
+    // fit-to-content box, not yet touched by any zoom/pan — capture it before applying
+    // viewState over it. If it differs from last time, core actually re-fit the content
+    // (see D-034's fixedViewBox reset), so any existing zoom/pan is relative to a "home"
+    // that no longer exists — drop it and start fresh from the new fit, same as it would
+    // for a first render. If it's unchanged (e.g. a drag's preserveViewBox:true, or an edit
+    // that happened not to change the bounding box), keep whatever view the user had.
+    const vb = svgEl.viewBox.baseVal;
+    const freshFit = { x: vb.x, y: vb.y, width: vb.width, height: vb.height };
+    if (!lastCoreFit || freshFit.x !== lastCoreFit.x || freshFit.y !== lastCoreFit.y ||
+        freshFit.width !== lastCoreFit.width || freshFit.height !== lastCoreFit.height) {
+      viewState = null;
+    }
+    lastCoreFit = freshFit;
+    if (viewState) {
+      svgEl.setAttribute("viewBox", `${viewState.x} ${viewState.y} ${viewState.width} ${viewState.height}`);
+    }
+    updateScaleBar();
+
     if (selectedId) {
       core.rootEl.querySelector(`[data-id="${CSS.escape(selectedId)}"]`)?.classList.add("selected");
     }
@@ -459,7 +527,13 @@
     }
 
     const el = e.target.closest("[data-id]");
-    if (!el) { selectedId = null; core.rerender({ preserveViewBox: true }); return; }
+    if (!el) {
+      // Empty canvas: could be a plain click (deselect) or the start of a pan — decided by
+      // whether the pointer actually moves before release, see handlePointerMove/Up.
+      canvasDrag = { startClientX: e.clientX, startClientY: e.clientY, moved: false,
+        startView: viewState || lastCoreFit };
+      return;
+    }
     const node = program.nodesById[el.dataset.id];
     if (!node.props.position && !node.props.points) {
       core.dragmsgEl.textContent = `${node.id}: has no explicit position/points in source, nothing to drag`;
@@ -509,7 +583,84 @@
     return core.M * Math.min(rect.width / vb.width, rect.height / vb.height);
   }
 
+  // "Nice" round distances (in meters) to offer on the scale bar, same idea as a map's —
+  // pick the largest one whose on-screen length still fits comfortably, rather than
+  // labelling an arbitrary, hard-to-read number of meters.
+  const SCALE_BAR_STEPS_M = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
+  const SCALE_BAR_MAX_PX = 140;
+
+  function updateScaleBar() {
+    const pxPerMeter = currentPxPerMeter();
+    if (!pxPerMeter) return;
+    let meters = SCALE_BAR_STEPS_M[0];
+    for (const step of SCALE_BAR_STEPS_M) {
+      if (step * pxPerMeter <= SCALE_BAR_MAX_PX) meters = step; else break;
+    }
+    scaleBarBarEl.style.width = `${meters * pxPerMeter}px`;
+    scaleBarLabelEl.textContent = meters < 1 ? `${Math.round(meters * 100)} cm` : `${meters} m`;
+  }
+
+  // Zoom relative to the cursor: the viewBox point currently under the pointer stays under
+  // the pointer after the zoom, matching the zoom-to-cursor behavior any map/canvas tool
+  // has trained people to expect (zooming shouldn't fling the thing you're looking at
+  // somewhere else on screen).
+  function handleWheel(e) {
+    const svg = core.rootEl.querySelector("svg");
+    if (!svg || !lastCoreFit) return;
+    e.preventDefault();
+    const current = viewState || lastCoreFit;
+    const rect = svg.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const scale = Math.min(rect.width / current.width, rect.height / current.height);
+    const cursorVbX = current.x + (e.clientX - rect.left) / scale;
+    const cursorVbY = current.y + (e.clientY - rect.top) / scale;
+
+    const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+    const minWidth = lastCoreFit.width / 8; // ~8x zoomed in, relative to the original fit
+    const maxWidth = lastCoreFit.width * 2; // ~2x zoomed out
+    const newWidth = Math.min(maxWidth, Math.max(minWidth, current.width / factor));
+    if (newWidth === current.width) return; // already at a zoom limit
+    const ratio = newWidth / current.width;
+    const newHeight = current.height * ratio;
+    const newScale = Math.min(rect.width / newWidth, rect.height / newHeight);
+    const newX = cursorVbX - (e.clientX - rect.left) / newScale;
+    const newY = cursorVbY - (e.clientY - rect.top) / newScale;
+
+    viewState = { x: newX, y: newY, width: newWidth, height: newHeight };
+    svg.setAttribute("viewBox", `${newX} ${newY} ${newWidth} ${newHeight}`);
+    updateScaleBar();
+  }
+
+  function resetView() {
+    viewState = null;
+    const svg = core.rootEl.querySelector("svg");
+    if (svg && lastCoreFit) {
+      svg.setAttribute("viewBox", `${lastCoreFit.x} ${lastCoreFit.y} ${lastCoreFit.width} ${lastCoreFit.height}`);
+    }
+    updateScaleBar();
+  }
+
   function handlePointerMove(e) {
+    if (canvasDrag) {
+      const svg = core.rootEl.querySelector("svg");
+      if (!svg) return;
+      const dxScreen = e.clientX - canvasDrag.startClientX;
+      const dyScreen = e.clientY - canvasDrag.startClientY;
+      if (!canvasDrag.moved && Math.hypot(dxScreen, dyScreen) > 3) {
+        canvasDrag.moved = true;
+        core.rootEl.classList.add("dragging");
+      }
+      if (!canvasDrag.moved) return;
+      const rect = svg.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      const base = canvasDrag.startView;
+      const scale = Math.min(rect.width / base.width, rect.height / base.height);
+      const newX = base.x - dxScreen / scale;
+      const newY = base.y - dyScreen / scale;
+      viewState = { x: newX, y: newY, width: base.width, height: base.height };
+      svg.setAttribute("viewBox", `${newX} ${newY} ${base.width} ${base.height}`);
+      return;
+    }
     if (!drag) return;
     const pxPerMeter = currentPxPerMeter();
     const dx = (e.clientX - drag.clientX) / pxPerMeter;
@@ -519,6 +670,12 @@
 
   function handlePointerUp() {
     core.rootEl.classList.remove("dragging");
+    if (canvasDrag) {
+      const wasClick = !canvasDrag.moved;
+      canvasDrag = null;
+      if (wasClick) { selectedId = null; core.rerender({ preserveViewBox: true }); }
+      return;
+    }
     if (drag) {
       selectedId = drag.id; // click or drag-and-release both select the element
       drag = null;
@@ -526,8 +683,11 @@
     }
   }
 
+  // Suppressed during either kind of drag: without setPointerCapture, the cursor still
+  // fires over/out for whatever it happens to pass across mid-gesture, not just what's
+  // actually being interacted with (same reasoning as the object-drag case).
   function handlePointerOver(e) {
-    if (drag) return;
+    if (drag || canvasDrag) return;
     const el = e.target.closest("[data-id]");
     if (!el || !program) return;
     const users = el.dataset.cornerUsers;
@@ -561,6 +721,15 @@
     }
   }
 
+  function handleFitClick() { resetView(); }
+
+  // Resize can change the SVG's on-screen size without any render or zoom/pan action of
+  // ours (window resize, or the code pane being resized) — the scale bar (and the drag
+  // scale currentPxPerMeter reads elsewhere) both depend on that size, so both need to stay
+  // current when it changes for reasons neither of us triggered.
+  const resizeObserver = new ResizeObserver(() => updateScaleBar());
+  resizeObserver.observe(core.rootEl);
+
   core.rootEl.addEventListener("pointerdown", handlePointerDown);
   core.rootEl.addEventListener("contextmenu", handleContextMenu);
   contextMenuEl.addEventListener("click", handleMenuClick);
@@ -570,11 +739,14 @@
   window.addEventListener("pointerup", handlePointerUp);
   core.rootEl.addEventListener("pointerover", handlePointerOver);
   core.rootEl.addEventListener("pointerout", handlePointerOut);
+  core.rootEl.addEventListener("wheel", handleWheel, { passive: false });
+  fitBtnEl.addEventListener("click", handleFitClick);
 
   // ---------- Teardown: undoes exactly what setup above did, so removing this module's
   // declaration from a plan actually turns interactivity off. ----------
   core.registerModuleCleanup("interactivity-module.js", () => {
     unregisterOnRendered();
+    resizeObserver.disconnect();
     core.rootEl.removeEventListener("pointerdown", handlePointerDown);
     core.rootEl.removeEventListener("contextmenu", handleContextMenu);
     contextMenuEl.removeEventListener("click", handleMenuClick);
@@ -584,10 +756,17 @@
     window.removeEventListener("pointerup", handlePointerUp);
     core.rootEl.removeEventListener("pointerover", handlePointerOver);
     core.rootEl.removeEventListener("pointerout", handlePointerOut);
+    core.rootEl.removeEventListener("wheel", handleWheel);
+    fitBtnEl.removeEventListener("click", handleFitClick);
     core.rootEl.classList.remove("dragging");
     contextMenuEl.remove();
+    scaleBarEl.remove();
+    fitBtnEl.remove();
     styleEl.remove();
     drag = null;
+    canvasDrag = null;
     selectedId = null;
+    viewState = null;
+    lastCoreFit = null;
   });
 })();
