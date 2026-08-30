@@ -383,3 +383,5 @@ Everything before this was explicitly throwaway (D-002) — one self-contained H
 - **New, not present in any prototype:** a small toolbar (new-from-example, open file, save file) and automatic persistence to `localStorage` on every change (parse-successful or not, so a syntax error mid-edit never loses keystrokes on refresh) — the concrete implementation of D-007's "local storage and/or file" persistence, previously only a plan-language example living in one in-memory `EXAMPLE` constant per prototype with no save/load at all.
 
 **Deliberately still missing:** any build step (still plain static files, zero dependencies, matching every prototype so far — nothing here needed a bundler), the backend (D-019/D-021), and F-002/F-006's remaining gaps (module API surface beyond rendering+interactivity, and the documentation-vs-implementation mismatch F-006 found). This is a hosted prototype, not a claim that those are resolved.
+
+**Live:** [tminder.github.io/2DPlaner](https://tminder.github.io/2DPlaner/), confirmed working via GitHub Pages (branch `master`, `/docs` folder) — the first thing built in this project that a URL points at instead of a local file.

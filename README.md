@@ -2,6 +2,8 @@
 
 A browser-based 2D plan generator where the plan is defined by code: editing the code changes the plan, and (later) editing the plan visually via drag-and-drop changes the code back. See [planning/core-aims.md](planning/core-aims.md) for the full vision and core aims.
 
+**Live:** [tminder.github.io/2DPlaner](https://tminder.github.io/2DPlaner/)
+
 ## Status
 
 The language, renderer, drag-and-drop sync, connections, and module loading were each
@@ -10,8 +12,8 @@ turned that into the first real, hosted app (D-034) — frontend-only, no backen
 (auth/storage stay decisions-only, D-019/D-021).
 
 - **[docs/](docs/)** — the app itself, meant to be used, not thrown away. Hosted via GitHub
-  Pages once enabled in this repo's Settings (Pages → Deploy from a branch →
-  `main` / `/docs`).
+  Pages (Settings → Pages → Deploy from a branch → `master` / `/docs`), live at the link
+  above.
 - [planning/core-aims.md](planning/core-aims.md) — vision and core aims
 - [planning/decisions.md](planning/decisions.md) — numbered decisions (D-001...)
 - [planning/open-questions.md](planning/open-questions.md) — numbered open questions (F-001...)
