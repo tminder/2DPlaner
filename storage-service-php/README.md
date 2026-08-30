@@ -29,6 +29,18 @@ below — none of which would have been caught by code review alone.
   library (no Composer dependency needed for something this small, and it deliberately
   supports exactly one algorithm with no "alg" field to negotiate — sidesteps a whole
   class of real-world JWT bugs by construction, not just by being simple), 1 hour TTL.
+- **Rate limiting is real (D-056)** — `app/src/rate_limit.php`, a fixed-window counter in
+  the same MySQL database (a `rate_limits` table, no new service). `POST /session.php` is
+  limited by IP (10 attempts / 15 min, since there's no authenticated identity yet at that
+  point); `/plans.php` is limited by user id (300 requests / 15 min — generous relative to
+  actual usage, since the app only calls this on an explicit Save/Load-to-Cloud action).
+  Confirmed against the live server: 11 rapid login attempts, the 11th correctly rejected
+  with `429` and a `Retry-After` header.
+- **CORS is live**, locked to specific allowed origins (`config.local.php`'s
+  `allowed_origins`) rather than `*` — this API carries session tokens, not public data.
+- **Wired to the real frontend** — `docs/index.html` (D-050) and `profile/index.html`
+  (D-055) both call this service for real, from multiple hosts (GitHub Pages,
+  `www.planagonia.com/app/`, `test.planagonia.com`), all covered by `allowed_origins`.
 
 ## Why MySQL, not SQLite
 
@@ -77,18 +89,19 @@ step 2.
 
 **5. Test**, using the WordPress account and Application Password from step 1:
 ```
-curl -X POST https://test.planagonia.com/session.php \
+curl -X POST https://api.planagonia.com/session.php \
   -H "Content-Type: application/json" \
   -d '{"username":"<wp_username>","password":"<wp_application_password>"}'
 ```
 Should return `{"token":"...","expiresIn":3600}`. Then:
 ```
-curl https://test.planagonia.com/plans.php -H "Authorization: Bearer <token>"
+curl https://api.planagonia.com/plans.php -H "Authorization: Bearer <token>"
 ```
 Should return `{"plans":[]}`. If a fresh subdomain's certificate isn't issued yet (the
 hosting portal's "HTTPS Optionen" would show "Unverschlüsselt, jetzt Sichern"), add `-k`
 to skip verification temporarily until it is — don't rely on that for anything beyond
-manual testing.
+manual testing. (This project's own live deployment is at `api.planagonia.com` — D-053
+moved it off its original host, `test.planagonia.com`, once a dedicated subdomain existed.)
 
 ## Authorization header — confirmed needed, not just a theoretical fallback
 
@@ -116,13 +129,14 @@ directly-requested `.php` file. All `plans.php` requests require
 
 | Method | Path | Body | Returns |
 |---|---|---|---|
-| POST | `/session.php` | `{ username, password }` | `{ token, expiresIn }` |
+| POST | `/session.php` | `{ username, password }` | `{ token, expiresIn }`, or `429` past 10 attempts/15 min per IP |
 | GET | `/plans.php` | — | `{ plans: [{ id, name, updatedAt }, ...] }` |
 | GET | `/plans.php?id=X` | — | `{ id, name, text, updatedAt }` |
 | POST | `/plans.php` | `{ name, text }` | `{ id, name, text, updatedAt }` (201) |
 | PUT | `/plans.php?id=X` | `{ name?, text? }` | `{ id, name, text, updatedAt }` |
 | DELETE | `/plans.php?id=X` | — | 204, empty |
 
+Every `/plans.php` route also returns `429` past 300 requests/15 min per signed-in user.
 Same response shapes as the Node version — `GET /plans.php` omits `text` for the same
 reason (matches what `docs/`'s plan-switcher, D-043, actually needs for its list); a 404
 from any single-plan route doesn't distinguish "doesn't exist" from "not yours," so a
@@ -130,11 +144,6 @@ request can't be used to probe whether some other user's plan id exists.
 
 ## Not built yet
 
-- Rate limiting (still an open gap, see
-  [decisions.md D-022](../planning/decisions.md#d-022-scraping-protection-content-not-the-language)).
-- CORS headers — not needed yet since `docs/index.html` doesn't call this service at all;
-  would need adding the moment that changes, since `docs/` and this service are different
-  origins.
-- Wiring `docs/index.html` to actually call this service — deliberately not attempted,
-  matching this project's standing practice of validating a piece standalone first.
-  `docs/` stays fully `localStorage`-only for now.
+- Self-service account registration — every WordPress account is still admin-provisioned
+  via WP-CLI; deliberately deferred until rate limiting existed (D-056 closes that
+  precondition, but the registration feature itself still isn't built).

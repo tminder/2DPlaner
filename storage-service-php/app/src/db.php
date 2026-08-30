@@ -38,5 +38,13 @@ function get_db(array $config): PDO {
         FOREIGN KEY (user_id) REFERENCES users(id)
     ) ENGINE=InnoDB');
 
+    // D-022's rate-limiting gap, closed (D-056) — see src/rate_limit.php. One row per
+    // (endpoint, identifier) pair, holding a fixed time window's own request count.
+    $db->exec('CREATE TABLE IF NOT EXISTS rate_limits (
+        bucket_key VARCHAR(191) PRIMARY KEY,
+        window_start BIGINT NOT NULL,
+        count INT NOT NULL DEFAULT 1
+    ) ENGINE=InnoDB');
+
     return $db;
 }

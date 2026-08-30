@@ -6,6 +6,7 @@ require __DIR__ . '/../app/src/http.php';
 require __DIR__ . '/../app/src/db.php';
 require __DIR__ . '/../app/src/auth.php';
 require __DIR__ . '/../app/src/plans_repo.php';
+require __DIR__ . '/../app/src/rate_limit.php';
 
 $config = require __DIR__ . '/../app/config.local.php';
 apply_cors($config['allowed_origins']);
@@ -26,6 +27,13 @@ try {
     error_log('plans.php db connection: ' . $e->getMessage());
     send_json(500, ['error' => 'Internal error']);
 }
+
+// By user id, not IP — the token is already validated at this point, so this is a
+// meaningful identity (unlike session.php's pre-auth IP-only bucket), and it doesn't
+// false-positive on multiple legitimate users sharing one IP (NAT, a shared network).
+// Generous relative to actual usage: the app only calls this on an explicit Save/Load-
+// from-Cloud action or opening Profile's plan list, never on every drag or keystroke.
+enforce_rate_limit($db, 'plans:' . $userId, 300, 900); // 300 requests / 15 min
 
 $method = $_SERVER['REQUEST_METHOD'];
 $id = $_GET['id'] ?? null;
