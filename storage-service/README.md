@@ -1,14 +1,22 @@
-# Storage service
+# Storage service (Node.js — design reference, not what's deployed)
 
 D-021's minimal storage service: CRUD for plan text, scoped per user. The first piece of
 [D-019](../planning/decisions.md#d-019-user-auth--data-hosting)/[D-021](../planning/decisions.md#d-021-plan-storage-backend)'s
-backend to actually be built, as code — see
-[decisions.md D-047](../planning/decisions.md) for the full design/status writeup.
+backend to actually be built, as code — see [decisions.md D-047](../planning/decisions.md)
+for the full design/status writeup.
 
-**Status: untested.** No Node.js is available in the environment this was written in — every
-line here was written and hand-traced carefully (this project's standing practice when no
-execution environment exists), but nothing has actually been run yet. Please `npm install`
-and exercise it for real before trusting it with anything.
+**Superseded for actual deployment by [storage-service-php/](../storage-service-php/)
+(D-048).** The chosen hosting target (`test.planagonia.com`, shared hosting under Plesk)
+turned out — confirmed by actually connecting and testing, not assumed — to have no
+Node.js runtime support at all: its SSH environment is a minimal jail missing even
+`libc.so.6`, so a downloaded Node binary can't run there regardless of version. This file
+stays in the repo as a valid design reference (what this would look like on
+infrastructure with real Node.js support, e.g. a VPS) — the actual live deployment is the
+PHP/MySQL rewrite in `storage-service-php/`, same API contract, tested and working end to
+end on the real target server.
+
+**Status: still genuinely untested** — no Node.js is available in the environment this
+was written in either, so nothing here has ever actually been run, on any host.
 
 ## What's real vs. stubbed
 
