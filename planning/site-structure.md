@@ -144,6 +144,7 @@ rejected path, not delete it once superseded.
 | Profile | `planagonia.com/profile` | **Done** — live at `www.planagonia.com/profile/` (D-055): sign-in, cloud plan list. No account management (rename/delete/rotate password) — flagged on the page itself as out of scope |
 | Storage-service API | `api.planagonia.com` | **Done** — migrated off `test.planagonia.com` (D-053), confirmed working end to end (login, CRUD, CORS for the main domain) |
 | SEO exclusion for `auth.`/`test.`(`api.`) | — | **Done** — `auth.planagonia.com` set to WordPress's own "discourage search engines" (confirmed: `noindex, nofollow` meta tag live); `test.planagonia.com` given a `Disallow: /` `robots.txt` |
+| Sitemap + main-domain `robots.txt` | `planagonia.com/sitemap.xml` | **Done** (D-057) — dynamically generated from Homepage/Documentation's real file mtimes; main-domain `robots.txt` also excludes `/app/`. GitHub Pages' own copy of the App still has no `robots.txt` — a separate, unaddressed host |
 
 ## Open questions, collected here rather than scattered across the conversation
 
