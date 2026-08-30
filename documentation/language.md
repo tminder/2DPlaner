@@ -317,9 +317,26 @@ settings {
 ```
 
 Collision-avoidance and polygon-realism checks are real default behaviors, not just
-illustrative examples — these settings opt out of them per plan. The exact mechanics
-(what counts as a collision, and how a violation surfaces) are still open — see
-[planning/open-questions.md](../planning/open-questions.md) F-004.
+illustrative examples — these settings opt out of them per plan.
+
+**Collision checking (D-041):** `rect`/`circle`/`polygon` elements sharing the same direct
+parent may not overlap by default — dragging one into another is rejected (with a message),
+the same "stop the drag before it happens" treatment as the self-intersection check below,
+not D-015's warn-and-flag pattern. Scoped to siblings only: a chair positioned inside a room
+isn't a collision with the room itself, that's containment, a different relationship
+(D-032) this doesn't check. `polyline` and shapeless elements don't participate — they're
+meant to touch/connect by design (D-014/D-018), not something to police for overlap. Two
+shapes resting exactly flush against each other are *not* a collision, only genuine
+overlapping area is.
+
+Also settable per element, `allowCollisions: true | false`, overriding the plan default for
+that specific element — the same override pattern as `edgeLengths` (D-038): unset inherits
+the plan default; an explicit value always wins. Since a collision is inherently between
+*two* elements, either one opting out exempts that pair from the check.
+
+**Not yet checked:** an element dragged along by a `connection` (rather than directly) —
+only the element the user is actually dragging is validated. See
+[planning/open-questions.md](../planning/open-questions.md) F-004 for what's still open.
 
 `edgeLengths` is a different kind of setting from its two neighbors above — not a check to
 opt out of, but a *display default* to opt into: `settings { edgeLengths: true }` turns edge
@@ -335,7 +352,6 @@ the reader to already know that "unrealistic" here has a narrow, specific meanin
 violation is checked against the *proposed* position before it's committed, so a corner
 drag that would cross the shape simply stops being applied (with a message), rather than
 being allowed and flagged afterward like D-015's unsolvable-expression case.
-`allowCollisions` has no implementation yet.
 
 ## Worked examples
 

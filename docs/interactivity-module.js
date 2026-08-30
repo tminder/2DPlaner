@@ -221,6 +221,162 @@
     return { dx: 0, dy: rect.bottom - point.top };
   }
 
+  // ---------- Collision checking (D-041) ----------
+  // Only rect/circle/polygon participate — a polyline (wall) and a bare/shapeless element
+  // are meant to touch/connect by design (D-014/D-018), not something to police for
+  // overlap. Scoped to siblings (same parent) only: a chair inside a room isn't
+  // "colliding" with the room, that's containment, a different relationship (D-032) this
+  // doesn't touch. Zero-tolerance geometric tests (proper edge crossings, or one shape's
+  // point strictly inside the other) rather than an epsilon-inflated buffer — two shapes
+  // resting exactly flush already read as non-colliding without needing one, since D-014's
+  // whole adjacency/connection system already depends on exact touching being legitimate,
+  // not just tolerated.
+  const COLLISION_EPS = 0.01;
+
+  function pointInPolygon(pt, poly) {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const [xi, yi] = poly[i], [xj, yj] = poly[j];
+      const crosses = (yi > pt[1]) !== (yj > pt[1]) &&
+        pt[0] < (xj - xi) * (pt[1] - yi) / (yj - yi) + xi;
+      if (crosses) inside = !inside;
+    }
+    return inside;
+  }
+
+  function pointToSegmentDistance(p, a, b) {
+    const abx = b[0] - a[0], aby = b[1] - a[1];
+    const len2 = abx * abx + aby * aby;
+    let t = len2 === 0 ? 0 : ((p[0] - a[0]) * abx + (p[1] - a[1]) * aby) / len2;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(p[0] - (a[0] + t * abx), p[1] - (a[1] + t * aby));
+  }
+
+  // Same cross-product proper-crossing test as core's own polygonSelfIntersects — a
+  // module-local copy (not exposed via PlanCore) since it's a generic segment primitive,
+  // not something specific to the self-intersection check core built it for.
+  function segmentsProperlyIntersect(p1, p2, p3, p4) {
+    const d = (a, b, c) => (b[0]-a[0])*(c[1]-a[1]) - (b[1]-a[1])*(c[0]-a[0]);
+    const d1 = d(p3, p4, p1), d2 = d(p3, p4, p2), d3 = d(p1, p2, p3), d4 = d(p1, p2, p4);
+    return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+  }
+
+  function rectCorners(r) {
+    return [[r.left, r.top], [r.right, r.top], [r.right, r.bottom], [r.left, r.bottom]];
+  }
+
+  // No edge of A crosses an edge of B, and neither polygon starts inside the other =>
+  // genuinely separate (or only touching, which isn't a crossing). Works for non-convex
+  // polygons too, matching this language's own polygons (D-018's shared-corner deformation
+  // has never been restricted to convex shapes).
+  function polygonsOverlap(polyA, polyB) {
+    for (let i = 0; i < polyA.length; i++) {
+      const a1 = polyA[i], a2 = polyA[(i + 1) % polyA.length];
+      for (let j = 0; j < polyB.length; j++) {
+        const b1 = polyB[j], b2 = polyB[(j + 1) % polyB.length];
+        if (segmentsProperlyIntersect(a1, a2, b1, b2)) return true;
+      }
+    }
+    if (polyA.length && pointInPolygon(polyA[0], polyB)) return true;
+    if (polyB.length && pointInPolygon(polyB[0], polyA)) return true;
+    return false;
+  }
+
+  function circlePolygonOverlap(center, radius, poly) {
+    if (pointInPolygon(center, poly)) return true;
+    for (let i = 0; i < poly.length; i++) {
+      if (pointToSegmentDistance(center, poly[i], poly[(i + 1) % poly.length]) < radius - COLLISION_EPS) return true;
+    }
+    return false;
+  }
+
+  function shapesOverlap(a, b) {
+    if (a.kind === "rect" && b.kind === "rect") {
+      const xGap = Math.max(a.left, b.left) - Math.min(a.right, b.right);
+      const yGap = Math.max(a.top, b.top) - Math.min(a.bottom, b.bottom);
+      return xGap < -COLLISION_EPS && yGap < -COLLISION_EPS;
+    }
+    if (a.kind === "circle" && b.kind === "circle") {
+      return Math.hypot(a.cx - b.cx, a.cy - b.cy) < a.r + b.r - COLLISION_EPS;
+    }
+    if (a.kind === "circle" || b.kind === "circle") {
+      const circle = a.kind === "circle" ? a : b;
+      const other = a.kind === "circle" ? b : a;
+      return circlePolygonOverlap([circle.cx, circle.cy], circle.r, other.kind === "rect" ? rectCorners(other) : other.points);
+    }
+    const polyA = a.kind === "rect" ? rectCorners(a) : a.points;
+    const polyB = b.kind === "rect" ? rectCorners(b) : b.points;
+    return polygonsOverlap(polyA, polyB);
+  }
+
+  // allowCollisions on the element itself always overrides the plan-wide settings default
+  // (unset means "inherit the plan default") — same override pattern as D-038's edgeLengths.
+  function collisionsAllowedFor(node, settings) {
+    if (typeof node.props.allowCollisions === "boolean") return node.props.allowCollisions;
+    return !!settings.allowCollisions;
+  }
+
+  // A rect/circle/polygon's own collision geometry at its *current* (unmoved) position.
+  function solidGeometryFor(node, positions) {
+    const ownAbs = positions[node.id];
+    if (!ownAbs) return null;
+    if (node.props.shape === "rect" && node.props.size) {
+      const w = core.numOf(node.props.size[0]), h = core.numOf(node.props.size[1]);
+      return { kind: "rect", left: ownAbs[0], top: ownAbs[1], right: ownAbs[0] + w, bottom: ownAbs[1] + h };
+    }
+    if (node.props.shape === "circle" && node.props.radius !== undefined) {
+      return { kind: "circle", cx: ownAbs[0], cy: ownAbs[1], r: core.numOf(node.props.radius) };
+    }
+    if (node.props.shape === "polygon" && node.props.points) {
+      return { kind: "polygon", points: node.props.points.map((pt) => core.resolvePointAbs(pt, ownAbs, positions)) };
+    }
+    return null; // polyline and shapeless elements don't participate in collision checking
+  }
+
+  // Same geometry as solidGeometryFor, but shifted by the drag's own (dx, dy) — every point
+  // of a polygon (literal or corner-reference alike) moves by the same delta in a
+  // whole-shape drag, so resolving each one at its current position and then shifting it is
+  // correct for both kinds, and for any mix of the two on one shape.
+  function proposedGeometryFor(node, dx, dy, positions) {
+    if (node.props.shape === "rect" && node.props.position) {
+      const [x, y] = positions[node.id];
+      const w = core.numOf(node.props.size[0]), h = core.numOf(node.props.size[1]);
+      return { kind: "rect", left: x + dx, top: y + dy, right: x + dx + w, bottom: y + dy + h };
+    }
+    if (node.props.shape === "circle" && node.props.position) {
+      const [x, y] = positions[node.id];
+      return { kind: "circle", cx: x + dx, cy: y + dy, r: core.numOf(node.props.radius) };
+    }
+    if (node.props.shape === "polygon" && node.props.points) {
+      const ownAbs = positions[node.id];
+      const points = node.props.points.map((pt) => {
+        const [x, y] = core.resolvePointAbs(pt, ownAbs, positions);
+        return [x + dx, y + dy];
+      });
+      return { kind: "polygon", points };
+    }
+    return null;
+  }
+
+  // Checked against siblings only (see the section note above) — not elements dragged
+  // along via a connection (F-004 scope note: a first, common-case implementation, not
+  // exhaustive over every way a drag can move more than one element at once).
+  function wouldCollide(node, parent, proposedGeometry, base, positions, warnings) {
+    if (!proposedGeometry || !parent) return false;
+    if (collisionsAllowedFor(node, base.settings)) return false;
+    for (const sibling of parent.children) {
+      if (sibling.id === node.id) continue;
+      if (collisionsAllowedFor(sibling, base.settings)) continue;
+      const siblingGeometry = solidGeometryFor(sibling, positions);
+      if (!siblingGeometry) continue;
+      if (shapesOverlap(proposedGeometry, siblingGeometry)) {
+        warnings.push(`${node.id}: would overlap '${sibling.id}'. Set allowCollisions: true to allow this.`);
+        return true;
+      }
+    }
+    return false;
+  }
+
   // ---------- Text-splice helpers ----------
   function toLineSpan(text, start, end) {
     while (start > 0 && text[start - 1] !== "\n") start--;
@@ -339,6 +495,18 @@
     const warnings = [];
     const node = base.nodesById[dragState.id];
     const parent = node.parentId ? base.nodesById[node.parentId] : null;
+
+    // Checked first, against siblings only, before any edits are computed — a bare point
+    // (the only thing trySlideAlongConnectedRect below handles) never has a shape, so this
+    // never conflicts with the wall-slide mechanic; the two are mutually exclusive by what
+    // kind of node they apply to.
+    const positionsForCollision = {};
+    core.computePositions(base.root, null, [0, 0], positionsForCollision);
+    const proposedGeometry = proposedGeometryFor(node, dx, dy, positionsForCollision);
+    if (wouldCollide(node, parent, proposedGeometry, base, positionsForCollision, warnings)) {
+      core.dragmsgEl.textContent = warnings.join("\n");
+      return;
+    }
 
     // A connected point resting on a rect's edge slides along that edge instead of
     // dragging the rect (D-032) — only for the directly-dragged element; Shift
