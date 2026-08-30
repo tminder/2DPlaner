@@ -1,11 +1,11 @@
 # Site structure
 
-**Working plan, not a decision yet — sections marked "open" need the user's input before
-this becomes settled.** Scope: how the whole `planagonia.com` presence is organized, not
-just the app. Written after `docs/` and the backend (D-019/D-021/D-047–D-051) were both
-live and tested, and the root domain (`planagonia.com`/`www.planagonia.com`) was
-confirmed still untouched — the stock hostfactory.ch placeholder, same as `auth.`/`test.`
-were before this project touched them.
+**Working plan — the domain/subdomain mapping is now decided (see below); the remaining
+sections marked "open" still need the user's input.** Scope: how the whole
+`planagonia.com` presence is organized, not just the app. Written after `docs/` and the
+backend (D-019/D-021/D-047–D-051) were both live and tested, and the root domain
+(`planagonia.com`/`www.planagonia.com`) was confirmed still untouched — the stock
+hostfactory.ch placeholder, same as `auth.`/`test.` were before this project touched them.
 
 ## What exists today
 
@@ -119,30 +119,35 @@ Two shapes were considered, revised once by the SEO discussion above:
 - `auth.`/`api.` stay as subdomains regardless, since those are backend services a
   visitor never navigates to directly, not pages
 
-**Revised lean, per the SEO section above: B for Homepage/Documentation specifically**
-(the only two sections where it actually matters), **A or B either one for the App/Profile**
-(no SEO reason to prefer either — decide on URL memorability vs. one-certificate
-simplicity instead), **A for `auth.`/`api.` regardless** (both options already agreed on
-this). Not a full decision — still needs the user's call, but the earlier "leaning toward
-A across the board" is superseded: A's actual downside is real and specific to the two
-sections that want to be found via search, not a blanket case against subdomains
-everywhere.
+**Decided: B, across the board** — Homepage/Documentation for the SEO reason above, and
+the App/Profile too (the user's call, on a question the SEO analysis itself left open
+either way). Concretely:
+- `planagonia.com/` → Homepage
+- `planagonia.com/app` → The App
+- `planagonia.com/docs` → Documentation
+- `planagonia.com/profile` → Profile
+- `auth.planagonia.com` / `api.planagonia.com` → backend services, unchanged from the
+  already-agreed part of both options
+
+A is kept above for the record, not because it's still open — this project's own standing
+practice (D-002 and every reversed decision since) is to preserve the reasoning behind a
+rejected path, not delete it once superseded.
 
 ## Current state vs. target state
 
-| Section | Status |
-|---|---|
-| Homepage | Not started — content and scope both open |
-| App | **Done**, live at two hosts already (GitHub Pages, `test.planagonia.com`) |
-| Documentation | Exists for an AI/technical audience; a human-facing version is an open question, not started |
-| Profile | Not started — depends on the domain-mapping decision and what it should actually show |
-| Storage-service API naming | Works today under `test.planagonia.com`, called out as needing a real home once "test" stops being accurate |
-| SEO exclusion for `auth.`/`test.`(`api.`) | **Done** — `auth.planagonia.com` set to WordPress's own "discourage search engines" (confirmed: `noindex, nofollow` meta tag live); `test.planagonia.com` given a `Disallow: /` `robots.txt` |
+| Section | Target | Status |
+|---|---|---|
+| Homepage | `planagonia.com/` | Not started — content and scope both open |
+| App | `planagonia.com/app` | Built, but not yet *at* its target path — currently lives at `test.planagonia.com`'s and GitHub Pages' own roots, not under `/app` anywhere |
+| Documentation | `planagonia.com/docs` | Exists for an AI/technical audience at `documentation/`; a human-facing version is an open question, not started; not yet at its target path either way |
+| Profile | `planagonia.com/profile` | Not started |
+| Storage-service API | `api.planagonia.com` | Built and live, but at the wrong host — currently shares `test.planagonia.com`'s `httpdocs/` with the App instead of its own subdomain |
+| SEO exclusion for `auth.`/`test.`(`api.`) | — | **Done** — `auth.planagonia.com` set to WordPress's own "discourage search engines" (confirmed: `noindex, nofollow` meta tag live); `test.planagonia.com` given a `Disallow: /` `robots.txt` |
 
 ## Open questions, collected here rather than scattered across the conversation
 
-1. Domain mapping for the App/Profile specifically — subdomain or path (no SEO reason to prefer either, per the SEO section; decide on URL memorability vs. one-certificate simplicity instead). Homepage/Documentation and `auth.`/`api.` are no longer open on this point — see the SEO section's revised lean.
+1. ~~Domain mapping~~ — **decided: B**, see above.
 2. Does Documentation need a second, human-facing surface, or does one documentation set serve both an AI author and a human visitor?
 3. What does Homepage actually need beyond "explain the tool, link to the App" — a live demo embed, screenshots, something else?
 4. What does Profile need beyond "who's signed in + their cloud plans" (already covered by D-050's plan-switcher)?
-5. Should `test.planagonia.com` be renamed/restructured once the real mapping is chosen, or does "test" stay around as an actual staging environment alongside a separate production one?
+5. **Now concrete, not just naming:** getting to the target layout means (a) moving the App's own files under a `/app` path on the main domain rather than a host root, (b) splitting the storage-service API out to `api.planagonia.com`, separate from the App's files, and (c) deciding whether `test.planagonia.com` then still exists as a real staging copy of this same layout, or is retired once the main domain carries it for real. None of this is done yet — it's the concrete next chunk of work implied by the decision above, not a new open question.
