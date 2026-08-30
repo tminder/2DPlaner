@@ -651,15 +651,33 @@ function render(program) {
   renderShape(program.root, positions, cornerUsers, shapes, anchors, bboxes);
 
   if (!fixedViewBox) {
+    // A node's own position is only its *reference point* (top-left for a rect, own anchor
+    // for a polygon/polyline) — never its size — so fitting purely to positions badly
+    // undersizes any shape with no separate corner-anchor children marking out its own
+    // extent. Every shipped example happens to have those (D-018's shared corners), so this
+    // went unnoticed until a plan without them — the Blank example itself among them — was
+    // actually rendered: a lone 4m×3m rect with no children fit to a box barely 1.4m
+    // across. bboxes (already computed by renderShape, right above) covers rect; circle and
+    // polygon/polyline still need their own extent folded in here.
     const pts = Object.values(positions);
     let minX = Math.min(...pts.map(p => p[0])), maxX = Math.max(...pts.map(p => p[0]));
     let minY = Math.min(...pts.map(p => p[1])), maxY = Math.max(...pts.map(p => p[1]));
+    for (const b of Object.values(bboxes)) {
+      minX = Math.min(minX, b.left); maxX = Math.max(maxX, b.right);
+      minY = Math.min(minY, b.top); maxY = Math.max(maxY, b.bottom);
+    }
     for (const node of Object.values(program.nodesById)) {
       if (node.props.shape === "circle" && node.props.radius) {
         const r = numOf(node.props.radius);
         const [cx, cy] = positions[node.id];
         minX = Math.min(minX, cx - r); maxX = Math.max(maxX, cx + r);
         minY = Math.min(minY, cy - r); maxY = Math.max(maxY, cy + r);
+      } else if ((node.props.shape === "polygon" || node.props.shape === "polyline") && node.props.points) {
+        for (const pt of node.props.points) {
+          const [px, py] = resolvePointAbs(pt, positions[node.id], positions);
+          minX = Math.min(minX, px); maxX = Math.max(maxX, px);
+          minY = Math.min(minY, py); maxY = Math.max(maxY, py);
+        }
       }
     }
     const pad = 0.7;

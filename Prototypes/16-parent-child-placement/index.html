@@ -309,6 +309,31 @@ function renderShape(node, positions, shapesOut, anchorsOut) {
 
 let fixedViewBox = null;
 
+// A node's own position is only its *reference point* (top-left for a rect, center for a
+// circle) — never its size — so fitting the view to positions alone badly undersizes any
+// shape with no separate corner-anchor children marking out its own extent (this test
+// plan's room has none). Has to walk each shape's actual geometry instead.
+function expandBoundsForNode(node, positions, bounds) {
+  const [x, y] = positions[node.id];
+  const expand = (px, py) => {
+    bounds.minX = Math.min(bounds.minX, px); bounds.maxX = Math.max(bounds.maxX, px);
+    bounds.minY = Math.min(bounds.minY, py); bounds.maxY = Math.max(bounds.maxY, py);
+  };
+  expand(x, y);
+  if (node.props.shape === "rect" && node.props.size) {
+    expand(x + numOf(node.props.size[0]), y + numOf(node.props.size[1]));
+  } else if (node.props.shape === "circle" && node.props.radius) {
+    const r = numOf(node.props.radius);
+    expand(x - r, y - r); expand(x + r, y + r);
+  } else if ((node.props.shape === "polygon" || node.props.shape === "polyline") && node.props.points) {
+    for (const pt of node.props.points) {
+      const [px, py] = resolvePointAbs(pt, [x, y], positions);
+      expand(px, py);
+    }
+  }
+  for (const child of node.children) expandBoundsForNode(child, positions, bounds);
+}
+
 function render(program) {
   const positions = {};
   computePositions(program.root, null, [0, 0], positions);
@@ -316,11 +341,10 @@ function render(program) {
   renderShape(program.root, positions, shapes, anchors);
 
   if (!fixedViewBox) {
-    const pts = Object.values(positions);
-    let minX = Math.min(...pts.map(p => p[0])), maxX = Math.max(...pts.map(p => p[0]));
-    let minY = Math.min(...pts.map(p => p[1])), maxY = Math.max(...pts.map(p => p[1]));
+    const bounds = { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity };
+    expandBoundsForNode(program.root, positions, bounds);
     const pad = 0.7;
-    minX -= pad; maxX += pad; minY -= pad; maxY += pad;
+    const minX = bounds.minX - pad, maxX = bounds.maxX + pad, minY = bounds.minY - pad, maxY = bounds.maxY + pad;
     fixedViewBox = { minX, minY, vw: (maxX - minX) * M, vh: (maxY - minY) * M };
   }
   const { minX, minY, vw, vh } = fixedViewBox;
@@ -415,29 +439,39 @@ function nearestEdgeNormal(point, poly) {
 // Same shape as D-041's clampToNoCollision — binary-search the boundary point along the
 // attempted move where the child would first leave the parent, then slide the remaining
 // distance along the parent boundary's tangent at that point, instead of freezing outright.
+//
+// Near a corner (two walls close together), "the nearest edge" is a discontinuous function
+// of position — a tiny change in the attempted (dx, dy) can flip which wall the tangent is
+// built from, which can visibly jump the resolved position between two different single-
+// edge answers rather than settling smoothly into the corner. A single pass can't fix that
+// (it only ever consults one edge); iterating the same boundary-then-slide step a few times,
+// each one starting from the previous pass's own result, converges toward the corner itself
+// instead — reported as an occasional jump during testing, not confirmed fully gone after
+// this, since a real fix would need the nearest point on the *whole* boundary (vertices
+// included), not just the nearest edge.
 function clampToStayInside(node, parentPoly, dx, dy, positions, warnings) {
   const escapes = (tx, ty) => !isContained(childCornersAt(node, tx, ty, positions), parentPoly);
   if (!escapes(dx, dy)) return [dx, dy];
   if (escapes(0, 0)) return [0, 0]; // already outside even at the drag's own start
-
-  const t = clampAxisDelta((tt) => escapes(dx * tt, dy * tt), 1);
-  const boundaryDx = dx * t, boundaryDy = dy * t;
   warnings.push(`${node.id}: stays inside '${node.parentId}'`);
 
-  const boundaryCorners = childCornersAt(node, boundaryDx, boundaryDy, positions);
-  const center = [(boundaryCorners[0][0] + boundaryCorners[2][0]) / 2, (boundaryCorners[0][1] + boundaryCorners[2][1]) / 2];
-  const normal = nearestEdgeNormal(center, parentPoly);
-  if (!normal) return [boundaryDx, boundaryDy];
+  let curDx = dx, curDy = dy;
+  for (let pass = 0; pass < 4 && escapes(curDx, curDy); pass++) {
+    const t = clampAxisDelta((tt) => escapes(curDx * tt, curDy * tt), 1);
+    const boundaryDx = curDx * t, boundaryDy = curDy * t;
 
-  const remDx = dx - boundaryDx, remDy = dy - boundaryDy;
-  const tangent = [-normal[1], normal[0]];
-  const slide = remDx * tangent[0] + remDy * tangent[1];
-  let slideDx = tangent[0] * slide, slideDy = tangent[1] * slide;
-  if (escapes(boundaryDx + slideDx, boundaryDy + slideDy)) {
-    const s = clampAxisDelta((tt) => escapes(boundaryDx + slideDx * tt, boundaryDy + slideDy * tt), 1);
-    slideDx *= s; slideDy *= s;
+    const boundaryCorners = childCornersAt(node, boundaryDx, boundaryDy, positions);
+    const center = [(boundaryCorners[0][0] + boundaryCorners[2][0]) / 2, (boundaryCorners[0][1] + boundaryCorners[2][1]) / 2];
+    const normal = nearestEdgeNormal(center, parentPoly);
+    if (!normal) { curDx = boundaryDx; curDy = boundaryDy; break; }
+
+    const remDx = curDx - boundaryDx, remDy = curDy - boundaryDy;
+    const tangent = [-normal[1], normal[0]];
+    const slide = remDx * tangent[0] + remDy * tangent[1];
+    curDx = boundaryDx + tangent[0] * slide;
+    curDy = boundaryDy + tangent[1] * slide;
   }
-  return [boundaryDx + slideDx, boundaryDy + slideDy];
+  return [curDx, curDy];
 }
 
 function placementFor(node, parent, connections) {
