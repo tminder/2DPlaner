@@ -224,10 +224,28 @@ source, with a `//`-to-end-of-line pattern inside a gap colored as a comment sep
 from plain whitespace around it.
 
 **Selection highlighting only ever reflects the *last successful* parse.**
-`core.onRendered` — the only place this module learns of a selection change — fires only
-after a parse that actually succeeds (D-031); mid-edit, while the text is temporarily
-invalid, the highlighted span simply stays wherever it last was, rather than disappearing
-and reappearing on every keystroke of an in-progress edit.
+`core.onRendered` fires only after a parse that actually succeeds (D-031); mid-edit, while
+the text is temporarily invalid, the highlighted span simply stays wherever it last was,
+rather than disappearing and reappearing on every keystroke of an in-progress edit.
+
+**Reacts to the selection signal directly via a `MutationObserver`, not only through
+`onRendered`.** The signal (`core.rootEl.dataset.selectedId`) is a plain DOM attribute set
+by `interactivity-module.js`'s own render pass — relying solely on this module's
+`onRendered` callback also having fired by then means trusting an ordering assumption
+between two independently loaded modules that turned out not to be reliably observable
+(reported as the highlight not appearing at all). Watching the attribute directly with a
+`MutationObserver` reacts to the one thing that actually has to change for a re-highlight
+to be needed, regardless of which module's callback fired when — `onRendered` is still
+kept too, since a real edit still needs to refresh the *coloring*, not just the selection
+mark.
+
+**Scrolls the selected element's span into view, once per selection change — not once per
+render.** Every render reaches the same `refresh()` (a drag's own repeated re-renders
+included), so scrolling unconditionally there would fight a user dragging an
+already-selected element, yanking the code pane's scroll position every frame. Guarded by
+comparing the current `selectedId` against the previous one, and positioned using the
+already-rendered `.tok-selected` span's own `offsetTop` (exact, including where a long line
+wraps across several visual rows) rather than counting newlines by hand.
 
 ## Known seams
 

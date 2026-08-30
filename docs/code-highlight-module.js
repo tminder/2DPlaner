@@ -37,8 +37,12 @@
   styleEl.id = "code-highlight-style";
   styleEl.textContent = `
     #code-highlight-wrap { position: relative; }
+    /* An explicit background here, not left transparent-through-to-the-page — the wrap
+       otherwise shows whatever's behind it (docs/index.html's own #f4f4f2 page background),
+       which the textarea's own visible border/radius were never designed against, and
+       which made a pale highlight color harder to read than intended. */
     #code-highlight-backdrop { position: absolute; inset: 0; margin: 0; overflow: hidden;
-      pointer-events: none; white-space: pre-wrap; word-break: break-word; }
+      pointer-events: none; white-space: pre-wrap; word-break: break-word; background: #fff; }
     #code-highlight-wrap textarea { position: relative; background: transparent; color: transparent;
       caret-color: #222; }
     .tok-keyword { color: #8250df; font-weight: 600; }
@@ -46,7 +50,7 @@
     .tok-number { color: #b35900; }
     .tok-comment { color: #8a8a8a; font-style: italic; }
     .tok-ident { color: #1a4b8c; }
-    .tok-selected { background: #fff3b0; }
+    .tok-selected { background: #ffd54a; border-radius: 2px; box-shadow: 0 0 0 1px #e0ad00; }
   `;
   document.head.appendChild(styleEl);
 
@@ -91,6 +95,7 @@
     backdrop.style.borderWidth = s.borderWidth;
     backdrop.style.borderStyle = s.borderStyle;
     backdrop.style.borderColor = "transparent";
+    backdrop.style.borderRadius = s.borderRadius; // otherwise the backdrop's own white background shows square corners poking out past the textarea's rounded ones
     backdrop.style.boxSizing = s.boxSizing;
     backdrop.style.tabSize = s.tabSize;
   }
@@ -151,6 +156,8 @@
     return node ? { start: node.start, end: node.end } : null;
   }
 
+  let lastSelectedId; // undefined until the first render — see the scroll-into-view note below
+
   function refresh() {
     const text = textarea.value;
     let tokens;
@@ -164,6 +171,25 @@
     // A <pre> needs a trailing blank line to actually render a trailing newline — without
     // this the backdrop comes up one line short of the textarea at the very end of the text.
     if (text.endsWith("\n")) backdrop.innerHTML += " ";
+
+    // Scroll only when the selection actually *changed* — every render, not just a
+    // selection change, reaches this same function (a drag's own repeated re-renders
+    // included), and re-scrolling the code pane on every drag tick of an already-selected
+    // element would fight the user rather than help them. Uses the highlight span's own
+    // rendered position (already in the DOM, just written) rather than counting newlines
+    // by hand, so it's exact even where a long line wraps across several visual rows.
+    const id = core.rootEl.dataset.selectedId;
+    if (id !== lastSelectedId) {
+      lastSelectedId = id;
+      const marked = backdrop.querySelector(".tok-selected");
+      if (marked) {
+        const viewHeight = textarea.clientHeight;
+        if (marked.offsetTop < textarea.scrollTop || marked.offsetTop + marked.offsetHeight > textarea.scrollTop + viewHeight) {
+          textarea.scrollTop = Math.max(0, marked.offsetTop - viewHeight / 4);
+        }
+      }
+    }
+    syncScroll();
   }
 
   function syncScroll() {
@@ -177,18 +203,27 @@
 
   // Fires after every rerender() — a real edit, a drag's own repeated re-renders, and a
   // selection change alike (interactivity-module.js re-renders on select, see D-031) — so
-  // this alone keeps both the coloring and the selection mark current without needing to
-  // know which of those three actually happened.
+  // this alone should keep both the coloring and the selection mark current. Reported not
+  // to be enough for the selection mark on its own — kept, but backed up below by watching
+  // the actual DOM signal directly, rather than assuming this callback firing after
+  // interactivity's own is a guarantee that held up in practice.
   const unregisterOnRendered = core.onRendered((program) => {
     lastProgram = program;
     refresh();
-    syncScroll();
   });
+
+  // Reacts to core.rootEl's data-selected-id directly, independent of which module's
+  // onRendered callback fired in which order — a change here is the one thing that
+  // actually has to trigger a re-highlight, so watching it directly is a more robust
+  // trigger than inferring "selection probably changed" from a render having happened.
+  const selectionObserver = new MutationObserver(refresh);
+  selectionObserver.observe(core.rootEl, { attributes: true, attributeFilter: ["data-selected-id"] });
 
   refresh();
 
   core.registerModuleCleanup("code-highlight-module.js", () => {
     unregisterOnRendered();
+    selectionObserver.disconnect();
     textarea.removeEventListener("input", refresh);
     textarea.removeEventListener("scroll", syncScroll);
     window.removeEventListener("resize", syncBoxMetrics);
@@ -199,5 +234,6 @@
     wrap.remove();
     styleEl.remove();
     lastProgram = null;
+    lastSelectedId = undefined;
   });
 })();
