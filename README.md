@@ -30,5 +30,7 @@ through D-050) is built and genuinely exercised, not just designed.
 - [planning/open-questions.md](planning/open-questions.md) — numbered open questions (F-001...)
 - [planning/project-overview.md](planning/project-overview.md) — point-in-time project
   overview and independent risk assessment
+- [planning/site-structure.md](planning/site-structure.md) — working plan for the whole
+  `planagonia.com` site (homepage, app, documentation, profile), not yet decided
 - [documentation/](documentation/) — reference docs: [language.md](documentation/language.md) (the plan language), [architecture.md](documentation/architecture.md) (system components)
 - [Prototypes/](Prototypes/) — throwaway experiments/sketches, not a staged build plan; superseded by [docs/](docs/) as the thing to actually run
