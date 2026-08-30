@@ -185,15 +185,9 @@ element room {
     show: "hover"
   }
 
-  element rug_1 { position: [1m, 2.6m] }
-  element rug_2 { position: [1.9m, 2.5m] }
-  element rug_3 { position: [2.1m, 3.4m] }
-  element rug_4 { position: [1.5m, 3.9m] }
-  element rug_5 { position: [0.7m, 3.5m] }
-
   element rug {
     shape: "polygon"
-    points: [rug_1, rug_2, rug_3, rug_4, rug_5]
+    points: [[1m, 2.6m], [1.9m, 2.5m], [2.1m, 3.4m], [1.5m, 3.9m], [0.7m, 3.5m]]
     style: { fill: "#e0d5c0", stroke: "#b0a080", strokeWidth: 0.02 }
     label: "Teppich"
     show: "hover"
@@ -208,16 +202,11 @@ connection stove counter
 
 element grundstueck {
   shape: "polygon"
-  points: [ecke_1, ecke_2, ecke_3, ecke_4]
+  points: [[0m, 0m], [11m, 0m], [12m, 9m], [-1m, 9m]]
   style: { fill: "#dce8c8", stroke: "#7a9a5a", strokeWidth: 0.06 }
   label: "Grundstück"
   show: "hover"
   edgeLengths: true
-
-  element ecke_1 { position: [0m, 0m] }
-  element ecke_2 { position: [11m, 0m] }
-  element ecke_3 { position: [12m, 9m] }
-  element ecke_4 { position: [-1m, 9m] }
 
   element haus {
     shape: "rect"
@@ -229,13 +218,11 @@ element grundstueck {
     dimensions: true
   }
 
-  element strasse_anschluss { position: [1.5m, 0.5m] }
-  element kabel_knick { position: [1.5m, 4.5m] }
   element haus_anschluss { position: [3m, 4.5m] }
 
   element stromanschluss {
     shape: "polyline"
-    points: [strasse_anschluss, kabel_knick, haus_anschluss]
+    points: [[1.5m, 0.5m], [1.5m, 4.5m], haus_anschluss]
     style: { stroke: "#e0a800", strokeWidth: 0.05, strokeDash: "0.3,0.15" }
     label: "Stromanschluss"
     show: "hover"

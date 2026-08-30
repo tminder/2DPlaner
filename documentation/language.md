@@ -148,6 +148,41 @@ element corner_se { position: [4m, 3m] }
 element corner_sw { position: [0.5m, 3m] }
 ```
 
+**Literal points by default; a corner element only when something is actually shared**
+(D-018 correction). Reaching for corner elements as *the* way to write any polygon/polyline
+— even a standalone shape nothing else references — was a real, examined habit early
+examples fell into, not a rule this language ever stated. If no other element references a
+point, a corner element buys nothing (nothing is being kept in sync) while still costing a
+separate declaration for every point *and* the extra drag-time machinery a shape built
+entirely from corner references needs (D-036). Write the coordinates directly instead:
+
+```
+element rug {
+  shape: "polygon"
+  points: [[1m, 2.6m], [1.9m, 2.5m], [2.1m, 3.4m], [1.5m, 3.9m], [0.7m, 3.5m]]
+}
+```
+
+`points` entries can also mix the two freely — a shape can have some literal points and one
+corner reference, when only *one* of its points is actually the one being shared with
+something else (see [docs/](../docs/)'s utility example: `stromanschluss`'s first two
+points are literal, its third references `haus_anschluss`, which is *also* the target of a
+separate `connection` and so has to remain a real element regardless).
+
+**Why this isn't done via `connection` instead, asked directly:** Connection's own
+semantics (D-014) are whole-element rigid propagation — drag one, the other moves by the
+same delta — which has no notion of "just this one point of one element should track just
+this one point of another." Giving Connection that would mean either indexed/named
+sub-element references (more syntax, not less) or a real geometric constraint ("keep these
+two points coincident," solved rather than represented) — exactly the general
+constraint-solving this language has repeatedly, deliberately avoided building (F-001).
+Corner-reference sharing sidesteps needing to *solve* coincidence at all: there's only ever
+one point element, referenced twice, so there's nothing to keep synchronized and no
+solver to write. It's the same category of feature as an expression referencing
+`parent.size.x` (D-008) — a property value pointing at another element's data — applied
+specifically to `points`, not a third relationship primitive alongside Element and
+Connection (D-013).
+
 ## Units and coordinates
 
 Positions and sizes are given in real-world units (meters/cm), not abstract numbers
