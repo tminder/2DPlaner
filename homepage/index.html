@@ -68,6 +68,11 @@
   h1, h2, h3 { text-wrap: balance; letter-spacing: -0.01em; }
   a { color: var(--blue-deep); }
   .wrap { max-width: 1080px; margin: 0 auto; padding: 0 1.5rem; }
+  /* Header/footer use a fixed width shared across every site page (Homepage/Docs/
+     Profile — not the App, which has its own toolbar UI entirely) so the chrome doesn't
+     visibly shift width as a visitor moves between pages whose own content areas are
+     sized differently (Docs is wider for its sidebar, Profile is narrower for its form). */
+  .wrap-chrome { max-width: 1080px; margin: 0 auto; padding: 0 1.5rem; }
 
   header.site {
     display: flex; align-items: center; justify-content: space-between;
@@ -172,7 +177,7 @@
 </head>
 <body>
 
-<div class="wrap">
+<div class="wrap-chrome">
   <header class="site">
     <a class="wordmark" href="/"><span class="dot">▦</span> Planagonia</a>
     <nav class="site">
@@ -255,7 +260,7 @@
   </section>
 </div>
 
-<div class="wrap">
+<div class="wrap-chrome">
   <footer class="site">
     <span>Planagonia — a 2D plan generator.</span>
     <span><a href="/app/">Open the app</a> · <a href="/docs/">Docs</a> · <a href="/profile/">Profile</a></span>
