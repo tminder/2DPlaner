@@ -53,9 +53,52 @@ unscoped.
 service's own API isn't really "a page" but does need *some* stable, sensibly-named home
 if `test.planagonia.com` stops being just a staging label — see the domain question below.
 
+## SEO — raised directly, and it actually decides the domain question below
+
+Worth separating by *which* sections could plausibly want organic search traffic at all.
+**Homepage and Documentation are the two that do** — someone searching for a floor-plan
+tool should be able to land on Homepage; someone with a language-syntax question should
+be able to land on Documentation. **The App and Profile don't** — nobody searches their
+way into a signed-in tool or their own account page; they arrive already knowing the
+product, or via a direct link/sign-in flow. `auth.`/`api.` are pure backend endpoints with
+no human-readable content at all — there's nothing for a search engine to usefully index
+there, and no reason to want it to.
+
+**This is the actual argument against domain-mapping option A above, not just a stylistic
+preference.** Splitting content across several subdomains (`app.`, `docs.`, the root)
+fragments the same signals a single consolidated domain would otherwise pool — backlinks,
+topical relevance, crawl budget. Modern search engines do crawl and index subdomains, but
+the conventional, lower-risk structure for content that's meant to rank *together* (a
+visitor reading Documentation should plausibly also find the Homepage, and vice versa) is
+one domain with paths, not several subdomains that each start building authority from
+zero. This doesn't apply at all to `auth.`/`api.` — genuinely backend, correctly excluded
+from indexing either way (`robots.txt` disallow or a `noindex` response header on both,
+not yet done — currently nothing stops either from being crawled).
+
+**Revises the earlier lean: closer to a hybrid of A and B, not a clean pick of either.**
+- `planagonia.com/` → Homepage, `planagonia.com/docs` → Documentation — same domain, own
+  paths, so they can actually reinforce each other's search relevance.
+- The App: no SEO reason to prefer either `app.planagonia.com` or `planagonia.com/app` —
+  it has no unique content of its own worth ranking. Whichever is chosen, choose it for
+  the other reasons already in the "Domain/subdomain mapping" discussion (URL memorability
+  vs. one-certificate simplicity), not for SEO.
+- `auth.`/`api.` stay subdomains regardless, in both the original A/B framing and here —
+  never linked from anywhere a search engine would find, and should be actively excluded
+  from indexing once real content exists elsewhere on the domain to distinguish them from.
+- Profile: no SEO angle either way — it's a signed-in view, not discoverable content.
+
+**One more real angle, not yet a live concern:** F-005 (public plan viewing) is still an
+undecided *feature*, not a site-structure question — but if it's ever built, D-022
+already worked out the right mechanism for a different reason (protecting a plan's
+content from scraping): serve a public plan as a server-rendered static snapshot rather
+than the raw client-rendered app. The same mechanism would also be what makes a public
+plan indexable/shareable at all, since the App itself is a heavy client-rendered SPA with
+nothing crawlable in its raw HTML. Noted here as a cross-reference, not a new decision —
+F-005 itself is still open.
+
 ## Domain/subdomain mapping — open, needs a decision
 
-Two shapes were considered, not yet chosen between:
+Two shapes were considered, revised once by the SEO discussion above:
 
 **A. Subdomain per section** (matches the pattern already set by `auth.`/the current
 `test.`):
@@ -76,12 +119,14 @@ Two shapes were considered, not yet chosen between:
 - `auth.`/`api.` stay as subdomains regardless, since those are backend services a
   visitor never navigates to directly, not pages
 
-Leaning toward **A** in the writeup below (matches the pattern already established for
-`auth.`/`test.`, and keeps the App's own URL short and memorable rather than nested under
-a path) — but this is a real fork, not decided, and B is a completely reasonable
-alternative (simpler DNS/cert management: one certificate instead of several, and
-GitHub-Pages-style path hosting already works fine for the App today). **Needs the user's
-call before anything gets renamed or moved.**
+**Revised lean, per the SEO section above: B for Homepage/Documentation specifically**
+(the only two sections where it actually matters), **A or B either one for the App/Profile**
+(no SEO reason to prefer either — decide on URL memorability vs. one-certificate
+simplicity instead), **A for `auth.`/`api.` regardless** (both options already agreed on
+this). Not a full decision — still needs the user's call, but the earlier "leaning toward
+A across the board" is superseded: A's actual downside is real and specific to the two
+sections that want to be found via search, not a blanket case against subdomains
+everywhere.
 
 ## Current state vs. target state
 
@@ -92,10 +137,11 @@ call before anything gets renamed or moved.**
 | Documentation | Exists for an AI/technical audience; a human-facing version is an open question, not started |
 | Profile | Not started — depends on the domain-mapping decision and what it should actually show |
 | Storage-service API naming | Works today under `test.planagonia.com`, called out as needing a real home once "test" stops being accurate |
+| SEO exclusion for `auth.`/`test.`(`api.`) | Not done — nothing currently stops either from being crawled/indexed; both should get `robots.txt`/`noindex` once real content exists elsewhere to distinguish them from |
 
 ## Open questions, collected here rather than scattered across the conversation
 
-1. Subdomain-per-section (A) vs. path-based (B) — see above.
+1. Domain mapping for the App/Profile specifically — subdomain or path (no SEO reason to prefer either, per the SEO section; decide on URL memorability vs. one-certificate simplicity instead). Homepage/Documentation and `auth.`/`api.` are no longer open on this point — see the SEO section's revised lean.
 2. Does Documentation need a second, human-facing surface, or does one documentation set serve both an AI author and a human visitor?
 3. What does Homepage actually need beyond "explain the tool, link to the App" — a live demo embed, screenshots, something else?
 4. What does Profile need beyond "who's signed in + their cloud plans" (already covered by D-050's plan-switcher)?
