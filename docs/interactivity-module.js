@@ -443,6 +443,136 @@
     return [resolvedDx, resolvedDy];
   }
 
+  // ---------- Containment (D-032 mode 3, "inside") ----------
+  // Promoted from Prototypes/16-parent-child-placement/ once validated there — reuses
+  // this section's own pointInPolygon/pointToSegmentDistance/rectCorners/solidGeometryFor
+  // rather than duplicating them, the one thing the standalone prototype couldn't do.
+  // Deliberately as narrow as what was actually validated: a rect child (literal size)
+  // against a rect or polygon parent. Same reasoning as D-041's own collision fallback: a
+  // rect-in-rect parent gets clampRectToStayInsideRect's exact, non-iterative clamp; a
+  // polygon parent falls back to clampToStayInside's tangent-slide, accepted as safe-but-
+  // not-perfectly-smooth rather than fully validated (D-032's prototype note: found unreliable
+  // right at a corner when built against a shape *center*, not the escaping corner itself —
+  // this version fixes that by tracking the child's own corners, but the tangent-slide part
+  // of the algorithm carries the same unproven-generality caveat D-041's fallback does).
+
+  // A child's own `placement` overrides its parent's `childPlacement` default — same
+  // override shape as D-038/D-041's element-vs-settings pattern (D-032).
+  function placementFor(node, parent) {
+    if (typeof node.props.placement === "string") return node.props.placement;
+    if (parent && typeof parent.props.childPlacement === "string") return parent.props.childPlacement;
+    return null;
+  }
+
+  // The parent's own boundary as a corner list — scoped to rect/polygon, the only shapes
+  // with an unambiguous "inside" (D-032). A circle/polyline/shapeless parent returns null.
+  function parentBoundaryPolygon(parentNode, positions) {
+    const geom = solidGeometryFor(parentNode, positions);
+    if (!geom) return null;
+    if (geom.kind === "rect") return rectCorners(geom);
+    if (geom.kind === "polygon") return geom.points;
+    return null;
+  }
+
+  function childRectCornersAt(node, dx, dy, positions) {
+    const [x, y] = positions[node.id];
+    const w = core.numOf(node.props.size[0]), h = core.numOf(node.props.size[1]);
+    return rectCorners({ left: x + dx, top: y + dy, right: x + dx + w, bottom: y + dy + h });
+  }
+
+  function isContained(childCorners, parentPoly) {
+    return childCorners.every((p) => pointInPolygon(p, parentPoly));
+  }
+
+  // Nearest-edge normal of the parent boundary, used only to build the sliding tangent
+  // below — its sign (in vs. out) doesn't matter here, unlike clampToNoCollision's use of
+  // a normal-like direction where the push-back direction has to be right.
+  function nearestEdgeNormal(point, poly) {
+    let best = null;
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i], b = poly[(i + 1) % poly.length];
+      const dist = pointToSegmentDistance(point, a, b);
+      if (best && dist >= best.dist) continue;
+      const ex = b[0] - a[0], ey = b[1] - a[1];
+      const elen = Math.hypot(ex, ey) || 1;
+      best = { dist, normal: [-ey / elen, ex / elen] };
+    }
+    return best ? best.normal : null;
+  }
+
+  // Binary-search the boundary point along the attempted move where the child would first
+  // leave the parent (reusing clampAxisDelta above), then slide the remaining distance
+  // along the parent boundary's tangent at that point — fallback for a polygon parent only;
+  // a rect parent uses the exact clampRectToStayInsideRect below instead.
+  function clampToStayInside(node, parentPoly, dx, dy, positions, warnings) {
+    const escapes = (tx, ty) => !isContained(childRectCornersAt(node, tx, ty, positions), parentPoly);
+    if (!escapes(dx, dy)) return [dx, dy];
+    if (escapes(0, 0)) return [0, 0]; // already outside even at the drag's own start
+    warnings.push(`${node.id}: stays inside '${node.parentId}'`);
+
+    let curDx = dx, curDy = dy;
+    for (let pass = 0; pass < 4 && escapes(curDx, curDy); pass++) {
+      const t = clampAxisDelta((tt) => escapes(curDx * tt, curDy * tt), 1);
+      const boundaryDx = curDx * t, boundaryDy = curDy * t;
+
+      const boundaryCorners = childRectCornersAt(node, boundaryDx, boundaryDy, positions);
+      const center = [(boundaryCorners[0][0] + boundaryCorners[2][0]) / 2, (boundaryCorners[0][1] + boundaryCorners[2][1]) / 2];
+      const normal = nearestEdgeNormal(center, parentPoly);
+      if (!normal) { curDx = boundaryDx; curDy = boundaryDy; break; }
+
+      const remDx = curDx - boundaryDx, remDy = curDy - boundaryDy;
+      const tangent = [-normal[1], normal[0]];
+      const slide = remDx * tangent[0] + remDy * tangent[1];
+      curDx = boundaryDx + tangent[0] * slide;
+      curDy = boundaryDy + tangent[1] * slide;
+    }
+    return [curDx, curDy];
+  }
+
+  // Exact, non-iterative containment for a rect child in a rect parent: each axis clamps
+  // completely independently against the parent's own bounds — no binary search, no
+  // tangent, nothing that can misfire at a corner (a corner is simply "both axes clamped
+  // at once," not a special case this needs to detect).
+  function clampRectToStayInsideRect(childId, dx, dy, positions, parentAbs, parentSize, childSize) {
+    const [x, y] = positions[childId];
+    const [pw, ph] = parentSize, [cw, ch] = childSize;
+    const targetX = x + dx, targetY = y + dy;
+    const clampedX = Math.min(Math.max(targetX, parentAbs[0]), parentAbs[0] + pw - cw);
+    const clampedY = Math.min(Math.max(targetY, parentAbs[1]), parentAbs[1] + ph - ch);
+    return [clampedX - x, clampedY - y];
+  }
+
+  // Entry point, mirroring clampToNoCollision's shape. Silently no-ops (no warning) for a
+  // node that merely *inherited* "inside" from its parent's childPlacement default but
+  // isn't a rect — e.g. a corner-ref wall or a circle side table sitting in a room with
+  // childPlacement: "inside" set for its furniture — since that default was never a
+  // specific promise about every child. An *explicit* placement: "inside" on an
+  // unsupported shape does warn, since that one was a direct, unmet request.
+  function clampToContainment(node, parent, dx, dy, positions, warnings) {
+    if (placementFor(node, parent) !== "inside") return [dx, dy];
+    if (node.props.shape !== "rect" || !node.props.size) {
+      if (typeof node.props.placement === "string") {
+        warnings.push(`${node.id}: containment only checked for rect children (D-032 scope), not enforced here`);
+      }
+      return [dx, dy];
+    }
+    if (parent.props.shape === "rect" && parent.props.size) {
+      const [newDx, newDy] = clampRectToStayInsideRect(
+        node.id, dx, dy, positions, positions[parent.id],
+        [core.numOf(parent.props.size[0]), core.numOf(parent.props.size[1])],
+        [core.numOf(node.props.size[0]), core.numOf(node.props.size[1])]
+      );
+      if (newDx !== dx || newDy !== dy) warnings.push(`${node.id}: stays inside '${parent.id}'`);
+      return [newDx, newDy];
+    }
+    const parentPoly = parentBoundaryPolygon(parent, positions);
+    if (!parentPoly) {
+      warnings.push(`${parent.id}: not a rect/polygon, containment not checked (D-032 scope)`);
+      return [dx, dy];
+    }
+    return clampToStayInside(node, parentPoly, dx, dy, positions, warnings);
+  }
+
   // ---------- Text-splice helpers ----------
   function toLineSpan(text, start, end) {
     while (start > 0 && text[start - 1] !== "\n") start--;
@@ -562,15 +692,20 @@
     const node = base.nodesById[dragState.id];
     const parent = node.parentId ? base.nodesById[node.parentId] : null;
 
-    // Checked first, against siblings only, before any edits are computed — a bare point
-    // (the only thing trySlideAlongConnectedRect below handles) never has a shape, so this
-    // never conflicts with the wall-slide mechanic; the two are mutually exclusive by what
-    // kind of node they apply to. Clamps dx/dy in place (see clampToNoCollision) rather
-    // than rejecting outright, so everything below sees an already-safe delta.
+    // Checked first, against siblings and the parent's own boundary, before any edits are
+    // computed — a bare point (the only thing trySlideAlongConnectedRect below handles)
+    // never has a shape, so this never conflicts with the wall-slide mechanic; the two are
+    // mutually exclusive by what kind of node they apply to. Both clamp dx/dy in place
+    // rather than rejecting outright, so everything below sees an already-safe delta.
+    // Containment runs on whatever delta collision already allowed — a heuristic, not a
+    // jointly-solved optimum (F-004's "multiple simultaneous constraints on one element are
+    // unhandled" gap now covers this pairing too), but each clamp only ever shrinks the
+    // move further, so running both still lands somewhere both agree is safe.
     if (parent) {
-      const positionsForCollision = {};
-      core.computePositions(base.root, null, [0, 0], positionsForCollision);
-      [dx, dy] = clampToNoCollision(node, parent, dx, dy, base, positionsForCollision, warnings);
+      const positionsForConstraints = {};
+      core.computePositions(base.root, null, [0, 0], positionsForConstraints);
+      [dx, dy] = clampToNoCollision(node, parent, dx, dy, base, positionsForConstraints, warnings);
+      [dx, dy] = clampToContainment(node, parent, dx, dy, positionsForConstraints, warnings);
     }
 
     // A connected point resting on a rect's edge slides along that edge instead of

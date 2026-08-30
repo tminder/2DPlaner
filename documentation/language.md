@@ -320,6 +320,56 @@ has to map cleanly to and from direct manipulation of the rendered view. Concret
   constraint solver) is explicitly still open — see
   [planning/open-questions.md](../planning/open-questions.md) F-001.
 
+### Containment
+
+D-032 mode 3: an element can be constrained to stay within its own parent's boundary when
+dragged, sliding along whatever wall it hits rather than freezing outright — the same
+"stay responsive, don't just reject" shape as collision checking above, but against the
+*parent's* geometry instead of a sibling's.
+
+```
+element room {
+  shape: "rect"
+  size: [5m, 4m]
+  childPlacement: "inside"          // default for every direct child that doesn't override it
+
+  element sofa {                     // inherits "inside" from room
+    shape: "rect"
+    size: [1.6m, 0.7m]
+    position: [1m, 1m]
+  }
+
+  element lamp {
+    shape: "rect"
+    size: [0.4m, 0.4m]
+    position: [4m, 3m]
+    placement: "free"                // overrides room's default — not constrained
+  }
+}
+```
+
+`placement` on the child always overrides `childPlacement` inherited from the parent —
+unset on both means `"free"` (today's only-ever-implemented default: no constraint at
+all). The two are deliberately different names, not one word reused at two scopes — "my
+own placement" and "the default I hand to my children" are different claims (D-032).
+
+**Scoped to what's actually validated, same shape as collision's own circle/polygon
+caveat above:** only a `rect` child with a literal `position` participates. A `rect`
+parent gets an exact, non-iterative per-axis clamp; a `polygon` parent falls back to a
+tangent-slide approach that's safe (never lets the child escape) but not perfectly smooth
+at every angle. A `circle`/`polyline`/shapeless parent has no unambiguous "inside" and
+isn't checked. A child that inherited `"inside"` only as its parent's ambient default but
+isn't itself a `rect` is silently left unconstrained, rather than warned about on every
+drag — but an *explicit* `placement: "inside"` on an unsupported child does warn, since
+that was a direct, specific request nothing can currently honor.
+
+**Not yet built:** `flush` (D-032's other, still-open half — a door-in-wall style
+attachment that's *both* contained *and* seeking one specific edge, layered on top of
+`"inside"`), and containment for an element moved along by a `connection` rather than
+dragged directly (the same F-004 gap collision checking has). First validated standalone
+in [Prototypes/16-parent-child-placement/](../Prototypes/16-parent-child-placement/), now
+wired into [docs/](../docs/)'s `interactivity-module.js`.
+
 ## Modules
 
 Modules can add new rendering and new interactivity, and can add new *reusable, higher-
@@ -371,7 +421,7 @@ curve, a polygon's diagonal edge) toward the furthest point along the attempted 
 doesn't overlap, staying responsive to being pulled away again, rather than D-015's
 warn-and-flag pattern either. Scoped to siblings only: a chair positioned inside a room
 isn't a collision with the room itself, that's containment, a different relationship
-(D-032) this doesn't check. `polyline` and shapeless elements don't participate — they're
+(D-032, see "Containment" above) this doesn't check. `polyline` and shapeless elements don't participate — they're
 meant to touch/connect by design (D-014/D-018), not something to police for overlap. Two
 shapes resting exactly flush against each other are *not* a collision, only genuine
 overlapping area is.
@@ -461,7 +511,7 @@ historical.
   is clamped to stay within its rect parent's boundary when dragged — exactly, via a
   closed-form per-axis clamp for the rect/rect case (found necessary after a first
   tangent-slide attempt, reusing D-041's approach, let a child escape right at a corner);
-  a polygon parent still falls back to that general, less-validated approach. Not wired
-  into [docs/](../docs/) — a first validation, not a finished feature. Scoped narrowly: only
-  a `rect` child with a literal `position`, no `flush` (D-032's other, still-unbuilt half),
-  no corner-refs or other connections.
+  a polygon parent still falls back to that general, less-validated approach. Scoped
+  narrowly: only a `rect` child with a literal `position`, no `flush` (D-032's other,
+  still-unbuilt half), no corner-refs or other connections. **Since promoted into
+  [docs/](../docs/)'s `interactivity-module.js`** — see "Containment" above.
