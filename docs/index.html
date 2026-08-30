@@ -27,7 +27,12 @@
   .layout { display: flex; gap: 1rem; flex: 1 1 auto; min-height: 0; width: 100%; }
   textarea { flex: 0 0 420px; height: 100%; font-family: ui-monospace, Consolas, monospace; font-size: 13px;
     padding: 0.75rem; border: 1px solid #ccc; border-radius: 6px; resize: none; }
-  .viewer-pane { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+  /* position: relative anchors .status-overlay below — kept here in the page's own CSS
+     (not left to the interactivity module) since error display is core, not module,
+     behavior and must still work with no module loaded at all. */
+  .viewer-pane { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; min-height: 0; position: relative; }
+  /* Fills the whole pane now that .status-overlay below no longer reserves its own row —
+     this is what makes the viewer reach exactly as far down as the textarea beside it. */
   #plan-root { flex: 1 1 auto; min-height: 0; display: flex; }
   /* The SVG's own width/height attributes (set by render(), meters * M) give it an
      intrinsic size — overridden here so it fills #plan-root instead. viewBox still defines
@@ -43,10 +48,21 @@
   svg .annotation[data-show="hover"] { opacity: 0; transition: opacity 0.15s; }
   svg .obj:hover + .annotation[data-show="hover"] { opacity: 1; }
 
-  .status { flex: 0 0 auto; padding-top: 0.5rem; }
-  #error { color: #a11; white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 12px; min-height: 1.2em; }
-  #dragmsg { color: #666; white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 12px; min-height: 1.2em; }
-  #modlog { color: #588; white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 11px; opacity: 0.85; }
+  /* Overlaid on top of the viewer instead of a reserved row below it — each line only
+     takes visual space when it actually has something to say (the :empty rule), so an
+     idle viewer never loses height to a status bar with nothing in it. Capped width and a
+     right-hand margin keep it clear of the interactivity module's Fit button (top-right);
+     explicit z-index puts it above that button and the scale bar regardless. */
+  .status-overlay { position: absolute; left: 0.5rem; top: 0.5rem; z-index: 3;
+    max-width: min(520px, calc(100% - 4.5rem));
+    display: flex; flex-direction: column; gap: 0.35rem; pointer-events: none; }
+  .status-overlay > div:empty { display: none; }
+  #error { color: #fff; background: #c0392b; white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace;
+    font-size: 12px; padding: 0.4rem 0.6rem; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.25); }
+  #dragmsg { color: #333; background: rgba(255,255,255,0.92); white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace;
+    font-size: 12px; padding: 0.3rem 0.55rem; border-radius: 6px; box-shadow: 0 1px 4px rgba(0,0,0,0.15); }
+  #modlog { color: #366; background: rgba(255,255,255,0.92); white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace;
+    font-size: 11px; padding: 0.3rem 0.55rem; border-radius: 6px; opacity: 0.9; }
 
   #file-input { display: none; }
 </style>
@@ -71,7 +87,7 @@
     <textarea id="source" spellcheck="false"></textarea>
     <div class="viewer-pane">
       <div id="plan-root"></div>
-      <div class="status">
+      <div class="status-overlay">
         <div id="error"></div>
         <div id="dragmsg"></div>
         <div id="modlog"></div>
@@ -797,6 +813,16 @@ function logModule(msg) { modlogEl.textContent += `[module] ${msg}\n`; }
 
 const STORAGE_KEY = "2dplaner:currentPlan";
 
+// The error banner now overlays the viewer instead of living in a reserved status row (see
+// .status-overlay), so it needs to clear itself rather than just getting silently pushed
+// off-screen — otherwise a stale parse error from three edits ago would sit there forever.
+let errorHideTimer = null;
+function showError(msg) {
+  errorEl.textContent = msg;
+  clearTimeout(errorHideTimer);
+  errorHideTimer = setTimeout(() => { errorEl.textContent = ""; }, 5000);
+}
+
 async function rerender(opts = {}) {
   try { localStorage.setItem(STORAGE_KEY, sourceEl.value); } catch (e) { /* private mode / quota — not fatal */ }
   try {
@@ -808,10 +834,11 @@ async function rerender(opts = {}) {
     const result = render(program);
     rootEl.innerHTML = result.svg;
     errorEl.textContent = "";
+    clearTimeout(errorHideTimer);
     for (const cb of renderedCallbacks) cb(program, result);
     return result;
   } catch (e) {
-    errorEl.textContent = "Error: " + e.message;
+    showError("Error: " + e.message);
   }
 }
 
