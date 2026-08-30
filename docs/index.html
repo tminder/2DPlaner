@@ -70,12 +70,9 @@
 <body>
 <header>
   <h1>Planagonia</h1>
-  <select id="example-picker">
-    <option value="" disabled selected>New from example…</option>
-    <option value="blank">Blank</option>
-    <option value="apartment">Studio Apartment</option>
-    <option value="utility">Utility Connection</option>
-  </select>
+  <select id="plan-switcher"></select>
+  <button id="rename-btn" title="Rename the current plan">Rename…</button>
+  <button id="delete-btn" title="Delete the current plan">Delete</button>
   <button id="open-btn">Open…</button>
   <button id="save-btn">Save as…</button>
   <input type="file" id="file-input" accept=".2dplan,.txt,text/plain">
@@ -233,8 +230,12 @@ connection haus_anschluss haus
 `,
 };
 
+// Display names for the plan switcher's "New from example…" group — kept separate from
+// EXAMPLES' own keys since those are also used as (stable, never user-facing) identifiers.
+const EXAMPLE_LABELS = { blank: "Blank", apartment: "Studio Apartment", utility: "Utility Connection" };
+
 // None of the examples declare these themselves, so all three are added automatically if
-// missing (see loadPlan below) — every plan gets display (label/dimensions/edgeLengths),
+// missing (see withAutoModules below) — every plan gets display (label/dimensions/edgeLengths),
 // interaction (drag/select/connect), and a highlighted code pane for free, the same way
 // core aim #1 intends, without every plan having to remember three module declarations.
 // Order matters: annotations-module.js has to run first so its labels render like part of
@@ -785,10 +786,108 @@ const renderedCallbacks = [];
 
 function logModule(msg) { modlogEl.textContent += `[module] ${msg}\n`; }
 
-// Deliberately kept at the project's old name, not renamed to match the working title
-// (Planagonia) — this is a storage key, not display text; changing it would silently
-// orphan whatever plan is already saved in an existing visitor's browser.
-const STORAGE_KEY = "2dplaner:currentPlan";
+// ---------- Multiple named plans, persisted client-side (planning/project-overview.md's
+// recommended first step before any backend: work out what shape "saved plans" actually
+// needs locally, before a future storage service has to persist it). ----------
+const PLANS_KEY = "2dplaner:plans";
+const ACTIVE_PLAN_KEY = "2dplaner:activePlanId";
+// The single-plan key this replaces (D-034) — read once at startup, purely to migrate an
+// existing visitor's already-saved work into the new list rather than losing it; never
+// written to again.
+const LEGACY_STORAGE_KEY = "2dplaner:currentPlan";
+
+function genPlanId() {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function savePlansList() {
+  try { localStorage.setItem(PLANS_KEY, JSON.stringify(plans)); } catch (e) { /* private mode / quota — not fatal */ }
+}
+
+function loadPlansList() {
+  try {
+    const raw = localStorage.getItem(PLANS_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) { /* corrupt/unavailable storage — fall through to a fresh list */ }
+  try {
+    const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+    if (legacy) {
+      const migrated = [{ id: genPlanId(), name: "My plan", text: legacy, updatedAt: Date.now() }];
+      localStorage.setItem(PLANS_KEY, JSON.stringify(migrated));
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
+      return migrated;
+    }
+  } catch (e) { /* private mode / quota — not fatal, just no migration */ }
+  return [];
+}
+
+let plans = loadPlansList();
+let activePlanId = null;
+try { activePlanId = localStorage.getItem(ACTIVE_PLAN_KEY); } catch (e) { /* not fatal */ }
+
+function activePlan() {
+  return plans.find((p) => p.id === activePlanId) || null;
+}
+
+function setActivePlan(id) {
+  activePlanId = id;
+  try { localStorage.setItem(ACTIVE_PLAN_KEY, id); } catch (e) { /* not fatal */ }
+}
+
+// Unique against every *other* plan's own current name — "Studio Apartment", then
+// "Studio Apartment (2)" — rather than two indistinguishable entries in the switcher.
+// excludeId lets a rename check against every plan except the one being renamed, so
+// renaming a plan back to the name it already has isn't treated as a conflict with itself.
+function uniquePlanName(base, excludeId) {
+  const existing = new Set(plans.filter((p) => p.id !== excludeId).map((p) => p.name));
+  if (!existing.has(base)) return base;
+  let n = 2;
+  while (existing.has(`${base} (${n})`)) n++;
+  return `${base} (${n})`;
+}
+
+function createPlan(name, text) {
+  const plan = { id: genPlanId(), name: uniquePlanName(name), text, updatedAt: Date.now() };
+  plans.push(plan);
+  savePlansList();
+  return plan;
+}
+
+function switchToPlan(id) {
+  const p = plans.find((x) => x.id === id);
+  if (!p) return;
+  setActivePlan(id);
+  sourceEl.value = p.text;
+  fixedViewBox = null;
+  refreshPlanSwitcher();
+  rerender();
+}
+
+function refreshPlanSwitcher() {
+  const select = document.getElementById("plan-switcher");
+  select.innerHTML = "";
+  if (plans.length) {
+    const savedGroup = document.createElement("optgroup");
+    savedGroup.label = "My plans";
+    for (const p of [...plans].sort((a, b) => b.updatedAt - a.updatedAt)) {
+      const opt = document.createElement("option");
+      opt.value = `plan:${p.id}`;
+      opt.textContent = p.name;
+      if (p.id === activePlanId) opt.selected = true;
+      savedGroup.appendChild(opt);
+    }
+    select.appendChild(savedGroup);
+  }
+  const exampleGroup = document.createElement("optgroup");
+  exampleGroup.label = "New from example…";
+  for (const [key, label] of Object.entries(EXAMPLE_LABELS)) {
+    const opt = document.createElement("option");
+    opt.value = `example:${key}`;
+    opt.textContent = label;
+    exampleGroup.appendChild(opt);
+  }
+  select.appendChild(exampleGroup);
+}
 
 // The error banner now overlays the viewer instead of living in a reserved status row (see
 // .status-overlay), so it needs to clear itself rather than just getting silently pushed
@@ -801,7 +900,8 @@ function showError(msg) {
 }
 
 async function rerender(opts = {}) {
-  try { localStorage.setItem(STORAGE_KEY, sourceEl.value); } catch (e) { /* private mode / quota — not fatal */ }
+  const active = activePlan();
+  if (active) { active.text = sourceEl.value; active.updatedAt = Date.now(); savePlansList(); }
   try {
     const parsed = parse(sourceEl.value);
     deactivateRemovedModules(parsed.modules);
@@ -837,39 +937,69 @@ window.PlanCore = {
   registerModuleCleanup: (name, cleanupFn) => moduleCleanups.set(name, cleanupFn),
 };
 
-// ---------- Toolbar: examples, open/save, local persistence ----------
+// ---------- Toolbar: plan switcher, rename/delete, open/save ----------
 function hasModuleDeclared(text, filename) {
   const escaped = filename.replace(/\./g, "\\.");
   return new RegExp(`^\\s*module\\s+"[^"]*${escaped}"`, "m").test(text);
 }
 
-function loadPlan(text, { resetViewBox = true } = {}) {
+function withAutoModules(text) {
   const missing = AUTO_MODULES.filter((name) => !hasModuleDeclared(text, name));
   const prefix = missing.map((name) => `module "${name}"\n`).join("") + (missing.length ? "\n" : "");
-  sourceEl.value = prefix + text;
-  if (resetViewBox) fixedViewBox = null;
-  rerender();
+  return prefix + text;
 }
 
-function confirmReplace() {
-  if (!sourceEl.value.trim()) return true;
-  return confirm("Replace the current plan? It's saved in this browser, but this will overwrite it.");
+function newPlanFromExample(key) {
+  const plan = createPlan(EXAMPLE_LABELS[key], withAutoModules(EXAMPLES[key]));
+  switchToPlan(plan.id);
 }
 
-document.getElementById("example-picker").addEventListener("change", (e) => {
-  const key = e.target.value;
-  e.target.value = "";
-  if (!key || !EXAMPLES[key]) return;
-  if (!confirmReplace()) return;
-  loadPlan(EXAMPLES[key]);
+document.getElementById("plan-switcher").addEventListener("change", (e) => {
+  const value = e.target.value;
+  if (value.startsWith("plan:")) {
+    switchToPlan(value.slice(5));
+  } else if (value.startsWith("example:")) {
+    const key = value.slice(8);
+    if (!EXAMPLES[key]) return;
+    newPlanFromExample(key);
+  }
+});
+
+document.getElementById("rename-btn").addEventListener("click", () => {
+  const p = activePlan();
+  if (!p) return;
+  const name = prompt("Rename plan:", p.name);
+  if (name == null) return;
+  const trimmed = name.trim();
+  if (!trimmed) return;
+  p.name = uniquePlanName(trimmed, p.id);
+  p.updatedAt = Date.now();
+  savePlansList();
+  refreshPlanSwitcher();
+});
+
+document.getElementById("delete-btn").addEventListener("click", () => {
+  const p = activePlan();
+  if (!p) return;
+  if (!confirm(`Delete "${p.name}"? This can't be undone.`)) return;
+  plans = plans.filter((x) => x.id !== p.id);
+  savePlansList();
+  if (plans.length) {
+    const next = [...plans].sort((a, b) => b.updatedAt - a.updatedAt)[0];
+    switchToPlan(next.id);
+  } else {
+    const fresh = createPlan(EXAMPLE_LABELS.apartment, withAutoModules(EXAMPLES.apartment));
+    switchToPlan(fresh.id);
+  }
 });
 
 document.getElementById("save-btn").addEventListener("click", () => {
+  const p = activePlan();
   const blob = new Blob([sourceEl.value], { type: "text/plain" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "plan.2dplan";
+  a.download = `${(p ? p.name : "plan").replace(/[\\/:*?"<>|]+/g, "_")}.2dplan`;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -882,14 +1012,24 @@ fileInput.addEventListener("change", async () => {
   const file = fileInput.files[0];
   fileInput.value = "";
   if (!file) return;
-  if (!confirmReplace()) return;
-  loadPlan(await file.text());
+  const text = await file.text();
+  const name = file.name.replace(/\.[^.]+$/, "") || "Imported plan";
+  const plan = createPlan(name, withAutoModules(text));
+  switchToPlan(plan.id);
 });
 
-// ---------- Startup: resume the last plan from this browser, or the default example ----------
-let initial;
-try { initial = localStorage.getItem(STORAGE_KEY); } catch (e) { initial = null; }
-loadPlan(initial || EXAMPLES.apartment, { resetViewBox: true });
+// ---------- Startup: resume the last-active plan from this browser, or start fresh ----------
+if (!plans.length) {
+  const fresh = createPlan(EXAMPLE_LABELS.apartment, withAutoModules(EXAMPLES.apartment));
+  activePlanId = fresh.id;
+} else if (!activePlan()) {
+  activePlanId = [...plans].sort((a, b) => b.updatedAt - a.updatedAt)[0].id;
+}
+setActivePlan(activePlanId);
+sourceEl.value = activePlan().text;
+fixedViewBox = null;
+refreshPlanSwitcher();
+rerender();
 sourceEl.addEventListener("input", () => rerender());
 </script>
 </body>
