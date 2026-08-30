@@ -840,8 +840,16 @@
     }
     updateScaleBar();
 
+    // A loose, optional signal for any other module that wants to react to selection —
+    // e.g. highlighting the selected element's own source span — without this module
+    // needing to know such a thing exists. Set here (already recomputed every render)
+    // rather than exposed as new PlanCore API, since selection itself stays this module's
+    // own private state.
     if (selectedId) {
       core.rootEl.querySelector(`[data-id="${CSS.escape(selectedId)}"]`)?.classList.add("selected");
+      core.rootEl.dataset.selectedId = selectedId;
+    } else {
+      delete core.rootEl.dataset.selectedId;
     }
 
     const icons = [];
@@ -1121,6 +1129,7 @@
     core.rootEl.removeEventListener("wheel", handleWheel);
     fitBtnEl.removeEventListener("click", handleFitClick);
     core.rootEl.classList.remove("dragging");
+    delete core.rootEl.dataset.selectedId;
     contextMenuEl.remove();
     scaleBarEl.remove();
     fitBtnEl.remove();

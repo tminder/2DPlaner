@@ -202,9 +202,7 @@ element room {
 
 connection stove counter
 `,
-  utility: `module "interactivity-module.js"
-
-settings {
+  utility: `settings {
   allowSelfIntersectingPolygons: false
 }
 
@@ -248,13 +246,15 @@ connection haus_anschluss haus
 `,
 };
 
-// Neither example declares these itself, so both are added automatically if missing (see
-// loadPlan below) — every plan gets display (label/dimensions/edgeLengths) and interaction
-// (drag/select/connect) for free, the same way core aim #1 intends, without every plan
-// having to remember two module declarations. Order matters: annotations-module.js has to
-// run first so its labels render like part of the base shapes, with interactivity's own
-// icons/scale-bar/fit-button still ending up on top of them (D-039).
-const AUTO_MODULES = ["annotations-module.js", "interactivity-module.js"];
+// None of the examples declare these themselves, so all three are added automatically if
+// missing (see loadPlan below) — every plan gets display (label/dimensions/edgeLengths),
+// interaction (drag/select/connect), and a highlighted code pane for free, the same way
+// core aim #1 intends, without every plan having to remember three module declarations.
+// Order matters: annotations-module.js has to run first so its labels render like part of
+// the base shapes, with interactivity's own icons/scale-bar/fit-button still ending up on
+// top of them (D-039); code-highlight-module.js has to run after interactivity-module.js
+// since it reads the selectedId signal interactivity's own render pass sets.
+const AUTO_MODULES = ["annotations-module.js", "interactivity-module.js", "code-highlight-module.js"];
 
 // ---------- Built-in ("internal") module registry — none shipped by default; a plan can
 // still load its own via module "name.js" (external) or a bare internal name if one is
@@ -833,7 +833,7 @@ async function rerender(opts = {}) {
 }
 
 window.PlanCore = {
-  parse, render,
+  parse, render, tokenize,
   numOf, isEditable, formatNumber,
   computePositions, computeCornerUsers, resolvePointAbs, connectedNodeIds, nodeDragEdits,
   polygonSelfIntersects,

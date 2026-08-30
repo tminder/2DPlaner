@@ -15,8 +15,9 @@ external resolution, load-once caching) was validated in
 [Prototypes/14-interactivity-module/](../Prototypes/14-interactivity-module/)'s
 interactivity module (D-031) and is unchanged since. [docs/](../docs/) — the actual hosted
 app — reuses that architecture verbatim: `docs/index.html` is core (parse/render only),
-and now ships **two** modules — `docs/interactivity-module.js` (D-031) and
-`docs/annotations-module.js` (D-039) — loaded exactly like any other.
+and now ships **three** modules — `docs/interactivity-module.js` (D-031),
+`docs/annotations-module.js` (D-039), and `docs/code-highlight-module.js` (D-043) — loaded
+exactly like any other.
 
 ## What a module can do
 
@@ -53,15 +54,23 @@ contains `://` — anything else is looked up in a small built-in registry
 built-in module; every module a plan uses today is external, fetched via a dynamically
 created `<script src>` tag.
 
-**Every plan in the hosted app gets both shipped modules whether it declares them or not.**
-`docs/`'s `loadPlan()` checks the source text for each of `AUTO_MODULES` (currently
-`["annotations-module.js", "interactivity-module.js"]`) and prepends a declaration for
-whichever is missing, in that order (D-034, extended by D-039) — D-020's own loading
-mechanism stays opt-in per plan; this is `docs/`'s own convenience on top of it, not a
-change to how modules work. The order is deliberate, not alphabetical: annotations has to
-finish registering its `onRendered` callback before interactivity does, so its labels land
-in the SVG *before* interactivity's own icons/scale-bar/fit-button — see "The annotations
-module" below for why that matters.
+**Every plan in the hosted app gets all three shipped modules whether it declares them or
+not.** `docs/`'s `loadPlan()` checks the source text for each of `AUTO_MODULES` (currently
+`["annotations-module.js", "interactivity-module.js", "code-highlight-module.js"]`) and
+prepends a declaration for whichever is missing, in that order (D-034, extended by D-039
+and D-043) — D-020's own loading mechanism stays opt-in per plan; this is `docs/`'s own
+convenience on top of it, not a change to how modules work. The order is deliberate, not
+alphabetical: annotations has to finish registering its `onRendered` callback before
+interactivity does, so its labels land in the SVG *before* interactivity's own
+icons/scale-bar/fit-button (see "The annotations module" below); code-highlight has to run
+after interactivity since it reads a signal interactivity's own render pass sets (see "The
+code-highlight module" below). **This ordering only holds when a plan declares none of them
+itself** — `loadPlan()` only ever prepends what's *missing*, so a plan that already
+explicitly declares one out of order (e.g. only `interactivity-module.js`, mid-file) can
+still end up with the others auto-inserted ahead of it in the wrong relative order; the
+fix used for `docs/`'s own `utility` example was to stop declaring any of them explicitly
+and let auto-injection place all three consistently, rather than teaching the injector to
+interleave with an already-partially-declared list.
 
 ## Trust model
 
@@ -101,6 +110,7 @@ every other interactive behavior live entirely in a loaded module, never in core
 | Member | What it does |
 |---|---|
 | `parse(src)` | Plan source text → `{root, nodesById, modules, settings, connections}`. Throws on a syntax error. |
+| `tokenize(src)` | Plan source text → the raw token list `parse()` itself starts from (each with `{type, value, start, end}`). Skips whitespace and comments rather than emitting a token for them — a module wanting the *entire* text accounted for (D-043's syntax highlighter, reconstructing exact character positions) has to fill those gaps back in from the source itself. Throws only on a genuinely invalid character, not a grammar error — usable even while the text doesn't currently parse. |
 | `render(program)` | Pure `program` → `{svg, bboxes}`. No selection/interactivity state — a plain re-render never needs to know whether anything is selected. |
 | `numOf(v)` | Unwraps an editable-literal object (or an expression function) to its plain number value. |
 | `isEditable(v)` | True if `v` is a plain literal (`{value, unit, start, end}`) — i.e. safe to rewrite in place via a source-text splice, as opposed to an expression. |
@@ -180,6 +190,44 @@ after its own. The module walks the same tree core rendered and inserts each ele
 annotation via `querySelector('[data-id="…"]')` + `insertAdjacentHTML("afterend", …)`,
 recreating the exact interleaving core used to produce directly by rendering shape and
 annotation together in one pass.
+
+## The code-highlight module
+
+`docs/code-highlight-module.js` (D-043) does two things to the code pane: colors syntax
+(keywords, strings, numbers, comments) and marks the currently selected element's own
+source span. Neither needed a new API shaped specifically for this module — `tokenize()`
+(above) already existed inside core for `parse()`'s own use, and only needed exposing;
+`interactivity-module.js` already recomputes a `.selected` CSS class on every render, and
+just also sets `core.rootEl.dataset.selectedId` alongside it — a loose, optional signal
+this module reads, with no idea code-highlight-module.js exists.
+
+**A plain `<textarea>` can't color individual characters, so this overlays one, invisible,
+on top of a colored `<pre>` backdrop kept in exact pixel sync** — the standard lightweight
+alternative to a real code-editor dependency (CodeMirror, Monaco), in keeping with D-034's
+"zero dependencies, plain static files" scope. The textarea itself is never replaced, only
+moved into a new wrapper `<div>` alongside the backdrop — every other module's reference to
+`core.sourceEl` (the same DOM node throughout) and every listener already attached to it
+keep working untouched. Getting the two boxes to align pixel-for-pixel matters more than it
+sounds: font, padding, and border are read from the textarea's own *computed* style rather
+than hardcoded a second time, specifically so they can't silently drift out of sync with
+`docs/index.html`'s own CSS later — except the wrapper's `height`, deliberately kept as a
+literal `"100%"` rather than copying the computed (already-resolved-to-pixels) value, which
+would otherwise freeze the wrapper at whatever height the page happened to be on module
+load and stop tracking the pane's real height across a later window resize.
+
+**`tokenize()` skips whitespace and comments entirely — reconstructing them is this
+module's own job, not core's.** Core's lexer never emits a token for either (matching how
+`parse()` itself just wants to skip past them); the backdrop still needs the *exact* source
+text, character for character, or the two boxes drift out of alignment as soon as the text
+wraps differently. The gaps between consecutive real tokens are filled back in from the raw
+source, with a `//`-to-end-of-line pattern inside a gap colored as a comment separately
+from plain whitespace around it.
+
+**Selection highlighting only ever reflects the *last successful* parse.**
+`core.onRendered` — the only place this module learns of a selection change — fires only
+after a parse that actually succeeds (D-031); mid-edit, while the text is temporarily
+invalid, the highlighted span simply stays wherever it last was, rather than disappearing
+and reappearing on every keystroke of an in-progress edit.
 
 ## Known seams
 

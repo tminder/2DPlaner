@@ -69,10 +69,11 @@ A single-page app, no server-side rendering for the editing experience itself.
   (D-009), not a preference.
 - **Core + module split** (D-031): `docs/index.html` only parses and renders geometry —
   every interactive behavior (drag, selection, connect/disconnect, hover, zoom/pan) lives in
-  `docs/interactivity-module.js`, and every computed display annotation (label, dimensions,
-  edge lengths) lives in a second, independently loadable module, `docs/annotations-module.js`
-  (D-039) — both built against the `window.PlanCore` API. See [modules.md](modules.md) for
-  the full API surface and how modules load.
+  `docs/interactivity-module.js`; every computed display annotation (label, dimensions,
+  edge lengths) lives in `docs/annotations-module.js` (D-039); the code pane's syntax colors
+  and selected-element highlight live in `docs/code-highlight-module.js` (D-043) — three
+  independently loadable modules, all built against the `window.PlanCore` API. See
+  [modules.md](modules.md) for the full API surface and how modules load.
 - **Drag-and-drop** rewrites the source text directly via span-splicing (D-012, D-014,
   D-018), not a full re-serialization — implemented in the interactivity module above.
 - **Local persistence** (D-007): `localStorage` (autosaved on every change, D-034) and file
