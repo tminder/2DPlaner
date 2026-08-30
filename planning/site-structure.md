@@ -138,10 +138,10 @@ rejected path, not delete it once superseded.
 | Section | Target | Status |
 |---|---|---|
 | Homepage | `planagonia.com/` | Not started — content and scope both open |
-| App | `planagonia.com/app` | Built, but not yet *at* its target path — currently lives at `test.planagonia.com`'s and GitHub Pages' own roots, not under `/app` anywhere |
+| App | `planagonia.com/app` | **Done** — live at `www.planagonia.com/app/` (root `planagonia.com` still needs its own certificate, see D-053), also still mirrored at `test.planagonia.com` and GitHub Pages |
 | Documentation | `planagonia.com/docs` | Exists for an AI/technical audience at `documentation/`; a human-facing version is an open question, not started; not yet at its target path either way |
 | Profile | `planagonia.com/profile` | Not started |
-| Storage-service API | `api.planagonia.com` | Built and live, but at the wrong host — currently shares `test.planagonia.com`'s `httpdocs/` with the App instead of its own subdomain |
+| Storage-service API | `api.planagonia.com` | **Done** — migrated off `test.planagonia.com` (D-053), confirmed working end to end (login, CRUD, CORS for the main domain) |
 | SEO exclusion for `auth.`/`test.`(`api.`) | — | **Done** — `auth.planagonia.com` set to WordPress's own "discourage search engines" (confirmed: `noindex, nofollow` meta tag live); `test.planagonia.com` given a `Disallow: /` `robots.txt` |
 
 ## Open questions, collected here rather than scattered across the conversation
