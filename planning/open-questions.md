@@ -94,3 +94,23 @@ The cost: a node can belong to exactly one grouping at a time. There's no way to
 Every prototype that drags a node keeps it inside its original parent — nothing has ever tested dragging a node out of one parent's block and into another's, i.e. an interactive reparenting gesture. Given F-011's single-parent model, reparenting isn't a simple value edit like a normal drag: it means moving the whole `node { ... }` text block from one location in the source to another *and* recomputing its position, since coordinates are local to whichever parent currently contains it (D-013) — the same absolute point has a different local value under a new parent, so a naive text-block move alone would visibly teleport the object unless the position literal is also rewritten as part of the same edit.
 
 Nothing about this is known to be hard — it's a bigger text splice than today's edits (D-009/D-012's machinery only ever adjusts individual property spans, never cuts and relocates a whole block) plus a coordinate transform, both individually straightforward — but it's genuinely unbuilt and unproven, not just unmentioned. Found from the same parent-child design discussion as F-011, before any prototype attempted it.
+
+## F-013 Metric/imperial unit toggle
+
+Whether a plan (or the app itself) should be able to display measurements in feet/inches instead of meters/cm. D-005 grounds the language in real-world metric units as its own basis, so the open question is specifically whether imperial is a *display* conversion only (values stay metric internally, feet/inches shown to the reader) or something the language's own grammar would need to accept as authored input too — the former seems clearly right on first look (matches D-005's own reasoning) but hasn't been asked directly. Requested, not designed.
+
+## F-014 Viewer background grid
+
+A checkered background in the viewer, each square a stated real-world size (e.g. "1m per square"), as a scale reference — complementary to or possibly overlapping with D-035's scale bar. Pure display, no interactivity dependency, so by the D-039/D-042 test this is a module candidate rather than a core rendering feature. Not designed further than that.
+
+## F-015 Settings editable from the viewer, not only by hand-editing `settings { }`
+
+Currently a plan's settings are purely textual — turning on `edgeLengths` or `allowCollisions` means typing it into the code pane. Whether the app should offer a UI (a settings panel/toggle row) that writes back into the `settings { }` block via the same source-splice mechanism drag edits already use, or whether that's scope creep past what a text-and-viewer tool needs, is unexplored. Connects to D-006's "both panes are live and editable" premise without directly following from it.
+
+## F-016 Context menu: Duplicate and Scale
+
+D-030 built the right-click menu with exactly one action, Delete Element. Two more were requested directly, not designed: **Duplicate** (clone an element and its subtree with a fresh unique id, inserted as a new text block) and **Scale** (a resize gesture distinct from move). Scale in particular raises a real design question before it can be built: for a plain `rect`, "scale" plausibly means adjusting `size` — but for a corner-reference-built polygon/polyline (D-018), scaling would mean moving every referenced corner outward from some pivot, not editing a single property, which is a materially different mechanism than anything currently built.
+
+## F-017 Undo/redo
+
+No undo mechanism exists at all — every edit (a drag, a context-menu action, typing) commits immediately to `sourceEl.value` and mirrors to `localStorage` (D-034). Typed edits get the browser's native textarea undo stack for free (D-042's overlay doesn't intercept it); *programmatic* edits (every drag, every context-menu action) don't participate in that stack at all, since assigning `.value` directly doesn't push undo history — so even where undo "seems" to work (typing), it silently stops covering anything the moment a drag happens in between. Whether this needs an app-level undo stack (snapshotting source text at each committed edit) or some other mechanism is unexplored. Requested, not designed.
