@@ -227,8 +227,36 @@ unrelated `show` visibility property, even though one is "include this content a
 (a boolean) and the other is "when to reveal already-included content" (an enum) — a real
 source of confusion since only one of the two actually controls visibility.
 
-`polygon`/`line` support `label` only, not computed dimensions. A shapeless element
+`polygon`/`line` support `label` only, not `dimensions` — a single width/height or diameter
+doesn't mean anything for a shape with no fixed number of sides. A shapeless element
 (D-016) can't carry a label at all yet — a known gap, not a deliberate exclusion.
+
+### Edge lengths
+
+`edgeLengths: true` (D-038) shows each individual edge's own computed length — the length
+of one wall segment, one side of a plot boundary — as opposed to `dimensions`' single
+whole-shape figure. Supported on `rect` (all 4 sides, computed from `size`), `polygon`
+(every side, including the closing edge back to the first point), and `polyline` (every
+segment, no closing edge); not on `circle` (no straight edges to measure) or a shapeless
+element. Reuses the same `show: "always" | "hover"` an element already has — one visibility
+mode per element governs its label, dimensions, and edge lengths together, rather than
+adding a second independent visibility axis:
+
+```
+element grundstueck {
+  shape: "polygon"
+  points: [ecke_1, ecke_2, ecke_3, ecke_4]
+  label: "Grundstück"
+  show: "hover"
+  edgeLengths: true   // each of the 4 boundary sides gets its own length label
+}
+```
+
+**Also settable plan-wide**, as `settings { edgeLengths: true }` — see Settings below. An
+element's own `edgeLengths` always overrides the plan default when set (`true` or `false`);
+leaving it unset means "inherit the plan default." Deliberately the same property name at
+both levels rather than two different words for what is, at either scope, the identical
+on/off knob (D-033 principle #2 — reusing one name for one concept, not the reverse).
 
 ## Editing and drag-and-drop
 
@@ -284,6 +312,7 @@ extensible rather than a fixed list. The first two concrete settings (D-020):
 settings {
   allowCollisions: false               // default: collisions between objects are checked
   allowSelfIntersectingPolygons: false // default: self-intersecting shapes are checked
+  edgeLengths: false                   // default: no per-element opt-in needed
 }
 ```
 
@@ -291,6 +320,12 @@ Collision-avoidance and polygon-realism checks are real default behaviors, not j
 illustrative examples — these settings opt out of them per plan. The exact mechanics
 (what counts as a collision, and how a violation surfaces) are still open — see
 [planning/open-questions.md](../planning/open-questions.md) F-004.
+
+`edgeLengths` is a different kind of setting from its two neighbors above — not a check to
+opt out of, but a *display default* to opt into: `settings { edgeLengths: true }` turns edge
+length labels on for every `rect`/`polygon`/`polyline` in the plan that doesn't say
+otherwise itself. See "Edge lengths" above for the per-element property it shares its name
+with, and how the two combine.
 
 **Renamed from `allowUnrealisticPolygons` (D-033):** the old name implied general
 realism-checking; the actual check is specifically self-intersection (a "bowtie") and
