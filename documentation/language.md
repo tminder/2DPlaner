@@ -1,6 +1,6 @@
 # Plan Language
 
-Reference documentation for the 2DPlaner plan language, as currently designed. Unlike
+Reference documentation for the Planagonia plan language, as currently designed. Unlike
 [planning/](../planning/), which records *why* each choice was made, this document
 describes *what the language is* for someone building against it or writing plans in it.
 

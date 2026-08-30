@@ -1,6 +1,6 @@
 # Architecture
 
-Reference documentation for how 2DPlaner's pieces fit together. Unlike
+Reference documentation for how Planagonia's pieces fit together. Unlike
 [planning/](../planning/), which records *why* each choice was made, this document
 describes *what the system is* — components, how they connect, what talks to what. Companion
 to [language.md](language.md) (the plan language itself). Keep in sync with

@@ -1,8 +1,8 @@
-# 2DPlaner
+# Planagonia
 
 A browser-based 2D plan generator where the plan is defined by code: editing the code changes the plan, and (later) editing the plan visually via drag-and-drop changes the code back. See [planning/core-aims.md](planning/core-aims.md) for the full vision and core aims.
 
-**Live:** [tminder.github.io/2DPlaner](https://tminder.github.io/2DPlaner/)
+**Live:** [tminder.github.io/2DPlaner](https://tminder.github.io/2DPlaner/) — still under the repo's old name; renaming the GitHub repo itself (and its URL) is a separate, more disruptive step not done as part of this working-title change.
 
 ## Status
 

@@ -1,6 +1,6 @@
 # Modules
 
-Reference documentation for 2DPlaner's module system — how a plan loads one, what it's
+Reference documentation for Planagonia's module system — how a plan loads one, what it's
 allowed to do, and the concrete `window.PlanCore` API it gets to do it with. Unlike
 [planning/](../planning/), which records *why* each choice was made, this document
 describes *what's actually built*. Companion to [language.md](language.md) (the plan

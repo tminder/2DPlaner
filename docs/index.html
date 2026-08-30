@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>2DPlaner</title>
+<title>Planagonia</title>
 <style>
   :root { color-scheme: light; }
   * { box-sizing: border-box; }
@@ -69,7 +69,7 @@
 </head>
 <body>
 <header>
-  <h1>2DPlaner</h1>
+  <h1>Planagonia</h1>
   <select id="example-picker">
     <option value="" disabled selected>New from example…</option>
     <option value="blank">Blank</option>
@@ -780,6 +780,9 @@ const renderedCallbacks = [];
 
 function logModule(msg) { modlogEl.textContent += `[module] ${msg}\n`; }
 
+// Deliberately kept at the project's old name, not renamed to match the working title
+// (Planagonia) — this is a storage key, not display text; changing it would silently
+// orphan whatever plan is already saved in an existing visitor's browser.
 const STORAGE_KEY = "2dplaner:currentPlan";
 
 // The error banner now overlays the viewer instead of living in a reserved status row (see
