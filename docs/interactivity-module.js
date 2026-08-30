@@ -11,7 +11,10 @@
 
   function injectStyles(styleEl) {
     styleEl.textContent = `
-      #plan-root { position: relative; } /* anchors the scale bar / fit button overlays */
+      #plan-root { position: relative; user-select: none; -webkit-user-select: none; }
+        /* also anchors the scale bar / fit button overlays; user-select is defense-in-depth
+           alongside handlePointerDown's preventDefault against a mousedown-drag starting a
+           native text selection instead of (or alongside) our own drag/pan. */
       #plan-root svg { cursor: grab; } /* empty canvas: click-drag pans */
       #plan-root.dragging svg { cursor: grabbing; }
       #plan-root svg [data-id] { cursor: grab; }
@@ -235,6 +238,54 @@
   }
 
   // ---------- Drag ----------
+
+  // A polyline/polygon whose points reference sibling corner elements (the pattern both
+  // shipped examples use throughout — walls, the plot outline, the rug) has no position of
+  // its own for core.nodeDragEdits to edit; it only warns "drag that corner directly"
+  // instead. Dragging the *shape* has to mean dragging every corner it references by the
+  // same delta — any literal [x,y] points mixed in still move too, via core's own handling.
+  function cornerRefIdsOf(node) {
+    const ids = [];
+    for (const pt of node.props.points ?? []) {
+      if (typeof pt === "function" && pt.cornerRef && !ids.includes(pt.cornerRef)) ids.push(pt.cornerRef);
+    }
+    return ids;
+  }
+
+  function dragEditsFor(node, parent, dx, dy, base, cornerUsers, warnings) {
+    const cornerIds = cornerRefIdsOf(node);
+    if (!cornerIds.length) return core.nodeDragEdits(node, parent, dx, dy, base, cornerUsers, warnings);
+    const edits = [];
+    for (const pt of node.props.points) {
+      if (!Array.isArray(pt)) continue;
+      const [x, y] = pt;
+      if (core.isEditable(x)) edits.push({ start: x.start, end: x.end, text: core.formatNumber(x.value + dx, x.unit) });
+      if (core.isEditable(y)) edits.push({ start: y.start, end: y.end, text: core.formatNumber(y.value + dy, y.unit) });
+    }
+    for (const cid of cornerIds) {
+      const cornerNode = base.nodesById[cid];
+      const cornerParent = cornerNode.parentId ? base.nodesById[cornerNode.parentId] : null;
+      edits.push(...core.nodeDragEdits(cornerNode, cornerParent, dx, dy, base, cornerUsers, warnings));
+    }
+    return edits;
+  }
+
+  // Structural nesting already carries a moved parent's shift to every descendant for free
+  // (computePositions resolves a child's position relative to its parent's, recursively) —
+  // an explicit `connection` is exactly how this language also lets a child stay attached to
+  // its own parent (D-013/014), so the two can easily both apply to the same pair. Also
+  // applying the connection's own rigid shift on top would double it (or, dragging a child
+  // connected to its own ancestor, drag the whole ancestor subtree an extra time) — this
+  // finds that case so the caller can skip it.
+  function isAncestorOf(maybeAncestorId, nodeId, base) {
+    let cur = base.nodesById[nodeId];
+    while (cur && cur.parentId) {
+      if (cur.parentId === maybeAncestorId) return true;
+      cur = base.nodesById[cur.parentId];
+    }
+    return false;
+  }
+
   function applyDrag(dragState, dx, dy) {
     let base;
     try {
@@ -258,12 +309,13 @@
       : null;
 
     if (!edits) {
-      edits = [...core.nodeDragEdits(node, parent, dx, dy, base, cornerUsers, warnings)];
+      edits = [...dragEditsFor(node, parent, dx, dy, base, cornerUsers, warnings)];
       if (!dragState.singleOnly) {
         for (const otherId of core.connectedNodeIds(dragState.id, base.connections)) {
+          if (isAncestorOf(otherId, dragState.id, base) || isAncestorOf(dragState.id, otherId, base)) continue;
           const otherNode = base.nodesById[otherId];
           const otherParent = otherNode.parentId ? base.nodesById[otherNode.parentId] : null;
-          edits.push(...core.nodeDragEdits(otherNode, otherParent, dx, dy, base, cornerUsers, warnings));
+          edits.push(...dragEditsFor(otherNode, otherParent, dx, dy, base, cornerUsers, warnings));
         }
       }
     }
@@ -516,6 +568,11 @@
   // what was added. ----------
   function handlePointerDown(e) {
     if (e.button !== 0) return; // right-click only opens the context menu
+    // Without this, a mousedown-and-move over the SVG is indistinguishable from starting a
+    // native text selection to the browser — every drag/pan gesture would leave a stray
+    // selection highlight (and, on some browsers, try to start a native element drag) on
+    // top of whatever this module does with the gesture itself.
+    e.preventDefault();
     if (!program) return;
 
     const iconEl = e.target.closest("[data-action]");
