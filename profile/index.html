@@ -132,13 +132,11 @@
         <p id="signin-msg" class="msg" role="status"></p>
       </form>
       <form id="register-form" hidden>
-        <label for="reg-username">Username</label>
-        <input type="text" id="reg-username" autocomplete="username" required>
         <label for="reg-email">Email</label>
         <input type="text" id="reg-email" autocomplete="email" inputmode="email" required>
         <label for="reg-password">Password</label>
         <input type="password" id="reg-password" autocomplete="new-password" minlength="8" required>
-        <p class="hint">At least 8 characters. This becomes your WordPress account's own password — you won't need it again day to day, since signing in here uses a separate credential we generate for you once your email is confirmed.</p>
+        <p class="hint">At least 8 characters. No username to invent — we'll assign you one and show it on the confirmation page after you verify your email; you won't need this password again day to day, since signing in here uses a separate credential generated at that point.</p>
         <button type="submit" class="btn btn-primary">Create account</button>
         <p id="register-msg" class="msg" role="status"></p>
       </form>
@@ -288,7 +286,6 @@
 
   document.getElementById("register-form").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const username = document.getElementById("reg-username").value.trim();
     const email = document.getElementById("reg-email").value.trim();
     const password = document.getElementById("reg-password").value;
     const msgEl = document.getElementById("register-msg");
@@ -298,7 +295,7 @@
       const res = await fetch(`${CLOUD_API_BASE}/register.php`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, email, password }),
+        body: JSON.stringify({ email, password }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || `Registration failed (${res.status})`);

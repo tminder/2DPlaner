@@ -140,7 +140,7 @@ directly-requested `.php` file. All `plans.php` requests require
 | Method | Path | Body | Returns |
 |---|---|---|---|
 | POST | `/session.php` | `{ username, password }` | `{ token, expiresIn }`; `403` if the account exists but isn't verified yet; `429` past 10 attempts/15 min per IP |
-| POST | `/register.php` | `{ username, email, password }` | `{ message }` (201); `429` past 5/hour per IP |
+| POST | `/register.php` | `{ email, password }` | `{ message }` (201); `429` past 5/hour per IP |
 | GET | `/verify.php?token=X` | — | An HTML page (not JSON — this is a link clicked from an email), showing a fresh Application Password on success |
 | GET | `/plans.php` | — | `{ plans: [{ id, name, updatedAt }, ...] }` |
 | GET | `/plans.php?id=X` | — | `{ id, name, text, updatedAt }` |
@@ -168,6 +168,14 @@ way to authenticate at all yet (not even to accidentally succeed) — `session.p
 path for an unverified-but-somehow-credentialed account is real defensive code, but isn't
 exercised by the normal registration flow itself, since that account genuinely has no
 working credential until verification generates one.
+
+**No `username` field either — WordPress needs one internally, a visitor doesn't need to
+invent it.** `derive_username()` builds one from the email's own local part (lowercased,
+stripped to what WP's username rules accept); `create_wp_user()` retries with a numeric
+suffix on an `existing_user_login` collision specifically, not on any other rejection
+(confirmed against the live server: two different real emails that sanitize to the same
+base name correctly produced `name` and `name1`). The assigned username is shown once, on
+the `verify.php` confirmation page, since it's needed to sign in afterward.
 
 ## Not built yet
 

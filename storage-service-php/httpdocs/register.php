@@ -13,12 +13,14 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 $body = read_json_body();
-$username = trim($body['username'] ?? '');
 $email = trim($body['email'] ?? '');
 $password = (string) ($body['password'] ?? '');
 
-if ($username === '' || $email === '' || $password === '') {
-    send_json(400, ['error' => 'username, email, and password are required']);
+// No username field — WordPress needs one internally, but there's no reason a visitor
+// should have to invent it; create_wp_user() derives one from the email and handles any
+// collision itself (see registration.php's own comment on derive_username()).
+if ($email === '' || $password === '') {
+    send_json(400, ['error' => 'email and password are required']);
 }
 if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
     send_json(400, ['error' => 'That doesn\'t look like a valid email address']);
@@ -33,9 +35,9 @@ try {
     // the endpoint D-055 flagged as needing rate limiting before it could exist at all.
     enforce_rate_limit($db, 'register:' . client_ip(), 5, 3600); // 5 registrations / hour
 
-    $wpUser = create_wp_user($config, $username, $email, $password);
+    $wpUser = create_wp_user($config, $email, $password);
     $token = create_unverified_user($db, $wpUser['id'], $wpUser['slug']);
-    send_verification_email($config, $email, $username, $token);
+    send_verification_email($config, $email, $wpUser['slug'], $token);
 
     send_json(201, ['message' => 'Check your email to confirm your account before signing in.']);
 } catch (RegistrationException $e) {
