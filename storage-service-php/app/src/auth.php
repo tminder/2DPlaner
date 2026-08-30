@@ -37,6 +37,13 @@ function verify_session_token(array $config, string $token): ?array {
     return $payload;
 }
 
+// Thrown by verify_credentials() when the WordPress credentials themselves are genuinely
+// valid but the local account (D-058's self-registration) hasn't completed email
+// verification yet — kept distinct from "wrong password" (a plain null return) so
+// session.php can tell a visitor the actually-correct next step instead of a generic
+// "Invalid credentials" that isn't true and isn't actionable the same way.
+class AccountNotVerifiedException extends Exception {}
+
 // D-019: verifies against WordPress's own REST API using HTTP Basic Auth — $password is
 // expected to be a WP Application Password (core since WP 5.6), not the account's real
 // login password. WP core does all of the actual credential checking; this only ever
@@ -69,17 +76,24 @@ function verify_credentials(array $config, PDO $db, string $username, string $pa
 
     $wpUser = json_decode($body, true);
     if (!is_array($wpUser) || !isset($wpUser['id'], $wpUser['slug'])) return null;
-    return ensure_user($db, (string) $wpUser['id'], $wpUser['slug']); // WP's own id becomes this service's user id
+    $user = ensure_user($db, (string) $wpUser['id'], $wpUser['slug']); // WP's own id becomes this service's user id
+    if (!$user['verified']) throw new AccountNotVerifiedException();
+    return $user;
 }
 
 // A user row is created lazily on first successful login rather than via a separate
-// register step — WordPress (once wired in) is the actual source of truth for who's a
-// valid user at all; this service only needs a stable local id to own plans against.
+// register step, for any account that didn't go through /register.php — WordPress is the
+// actual source of truth for who's a *valid* user at all, this service only needs a
+// stable local id to own plans against. verified defaults to 1 (trusted) for this lazy
+// path specifically: an admin-provisioned account (WP-CLI, like every account before
+// self-registration existed) never went through email verification and has no reason to
+// be blocked by it. /register.php's own insert (registration.php) explicitly overrides
+// this to 0 for accounts that actually need to verify.
 function ensure_user(PDO $db, string $id, string $username): array {
-    $stmt = $db->prepare('SELECT id, username FROM users WHERE id = ?');
+    $stmt = $db->prepare('SELECT id, username, verified FROM users WHERE id = ?');
     $stmt->execute([$id]);
     $existing = $stmt->fetch(PDO::FETCH_ASSOC);
     if ($existing) return $existing;
-    $db->prepare('INSERT INTO users (id, username) VALUES (?, ?)')->execute([$id, $username]);
-    return ['id' => $id, 'username' => $username];
+    $db->prepare('INSERT INTO users (id, username, verified) VALUES (?, ?, 1)')->execute([$id, $username]);
+    return ['id' => $id, 'username' => $username, 'verified' => 1];
 }

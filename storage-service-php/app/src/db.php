@@ -26,8 +26,28 @@ function get_db(array $config): PDO {
 
     $db->exec('CREATE TABLE IF NOT EXISTS users (
         id VARCHAR(64) PRIMARY KEY,
-        username VARCHAR(255) UNIQUE NOT NULL
+        username VARCHAR(255) UNIQUE NOT NULL,
+        verified TINYINT(1) NOT NULL DEFAULT 1,
+        verify_token VARCHAR(64) NULL,
+        verify_token_expires BIGINT NULL
     ) ENGINE=InnoDB');
+    // Added after the table already existed in production (self-registration, D-058) —
+    // ALTER TABLE has no portable "IF NOT EXISTS" for a single column across older
+    // MySQL/MariaDB versions this hosting's exact version isn't pinned down anywhere in
+    // this project, so this just tries each one and swallows the "column already exists"
+    // failure rather than checking INFORMATION_SCHEMA first for something this cheap to
+    // just attempt. verified defaults to 1 (trusted) — an admin-provisioned account
+    // (created via WP-CLI, like every account before self-registration existed) never
+    // went through email verification and shouldn't be locked out by a column that
+    // didn't exist when it was created; only accounts created through /register.php
+    // explicitly insert with verified = 0.
+    foreach ([
+        'ALTER TABLE users ADD COLUMN verified TINYINT(1) NOT NULL DEFAULT 1',
+        'ALTER TABLE users ADD COLUMN verify_token VARCHAR(64) NULL',
+        'ALTER TABLE users ADD COLUMN verify_token_expires BIGINT NULL',
+    ] as $alter) {
+        try { $db->exec($alter); } catch (PDOException $e) { /* column already exists */ }
+    }
     $db->exec('CREATE TABLE IF NOT EXISTS plans (
         id VARCHAR(64) PRIMARY KEY,
         user_id VARCHAR(64) NOT NULL,

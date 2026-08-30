@@ -41,6 +41,16 @@ below — none of which would have been caught by code review alone.
 - **Wired to the real frontend** — `docs/index.html` (D-050) and `profile/index.html`
   (D-055) both call this service for real, from multiple hosts (GitHub Pages,
   `www.planagonia.com/app/`, `test.planagonia.com`), all covered by `allowed_origins`.
+- **Self-service registration is real (D-058)** — `app/src/registration.php`,
+  `httpdocs/register.php`/`verify.php`. A visitor creates an account, confirms it via an
+  emailed link, and is handed a fresh Application Password on that confirmation page —
+  they never see WordPress's own UI or need to generate one themselves in `wp-admin`.
+  Needs a dedicated WordPress **Administrator** account (`bot_username`/`bot_password` in
+  config) to create other users via the REST API — WP has no narrower built-in role for
+  this, and adding one would need custom code running inside WP, which D-019 avoids.
+  Keep this account separate from the site owner's own for exactly that reason: it's the
+  one credential in this whole project with more privilege than "read/verify one
+  account's own data."
 
 ## Why MySQL, not SQLite
 
@@ -129,7 +139,9 @@ directly-requested `.php` file. All `plans.php` requests require
 
 | Method | Path | Body | Returns |
 |---|---|---|---|
-| POST | `/session.php` | `{ username, password }` | `{ token, expiresIn }`, or `429` past 10 attempts/15 min per IP |
+| POST | `/session.php` | `{ username, password }` | `{ token, expiresIn }`; `403` if the account exists but isn't verified yet; `429` past 10 attempts/15 min per IP |
+| POST | `/register.php` | `{ username, email, password }` | `{ message }` (201); `429` past 5/hour per IP |
+| GET | `/verify.php?token=X` | — | An HTML page (not JSON — this is a link clicked from an email), showing a fresh Application Password on success |
 | GET | `/plans.php` | — | `{ plans: [{ id, name, updatedAt }, ...] }` |
 | GET | `/plans.php?id=X` | — | `{ id, name, text, updatedAt }` |
 | POST | `/plans.php` | `{ name, text }` | `{ id, name, text, updatedAt }` (201) |
@@ -142,8 +154,24 @@ reason (matches what `docs/`'s plan-switcher, D-043, actually needs for its list
 from any single-plan route doesn't distinguish "doesn't exist" from "not yours," so a
 request can't be used to probe whether some other user's plan id exists.
 
+## Registration — why two round trips through WordPress, not one
+
+`POST /register.php` only creates the WordPress account and an unverified local row — it
+deliberately does **not** hand back anything usable to sign in with yet. A self-registered
+account's own WordPress password can never authenticate against the REST API at all (Basic
+Auth there only accepts an Application Password, never the real login password — the same
+way every login in this project has worked since D-019). Generating that Application
+Password happens separately, in `verify.php`, only once the emailed link has actually been
+clicked — found by testing the *whole* flow end to end, not assumed to work from the
+individual pieces looking right in isolation. This also means an unverified account has no
+way to authenticate at all yet (not even to accidentally succeed) — `session.php`'s `403`
+path for an unverified-but-somehow-credentialed account is real defensive code, but isn't
+exercised by the normal registration flow itself, since that account genuinely has no
+working credential until verification generates one.
+
 ## Not built yet
 
-- Self-service account registration — every WordPress account is still admin-provisioned
-  via WP-CLI; deliberately deferred until rate limiting existed (D-056 closes that
-  precondition, but the registration feature itself still isn't built).
+- Resending a verification email if the original didn't arrive or the link expired (24h
+  window) — no path for this yet beyond registering again with a different username.
+- Any of this project's own UI for account management (rename, delete, rotate the
+  Application Password) — still WordPress's own tools, same as before D-058.

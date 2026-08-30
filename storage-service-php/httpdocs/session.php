@@ -30,6 +30,11 @@ try {
     }
     $token = issue_session_token($config, $user);
     send_json(200, ['token' => $token, 'expiresIn' => session_ttl_seconds()]);
+} catch (AccountNotVerifiedException $e) {
+    // Credentials were genuinely correct — this is deliberately not a 401, so the
+    // frontend can tell the difference and show "check your email" instead of
+    // "wrong password," which isn't what actually happened here.
+    send_json(403, ['error' => 'Please confirm your email before signing in — check your inbox for the verification link.']);
 } catch (Throwable $e) {
     error_log('session.php: ' . $e->getMessage());
     send_json(500, ['error' => 'Internal error']);

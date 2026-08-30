@@ -121,7 +121,7 @@
     <p class="lede">Sign in to see the plans you've saved to the cloud. This is the same account and the same sign-in as the app — signing in here also signs you in there, and vice versa, for the rest of this browser tab.</p>
 
     <div id="signed-out-view" class="card" hidden>
-      <h2>Sign in</h2>
+      <h2 id="auth-heading">Sign in</h2>
       <form id="signin-form">
         <label for="username">WordPress username</label>
         <input type="text" id="username" autocomplete="username" required>
@@ -131,6 +131,20 @@
         <button type="submit" class="btn btn-primary">Sign in</button>
         <p id="signin-msg" class="msg" role="status"></p>
       </form>
+      <form id="register-form" hidden>
+        <label for="reg-username">Username</label>
+        <input type="text" id="reg-username" autocomplete="username" required>
+        <label for="reg-email">Email</label>
+        <input type="text" id="reg-email" autocomplete="email" inputmode="email" required>
+        <label for="reg-password">Password</label>
+        <input type="password" id="reg-password" autocomplete="new-password" minlength="8" required>
+        <p class="hint">At least 8 characters. This becomes your WordPress account's own password — you won't need it again day to day, since signing in here uses a separate credential we generate for you once your email is confirmed.</p>
+        <button type="submit" class="btn btn-primary">Create account</button>
+        <p id="register-msg" class="msg" role="status"></p>
+      </form>
+      <p class="hint" style="margin-top: 1.2rem;">
+        <a href="#" id="toggle-auth-mode">Don't have an account? Register</a>
+      </p>
     </div>
 
     <div id="signed-in-view" class="card" hidden>
@@ -256,6 +270,45 @@
   document.getElementById("signout-btn").addEventListener("click", () => {
     setCloudSession(null, null);
     render();
+  });
+
+  // Toggles between the two forms sharing this card rather than navigating to a
+  // separate page — registration is a small, occasional detour from signing in, not a
+  // distinct destination someone bookmarks.
+  document.getElementById("toggle-auth-mode").addEventListener("click", (e) => {
+    e.preventDefault();
+    const signinForm = document.getElementById("signin-form");
+    const registerForm = document.getElementById("register-form");
+    const toRegister = signinForm.hidden === false;
+    signinForm.hidden = toRegister;
+    registerForm.hidden = !toRegister;
+    document.getElementById("auth-heading").textContent = toRegister ? "Create an account" : "Sign in";
+    e.target.textContent = toRegister ? "Already have an account? Sign in" : "Don't have an account? Register";
+  });
+
+  document.getElementById("register-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const username = document.getElementById("reg-username").value.trim();
+    const email = document.getElementById("reg-email").value.trim();
+    const password = document.getElementById("reg-password").value;
+    const msgEl = document.getElementById("register-msg");
+    msgEl.className = "msg";
+    msgEl.textContent = "Creating your account…";
+    try {
+      const res = await fetch(`${CLOUD_API_BASE}/register.php`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, email, password }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || `Registration failed (${res.status})`);
+      document.getElementById("register-form").reset();
+      msgEl.className = "msg ok";
+      msgEl.textContent = body.message;
+    } catch (err) {
+      msgEl.className = "msg error";
+      msgEl.textContent = err.message;
+    }
   });
 
   render();
