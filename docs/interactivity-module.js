@@ -490,10 +490,30 @@
 
   function handleKeyDown(e) { if (e.key === "Escape") closeContextMenu(); }
 
+  // core.M (meters -> SVG viewBox units) is only the right divisor for a mouse-pixel delta
+  // when the SVG happens to render at its native, unscaled size. The app's own CSS now
+  // stretches the SVG to fill its container (width/height: 100%) instead of using the
+  // element's own width/height attributes, so a screen pixel of mouse movement and a
+  // viewBox unit are no longer the same thing — this reads the SVG's actual on-screen size
+  // against its viewBox to find the real current scale. Falls back to core.M (assume
+  // native/no CSS scaling) if the SVG isn't in the DOM yet or has a zero-size viewBox.
+  function currentPxPerMeter() {
+    const svg = core.rootEl.querySelector("svg");
+    const vb = svg?.viewBox?.baseVal;
+    if (!vb || !vb.width || !vb.height) return core.M;
+    const rect = svg.getBoundingClientRect();
+    if (!rect.width || !rect.height) return core.M;
+    // preserveAspectRatio defaults to "meet": the viewBox is scaled uniformly by whichever
+    // axis is more constraining, then centered — so the *effective* scale is the smaller
+    // of the two per-axis ratios, not an average or either one alone.
+    return core.M * Math.min(rect.width / vb.width, rect.height / vb.height);
+  }
+
   function handlePointerMove(e) {
     if (!drag) return;
-    const dx = (e.clientX - drag.clientX) / core.M;
-    const dy = (e.clientY - drag.clientY) / core.M;
+    const pxPerMeter = currentPxPerMeter();
+    const dx = (e.clientX - drag.clientX) / pxPerMeter;
+    const dy = (e.clientY - drag.clientY) / pxPerMeter;
     applyDrag(drag, dx, dy);
   }
 
