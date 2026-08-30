@@ -137,7 +137,7 @@ everywhere.
 | Documentation | Exists for an AI/technical audience; a human-facing version is an open question, not started |
 | Profile | Not started — depends on the domain-mapping decision and what it should actually show |
 | Storage-service API naming | Works today under `test.planagonia.com`, called out as needing a real home once "test" stops being accurate |
-| SEO exclusion for `auth.`/`test.`(`api.`) | Not done — nothing currently stops either from being crawled/indexed; both should get `robots.txt`/`noindex` once real content exists elsewhere to distinguish them from |
+| SEO exclusion for `auth.`/`test.`(`api.`) | **Done** — `auth.planagonia.com` set to WordPress's own "discourage search engines" (confirmed: `noindex, nofollow` meta tag live); `test.planagonia.com` given a `Disallow: /` `robots.txt` |
 
 ## Open questions, collected here rather than scattered across the conversation
 
