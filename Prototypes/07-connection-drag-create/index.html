@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>2DPlaner prototype — creating connections by dragging</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 2rem; background: #fafafa; color: #222; }
+  h1 { font-size: 1.1rem; }
+  p.note { color: #666; max-width: 900px; line-height: 1.4; }
+  p.limits { color: #a66; max-width: 900px; line-height: 1.4; font-size: 0.9em; }
+  code { background: #eee; padding: 0.1em 0.3em; border-radius: 3px; }
+  .layout { display: flex; gap: 1.5rem; align-items: flex-start; flex-wrap: wrap; }
+  textarea { width: 420px; height: 300px; font-family: ui-monospace, Consolas, monospace; font-size: 13px;
+    padding: 0.75rem; border: 1px solid #ccc; border-radius: 4px; }
+  svg { background: #fff; border: 1px solid #ccc; }
+  svg [data-id] { cursor: grab; }
+  svg [data-id]:active { cursor: grabbing; }
+  body.connecting svg [data-id] { cursor: crosshair; }
+  svg .obj { transition: filter 0.1s; }
+  svg .obj:hover { filter: drop-shadow(0 0 2px #37f) drop-shadow(0 0 2px #37f); }
+  .anchor-hit { fill: transparent; }
+  .anchor-hit:hover { fill: #e33; opacity: 0.7; }
+  #error { color: #a11; white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+  #dragmsg { color: #666; white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 13px; min-height: 2.4em; }
+</style>
+</head>
+<body>
+<h1>2DPlaner prototype: creating connections by dragging</h1>
+<p class="note">
+  Answers three questions from D-014's kitchen-row test
+  (<a href="../06-kitchen-connection/">06</a>): (1) what happens if connected objects
+  aren't adjacent — nothing special, a connection means "moves together", not "touches";
+  try editing <code>ablage</code>'s position to leave a gap, then drag. (2) Connections can
+  now be created by dragging, not just typed in code: hold <b>Ctrl</b>, press down on one
+  element, drag to another, release. (3) "Node-wise" connections: <code>herd_right</code>
+  and <code>ablage_left</code> are small anchor-point nodes (children of <code>herd</code>/
+  <code>ablage</code>, D-016-style — no shape, invisible until hover) sitting at the meeting
+  edge. Ctrl-drag between two <em>anchors</em> instead of two whole objects to connect at
+  that specific point rather than "these two objects" vaguely.
+</p>
+<p class="note">
+  Nothing is pre-connected — the plan starts blank of connections so you can create every
+  kind yourself: object-to-object (drag from anywhere on <code>herd</code>'s body to
+  anywhere on <code>ablage</code>'s body), or anchor-to-anchor (from the small dot at
+  <code>herd</code>'s right edge to the one at <code>ablage</code>'s left edge — hover to
+  find them).
+</p>
+<p class="limits">
+  Known limitation worth noticing, not hiding: anchor nodes are positioned as plain
+  children (D-013) with a literal offset from their parent — they render attached to the
+  parent automatically (child coordinates are parent-relative), but a plain drag on the
+  anchor itself only edits <em>its own</em> position, not the parent's. Try connecting the
+  two anchors, then plain-dragging <code>herd_right</code> alone: it detaches visually from
+  <code>herd</code>'s edge while dragging <code>ablage_left</code> along with it (the
+  connection). Whether anchors should instead be "handles" that move their whole parent is
+  an open design question this makes concrete, not a bug to silently fix.
+</p>
+<div class="layout">
+  <textarea id="source" spellcheck="false"></textarea>
+  <div>
+    <div id="plan-root"></div>
+    <div id="error"></div>
+    <div id="dragmsg"></div>
+  </div>
+</div>
+
+<script>
+const EXAMPLE = `// Nothing connected yet — create connections yourself (see notes above).
+node kitchen {
+  node herd {
+    shape: "rect"
+    size: [0.6m, 0.6m]
+    position: [0m, 0m]
+    style: { fill: "#d9534f", stroke: "#8a2f2a", strokeWidth: 0.02 }
+
+    node herd_right { position: [0.6m, 0.3m] }
+  }
+
+  node ablage {
+    shape: "rect"
+    size: [1.2m, 0.6m]
+    position: [0.6m, 0m]
+    style: { fill: "#e8c896", stroke: "#a9895c", strokeWidth: 0.02 }
+
+    node ablage_left { position: [0m, 0.3m] }
+  }
+}
+`;
+
+// ---------- Tokenizer (tracks source spans, needed to splice edits back in) ----------
+const TOKEN_RE = /\s+|\/\/[^\n]*|"(?:[^"\\]|\\.)*"|-?\d+(?:\.\d+)?(?:cm|m)?\b|[A-Za-z_][A-Za-z0-9_]*|[{}\[\]():,]/y;
+const KEYWORDS = new Set(["node", "connection", "true", "false"]);
+const PUNCT = { "{": "LBRACE", "}": "RBRACE", "[": "LBRACKET", "]": "RBRACKET",
+  "(": "LPAREN", ")": "RPAREN", ":": "COLON", ",": "COMMA" };
+
+function tokenize(src) {
+  const tokens = [];
+  let i = 0;
+  while (i < src.length) {
+    TOKEN_RE.lastIndex = i;
+    const m = TOKEN_RE.exec(src);
+    if (!m || m.index !== i) throw new Error(`Unexpected character ${JSON.stringify(src[i])} at position ${i}`);
+    const text = m[0];
+    const start = i;
+    i += text.length;
+    if (/^\s+$/.test(text) || text.startsWith("//")) continue;
+    if (text.startsWith('"')) {
+      tokens.push({ type: "STRING", value: text.slice(1, -1), start, end: i });
+    } else if (/^-?\d/.test(text)) {
+      const unitMatch = text.match(/(cm|m)$/);
+      const unit = unitMatch ? unitMatch[0] : "";
+      const num = parseFloat(unit ? text.slice(0, -unit.length) : text);
+      tokens.push({ type: "NUMBER", value: unit === "cm" ? num / 100 : num, unit, start, end: i });
+    } else if (/^[A-Za-z_]/.test(text)) {
+      tokens.push({ type: KEYWORDS.has(text) ? text.toUpperCase() : "IDENT", value: text, start, end: i });
+    } else {
+      tokens.push({ type: PUNCT[text], value: text, start, end: i });
+    }
+  }
+  tokens.push({ type: "EOF", value: null, start: i, end: i });
+  return tokens;
+}
+
+// ---------- Parser (deliberately simple: no expressions, no points-as-references) ----------
+function parse(src) {
+  const tokens = tokenize(src);
+  const nodesById = {};
+  let pos = 0;
+  const peek = () => tokens[pos];
+  const next = () => tokens[pos++];
+  const expect = (type) => {
+    if (peek().type !== type) throw new Error(`Expected ${type} but got ${peek().type} (${JSON.stringify(peek().value)})`);
+    return next();
+  };
+
+  function parseProgram() {
+    const root = parseNodeDecl(null);
+    const connections = [];
+    while (peek().type !== "EOF") {
+      connections.push(parseConnectionDecl());
+    }
+    return { root, nodesById, connections };
+  }
+
+  function parseNodeDecl(parentId) {
+    expect("NODE");
+    const id = expect("IDENT").value;
+    expect("LBRACE");
+    const props = {};
+    const children = [];
+    while (peek().type !== "RBRACE") {
+      if (peek().type === "NODE") {
+        children.push(parseNodeDecl(id));
+      } else {
+        const key = expect("IDENT").value;
+        expect("COLON");
+        props[key] = parseValue();
+      }
+    }
+    expect("RBRACE");
+    const node = { id, props, children, parentId };
+    nodesById[id] = node;
+    return node;
+  }
+
+  // Validated syntax only (see F-006): positional, no braces, no fields.
+  function parseConnectionDecl() {
+    expect("CONNECTION");
+    const from = expect("IDENT").value;
+    const to = expect("IDENT").value;
+    return { from, to };
+  }
+
+  function parseValue() {
+    if (peek().type === "LBRACKET") return parseArray();
+    if (peek().type === "LBRACE") return parseObjectLiteral();
+    if (peek().type === "STRING") return next().value;
+    if (peek().type === "TRUE") { next(); return true; }
+    if (peek().type === "FALSE") { next(); return false; }
+    if (peek().type === "NUMBER") {
+      const t = next();
+      return { value: t.value, unit: t.unit, start: t.start, end: t.end };
+    }
+    throw new Error(`Expected a value, got ${peek().type}`);
+  }
+
+  function parseArray() {
+    expect("LBRACKET");
+    const items = [];
+    while (peek().type !== "RBRACKET") {
+      items.push(parseValue());
+      if (peek().type === "COMMA") next(); else break;
+    }
+    expect("RBRACKET");
+    return items;
+  }
+
+  function parseObjectLiteral() {
+    expect("LBRACE");
+    const obj = {};
+    while (peek().type !== "RBRACE") {
+      const key = expect("IDENT").value;
+      expect("COLON");
+      obj[key] = parseValue();
+      if (peek().type === "COMMA") next();
+    }
+    expect("RBRACE");
+    return obj;
+  }
+
+  return parseProgram();
+}
+
+function numOf(v) { return v && typeof v === "object" && "value" in v ? v.value : v; }
+function isEditable(v) { return v && typeof v === "object" && "start" in v; }
+
+// ---------- Renderer ----------
+const M = 100; // meters -> px (larger scale; this scenario is small/close-up)
+
+// Shapes and anchor-hit circles are collected into separate arrays; anchors are always
+// painted last (on top). An anchor can sit exactly on another object's edge (that's the
+// whole point of a node-wise connection point) — without this, whichever shape happens to
+// be declared/painted later would silently cover the anchor and swallow its clicks (the
+// same class of bug found and fixed in 04 — see decisions.md D-018's correction).
+function renderNode(node, offset, shapesOut, anchorsOut, anchors, bbox) {
+  const px = node.props.position ? numOf(node.props.position[0]) : 0;
+  const py = node.props.position ? numOf(node.props.position[1]) : 0;
+  const abs = [offset[0] + px, offset[1] + py];
+  const { shape, style } = node.props;
+  const idAttr = `data-id="${node.id}"`;
+  let anchor = abs;
+
+  if (shape === "rect" && style) {
+    const w = numOf(node.props.size[0]), h = numOf(node.props.size[1]);
+    anchor = [abs[0] + w / 2, abs[1] + h / 2];
+    bbox.minX = Math.min(bbox.minX, abs[0]); bbox.minY = Math.min(bbox.minY, abs[1]);
+    bbox.maxX = Math.max(bbox.maxX, abs[0] + w); bbox.maxY = Math.max(bbox.maxY, abs[1] + h);
+    shapesOut.push(`<rect class="obj" ${idAttr} pointer-events="all" x="${abs[0]*M}" y="${abs[1]*M}" width="${w*M}" height="${h*M}"
+      fill="${style.fill ?? "none"}" stroke="${style.stroke ?? "none"}" stroke-width="${numOf(style.strokeWidth ?? 0.02)*M}" />`);
+  } else {
+    // D-016: no shape/style -> invisible in the plan, but a hover hit-area in the editor
+    bbox.minX = Math.min(bbox.minX, abs[0]); bbox.minY = Math.min(bbox.minY, abs[1]);
+    bbox.maxX = Math.max(bbox.maxX, abs[0]); bbox.maxY = Math.max(bbox.maxY, abs[1]);
+    anchorsOut.push(`<circle class="anchor-hit" ${idAttr} pointer-events="all" cx="${abs[0]*M}" cy="${abs[1]*M}" r="8" />`);
+  }
+
+  anchors[node.id] = anchor;
+  for (const child of node.children) renderNode(child, abs, shapesOut, anchorsOut, anchors, bbox);
+}
+
+// Computed once, from the first successful render, then reused — NOT recomputed from the
+// current bounding box every time. Recomputing every render would make any drag that moves
+// everything together (e.g. rigidly connected objects, D-014) visually cancel out against
+// the auto-fit "camera" (found the hard way in 06 — see decisions.md D-014).
+let fixedViewBox = null;
+
+function renderPlan(program) {
+  const shapes = [], anchorsOut = [];
+  const anchors = {};
+  const bbox = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+  renderNode(program.root, [0, 0], shapes, anchorsOut, anchors, bbox);
+  const lines = [];
+  for (const c of program.connections) {
+    if (!(c.from in anchors)) throw new Error(`connection references unknown node '${c.from}'`);
+    if (!(c.to in anchors)) throw new Error(`connection references unknown node '${c.to}'`);
+    const a = anchors[c.from], b = anchors[c.to];
+    lines.push(`<line x1="${a[0]*M}" y1="${a[1]*M}" x2="${b[0]*M}" y2="${b[1]*M}" stroke="#c33" stroke-width="1.5" stroke-dasharray="5,4" />`);
+  }
+  if (!fixedViewBox) {
+    const pad = 0.6;
+    const minX = bbox.minX - pad, maxX = bbox.maxX + pad;
+    const minY = bbox.minY - pad, maxY = bbox.maxY + pad;
+    fixedViewBox = { minX, minY, vw: (maxX - minX) * M, vh: (maxY - minY) * M };
+  }
+  const { minX, minY, vw, vh } = fixedViewBox;
+  // Paint order: shapes, then connection lines (on top of shapes, under anchors), then
+  // anchor-hit circles last (always clickable, never buried under a shape declared later).
+  const out = [...shapes, ...lines, ...anchorsOut];
+  return `<svg width="${vw}" height="${vh}" viewBox="${minX*M} ${minY*M} ${vw} ${vh}">${out.join("\n")}</svg>`;
+}
+
+// ---------- Drag -> text splice, with D-014 rigid connection propagation ----------
+function formatNumber(value, unit) {
+  const base = unit === "cm" ? value * 100 : value;
+  const rounded = Math.round(base * 1000) / 1000;
+  return `${rounded}${unit}`;
+}
+
+function connectedNodeIds(startId, connections) {
+  const adj = {};
+  for (const c of connections) {
+    (adj[c.from] ??= []).push(c.to);
+    (adj[c.to] ??= []).push(c.from);
+  }
+  const seen = new Set([startId]);
+  const queue = [startId];
+  while (queue.length) {
+    for (const nb of adj[queue.shift()] ?? []) {
+      if (!seen.has(nb)) { seen.add(nb); queue.push(nb); }
+    }
+  }
+  seen.delete(startId);
+  return [...seen];
+}
+
+function translateEdits(node, dx, dy) {
+  const edits = [];
+  if (node.props.position) {
+    const [x, y] = node.props.position;
+    if (isEditable(x)) edits.push({ start: x.start, end: x.end, text: formatNumber(x.value + dx, x.unit) });
+    if (isEditable(y)) edits.push({ start: y.start, end: y.end, text: formatNumber(y.value + dy, y.unit) });
+  }
+  return edits;
+}
+
+// ---------- Wire up ----------
+const sourceEl = document.getElementById("source");
+const rootEl = document.getElementById("plan-root");
+const errorEl = document.getElementById("error");
+const dragmsgEl = document.getElementById("dragmsg");
+let program = null;
+
+function run() {
+  try {
+    program = parse(sourceEl.value);
+    rootEl.innerHTML = renderPlan(program);
+    errorEl.textContent = "";
+  } catch (e) {
+    errorEl.textContent = "Parse/render error: " + e.message;
+  }
+}
+
+let drag = null;         // move-drag state
+let connectDrag = null;  // { fromId } while Ctrl-dragging to create a connection
+
+rootEl.addEventListener("pointerdown", (e) => {
+  const el = e.target.closest("[data-id]");
+  if (!el || !program) return;
+  const node = program.nodesById[el.dataset.id];
+
+  if (e.ctrlKey || e.metaKey) {
+    connectDrag = { fromId: node.id };
+    document.body.classList.add("connecting");
+    dragmsgEl.textContent = `Connecting from '${node.id}' — release over another element to link, or elsewhere to cancel.`;
+    return;
+  }
+
+  if (!node.props.position) { dragmsgEl.textContent = `${node.id}: has no explicit position, nothing to drag`; return; }
+  drag = { id: node.id, baseText: sourceEl.value, clientX: e.clientX, clientY: e.clientY, singleOnly: e.shiftKey };
+});
+
+window.addEventListener("pointermove", (e) => {
+  if (connectDrag) {
+    const el = e.target.closest("[data-id]");
+    const hoverId = el ? el.dataset.id : null;
+    dragmsgEl.textContent = hoverId && hoverId !== connectDrag.fromId
+      ? `Connecting from '${connectDrag.fromId}' -> release to link to '${hoverId}'`
+      : `Connecting from '${connectDrag.fromId}' — no valid target under cursor`;
+    return;
+  }
+  if (!drag) return;
+  const dx = (e.clientX - drag.clientX) / M;
+  const dy = (e.clientY - drag.clientY) / M;
+  applyDrag(drag, dx, dy);
+});
+
+window.addEventListener("pointerup", (e) => {
+  if (connectDrag) {
+    document.body.classList.remove("connecting");
+    const el = e.target.closest("[data-id]");
+    const toId = el ? el.dataset.id : null;
+    if (toId && toId !== connectDrag.fromId && program.nodesById[toId]) {
+      const fromId = connectDrag.fromId;
+      const already = program.connections.some(c =>
+        (c.from === fromId && c.to === toId) || (c.from === toId && c.to === fromId));
+      if (already) {
+        dragmsgEl.textContent = `'${fromId}' and '${toId}' are already connected.`;
+      } else {
+        sourceEl.value = sourceEl.value.trimEnd() + `\nconnection ${fromId} ${toId}\n`;
+        dragmsgEl.textContent = `Connected: ${fromId} – ${toId}`;
+        run();
+      }
+    } else {
+      dragmsgEl.textContent = "Connection cancelled (no valid target).";
+    }
+    connectDrag = null;
+    return;
+  }
+  drag = null;
+});
+
+function applyDrag(dragState, dx, dy) {
+  let base;
+  try {
+    base = parse(dragState.baseText);
+  } catch (e) {
+    dragmsgEl.textContent = `Can't continue this drag: the source text is currently invalid (${e.message}). Fix it in the editor or reload to reset.`;
+    return;
+  }
+  const node = base.nodesById[dragState.id];
+  const edits = [...translateEdits(node, dx, dy)];
+
+  if (!dragState.singleOnly) {
+    for (const otherId of connectedNodeIds(dragState.id, base.connections)) {
+      edits.push(...translateEdits(base.nodesById[otherId], dx, dy));
+    }
+  }
+
+  if (edits.length === 0) { dragmsgEl.textContent = `${dragState.id}: nothing to drag`; return; }
+
+  edits.sort((a, b) => b.start - a.start);
+  let text = dragState.baseText;
+  for (const ed of edits) text = text.slice(0, ed.start) + ed.text + text.slice(ed.end);
+
+  sourceEl.value = text;
+  dragmsgEl.textContent = dragState.singleOnly
+    ? `${dragState.id}: moved alone (Shift held)`
+    : "";
+  run();
+}
+
+sourceEl.value = EXAMPLE;
+sourceEl.addEventListener("input", run);
+run();
+</script>
+</body>
+</html>

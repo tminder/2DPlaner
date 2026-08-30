@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>2DPlaner prototype — Node/Connection render</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 2rem; background: #fafafa; color: #222; }
+  h1 { font-size: 1.1rem; }
+  p.note { color: #666; max-width: 640px; line-height: 1.4; }
+  code { background: #eee; padding: 0.1em 0.3em; border-radius: 3px; }
+  svg { background: #fff; border: 1px solid #ccc; }
+  .anchor-hit { fill: transparent; }
+  .anchor-hit:hover { fill: #e33; opacity: 0.6; }
+</style>
+</head>
+<body>
+<h1>2DPlaner prototype: Node + Connection &rarr; SVG</h1>
+<p class="note">
+  Throwaway prototype testing the core primitives from <code>planning/decisions.md</code>
+  (D-013 Core primitives, D-005 Units, D-010 Expression scope, D-016 Default node rendering).
+  The "plan" below is hand-written JS standing in for the not-yet-designed plan language.
+  Connections are drawn as thin dashed connectors purely to visualize the link between nodes
+  — actual connection behavior (drag propagation, constraint solving) is not implemented
+  here, see open question F-001.
+</p>
+<div id="plan-root"></div>
+
+<script>
+const M = 60; // meters -> px scale factor, arbitrary for this prototype
+
+// --- The "plan": stand-in for plan-language source (see planning/decisions.md D-013) ---
+const plan = {
+  id: "room", shape: "rect", size: [4, 3.5], position: [0, 0],
+  style: { stroke: "#333", strokeWidth: 0.06, fill: "none" },
+  children: [
+    { id: "wall_a", shape: "line", points: [[0, 0], [1.2, 0]], style: { stroke: "#333", strokeWidth: 0.1 } },
+    { id: "door", shape: "line", points: [[1.2, 0], [2.1, 0]], style: { stroke: "#6a8f4a", strokeWidth: 0.1, dash: "0.1,0.1" } },
+    { id: "wall_b", shape: "line", points: [[2.1, 0], [4, 0]], style: { stroke: "#333", strokeWidth: 0.1 } },
+
+    { id: "bed", shape: "rect", size: [1.6, 2], position: [0.3, 0.3],
+      style: { fill: "#cfe0f5", stroke: "#4a76a8" } },
+
+    // D-010 expression scope: position computed from the parent's own size, not hardcoded
+    { id: "desk", shape: "rect", size: [1.2, 0.6],
+      position: (parent) => [parent.size[0] - 1.2 - 0.2, 0.2],
+      style: { fill: "#fbe3b0", stroke: "#a87a2b" } },
+
+    // D-016 default node rendering: coordinates only, no shape/style -> renders nothing in
+    // the plan itself, but still gets a hover hit-area so it stays discoverable/draggable
+    // in an editor view. (Hover over the middle of the north wall to see it.)
+    { id: "window_center", position: [1.85, 0] },
+  ],
+};
+
+const connections = [
+  { from: "wall_a", to: "door" },
+  { from: "door", to: "wall_b" },
+];
+
+// --- Minimal renderer ---
+function resolvePosition(node, parent) {
+  if (typeof node.position === "function") return node.position(parent);
+  return node.position || [0, 0];
+}
+
+// Renders `node`, appends its SVG markup to `out`, and records an anchor point
+// (in absolute plan coordinates) into `anchors` for connection drawing.
+function renderNode(node, parent, offset, out, anchors) {
+  const [px, py] = resolvePosition(node, parent);
+  const abs = [offset[0] + px, offset[1] + py];
+  const s = node.style;
+  let anchor = abs;
+
+  if (node.shape === "rect" && s) {
+    const [w, h] = node.size;
+    anchor = [abs[0] + w / 2, abs[1] + h / 2];
+    out.push(`<rect x="${abs[0]*M}" y="${abs[1]*M}" width="${w*M}" height="${h*M}"
+      fill="${s.fill ?? "none"}" stroke="${s.stroke ?? "none"}" stroke-width="${(s.strokeWidth ?? 0.02)*M}" />`);
+  } else if (node.shape === "line" && s) {
+    const absPts = node.points.map(([x, y]) => [abs[0] + x, abs[1] + y]);
+    anchor = [
+      absPts.reduce((sum, p) => sum + p[0], 0) / absPts.length,
+      absPts.reduce((sum, p) => sum + p[1], 0) / absPts.length,
+    ];
+    const ptsStr = absPts.map(([x, y]) => `${x*M},${y*M}`).join(" ");
+    const dashAttr = s.dash ? `stroke-dasharray="${s.dash.split(",").map(v => v*M).join(",")}"` : "";
+    out.push(`<polyline points="${ptsStr}" fill="none" stroke="${s.stroke}" stroke-width="${s.strokeWidth*M}" ${dashAttr} />`);
+  } else {
+    // D-016: no shape/style given -> invisible node, but keep a hover hit-area
+    out.push(`<circle class="anchor-hit" cx="${abs[0]*M}" cy="${abs[1]*M}" r="10" />`);
+  }
+
+  anchors[node.id] = anchor;
+  for (const child of node.children ?? []) {
+    renderNode(child, node, abs, out, anchors);
+  }
+}
+
+const svgParts = [];
+const anchors = {};
+renderNode(plan, null, [0, 0], svgParts, anchors);
+
+// Draw connections last so they sit on top; purely a visualization aid (see note above).
+for (const c of connections) {
+  const a = anchors[c.from], b = anchors[c.to];
+  svgParts.push(`<line x1="${a[0]*M}" y1="${a[1]*M}" x2="${b[0]*M}" y2="${b[1]*M}" stroke="#c33" stroke-width="1" stroke-dasharray="4,4" />`);
+}
+
+const [rw, rh] = plan.size;
+document.getElementById("plan-root").innerHTML =
+  `<svg width="${rw*M + 40}" height="${rh*M + 40}" viewBox="-20 -20 ${rw*M+40} ${rh*M+40}">${svgParts.join("\n")}</svg>`;
+</script>
+</body>
+</html>

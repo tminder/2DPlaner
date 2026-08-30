@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>2DPlaner prototype — interactivity as a module</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 2rem; background: #fafafa; color: #222; }
+  h1 { font-size: 1.1rem; }
+  p.note { color: #666; max-width: 900px; line-height: 1.4; }
+  p.limits { color: #a66; max-width: 900px; line-height: 1.4; font-size: 0.9em; }
+  code { background: #eee; padding: 0.1em 0.3em; border-radius: 3px; }
+  .layout { display: flex; gap: 1.5rem; align-items: flex-start; flex-wrap: wrap; }
+  textarea { width: 560px; height: 720px; font-family: ui-monospace, Consolas, monospace; font-size: 13px;
+    padding: 0.75rem; border: 1px solid #ccc; border-radius: 4px; }
+  svg { background: #fff; border: 1px solid #ccc; }
+
+  /* Core owns only rendering-level presentation: the base object look, and D-026's label/
+     dimension hover-reveal (a rendering feature — label/show/dimensions are node properties,
+     independent of whether any interactivity module is even loaded). Everything about
+     *interactive* state — hover glow, selection, drag, corner/connection previews, icons,
+     the context menu — belongs to the interactivity module's own injected stylesheet below,
+     not here. See the page notes for the one place this split leaves a visible seam. */
+  svg .obj { transition: filter 0.1s; }
+  .anchor-hit { fill: transparent; }
+  svg .annotation text { pointer-events: none; font-family: system-ui, sans-serif; }
+  svg .annotation[data-show="hover"] { opacity: 0; transition: opacity 0.15s; }
+  svg .obj:hover + .annotation[data-show="hover"] { opacity: 1; }
+
+  #error { color: #a11; white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+  #dragmsg { color: #666; white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 13px; min-height: 1.2em; }
+  #modlog { color: #266; white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 12px; min-height: 1.4em; }
+</style>
+</head>
+<body>
+<h1>2DPlaner prototype: interactivity as a module</h1>
+<p class="note">
+  <em>Terminology note: this prototype predates D-033's rename of the <code>node</code>
+  keyword to <code>element</code> and <code>allowUnrealisticPolygons</code> to
+  <code>allowSelfIntersectingPolygons</code> — kept as originally built, not rewritten. See
+  <a href="../15-utility-connection/">15</a> for the current names.</em>
+</p>
+<p class="note">
+  Same studio-apartment plan as <a href="../13-unified/">13</a>, restructured so the core
+  page only tokenizes, parses, and renders — no drag, no selection, no click handling of any
+  kind beyond "typing in the editor re-renders the preview". Every interactive behavior
+  (drag-to-move with solve-backward/realism-check, click-to-select, connect/disconnect icons
+  with snap, hover previews, the right-click context menu with Delete Element) lives entirely
+  in <a href="interactivity-module.js">interactivity-module.js</a>, loaded like any other
+  external module (D-020) — declared in the plan's own preamble as
+  <code>module "interactivity-module.js"</code>, exactly the same mechanism a shape-rendering
+  module uses. This is the first test of D-011's other promise ("modules can add new
+  interactivity") — every earlier module prototype (<a href="../12-module-loading/">12</a>,
+  reused in 13) only ever contributed a shape renderer.
+</p>
+<p class="note">
+  The core exposes a small API, <code>window.PlanCore</code>, for the module to build on:
+  <code>parse</code>/<code>render</code>, the editable-literal helpers
+  (<code>numOf</code>/<code>isEditable</code>/<code>formatNumber</code>), the geometry
+  helpers a drag needs (<code>computePositions</code>/<code>computeCornerUsers</code>/
+  <code>resolvePointAbs</code>/<code>nodeDragEdits</code>/<code>connectedNodeIds</code>),
+  <code>rootEl</code>/<code>sourceEl</code>/<code>dragmsgEl</code> as DOM mount points, the
+  scale constant <code>M</code>, <code>rerender(opts)</code> / <code>onRendered(cb)</code> to
+  trigger a re-render and react once it's done, and <code>registerModuleCleanup(name, fn)</code>
+  — try deleting the <code>module "interactivity-module.js"</code> line from the plan below:
+  the plan keeps rendering, but dragging/selecting/right-clicking stop doing anything, and
+  <code>#modlog</code> logs the teardown. Add the line back and it reloads fresh. Earlier
+  versions of this prototype didn't have this — once loaded, the module just kept running
+  forever regardless of whether the plan still declared it, since core's "loaded" tracking was
+  designed for a stateless shape renderer with nothing to undo. See the page's bottom note for
+  what else this API deliberately does and doesn't cover.
+</p>
+<p class="limits">
+  Three real seams, not hidden: (1) connect/disconnect icons are entirely the module's own
+  overlay, appended into the SVG <em>after</em> core's own output — including core's anchors,
+  which D-018 requires painting last — so icons now end up on top of anchors, a reversal of
+  13-unified's ordering (harmless here, since none of this plan's icons and anchors actually
+  coincide, but a real, undecided question for a plan where they would). (2) D-026's label
+  hover-reveal is core's own CSS rule (a rendering feature, unaware interactivity exists) —
+  suppressing it during a drag needs the module to inject a higher-specificity override rather
+  than core ever mentioning "dragging". (3) <code>rerender(opts.preserveViewBox)</code> makes
+  the caller responsible for saying whether this edit continues a gesture in progress or
+  starts a fresh one — core can no longer infer that itself (it used to distinguish "did the
+  textarea's own input event fire" from a module-driven change), so the API had to make that
+  call explicit instead of implicit.
+</p>
+
+<div class="layout">
+  <textarea id="source" spellcheck="false"></textarea>
+  <div>
+    <div id="plan-root"></div>
+    <div id="error"></div>
+    <div id="dragmsg"></div>
+    <div id="modlog"></div>
+  </div>
+</div>
+
+<script>
+const EXAMPLE = `module "star-tool"
+module "interactivity-module.js"
+
+settings {
+  allowUnrealisticPolygons: false
+}
+
+node room {
+  shape: "rect"
+  size: [5m, 4m]
+  position: [0m, 0m]
+  style: { fill: "#f7f5f0", stroke: "#333", strokeWidth: 0.04 }
+
+  node corner_1 { position: [0m, 0m] }
+  node corner_2 { position: [2.2m, 0m] }
+  node corner_3 { position: [3.1m, 0m] }
+  node corner_4 { position: [5m, 0m] }
+
+  node wall_a {
+    shape: "polyline"
+    points: [corner_1, corner_2]
+    style: { stroke: "#444", strokeWidth: 0.1 }
+  }
+  node door {
+    shape: "polyline"
+    points: [corner_2, corner_3]
+    style: { stroke: "#8a6a42", strokeWidth: 0.1, strokeDash: "0.15,0.1" }
+    label: "Tür"
+    show: "hover"
+  }
+  node wall_b {
+    shape: "polyline"
+    points: [corner_3, corner_4]
+    style: { stroke: "#444", strokeWidth: 0.1 }
+  }
+
+  node bed {
+    shape: "rect"
+    size: [1.6m, 2m]
+    position: [0.3m, 0.4m]
+    style: { fill: "#cfe0f5", stroke: "#4a76a8", strokeWidth: 0.02 }
+    label: "Bett"
+    show: "hover"
+  }
+
+  node desk {
+    shape: "rect"
+    size: [1.2m, 0.6m]
+    position: [3.6m, 0.2m]
+    style: { fill: "#fbe3b0", stroke: "#a87a2b", strokeWidth: 0.02 }
+    label: "Schreibtisch"
+    show: "hover"
+  }
+
+  node side_table {
+    shape: "circle"
+    radius: 0.35m
+    position: [2.5m, 3.3m]
+    style: { fill: "#bfe3f5", stroke: "#3a7a9a", strokeWidth: 0.03 }
+    label: "Tisch"
+    show: "always"
+    dimensions: true
+  }
+
+  node stove {
+    shape: "rect"
+    size: [0.6m, 0.6m]
+    position: [4.1m, 2.6m]
+    style: { fill: "#d9534f", stroke: "#8a2f2a", strokeWidth: 0.02 }
+    label: "Herd"
+    show: "hover"
+  }
+
+  node counter {
+    shape: "rect"
+    size: [0.5m, 1.2m]
+    position: [4.1m, 1.4m]
+    style: { fill: "#e8c896", stroke: "#a9895c", strokeWidth: 0.02 }
+    label: "Ablage"
+    show: "hover"
+  }
+
+  node rug_1 { position: [1m, 2.6m] }
+  node rug_2 { position: [1.9m, 2.5m] }
+  node rug_3 { position: [2.1m, 3.4m] }
+  node rug_4 { position: [1.5m, 3.9m] }
+  node rug_5 { position: [0.7m, 3.5m] }
+
+  node rug {
+    shape: "polygon"
+    points: [rug_1, rug_2, rug_3, rug_4, rug_5]
+    style: { fill: "#e0d5c0", stroke: "#b0a080", strokeWidth: 0.02 }
+    label: "Teppich"
+    show: "hover"
+  }
+
+  node star_decoration {
+    shape: "star"
+    radius: 0.15m
+    position: [0.3m, 3.8m]
+    style: { fill: "#f0c419", stroke: "#a67c00", strokeWidth: 0.02 }
+  }
+}
+
+connection stove counter
+`;
+
+// ---------- Built-in ("internal") module registry — same star shape as 12/13, unchanged. ----------
+const INTERNAL_MODULES = {
+  "star-tool": () => {
+    window.PlanModules = window.PlanModules || {};
+    window.PlanModules["star"] = (node, ownAbs, M, { numOf, idAttr }) => {
+      const r = numOf(node.props.radius ?? 0.3);
+      const style = node.props.style ?? {};
+      const cx = ownAbs[0] * M, cy = ownAbs[1] * M, rOuter = r * M, rInner = r * M * 0.42;
+      let d = "";
+      for (let i = 0; i < 10; i++) {
+        const angle = -Math.PI / 2 + i * Math.PI / 5;
+        const rr = i % 2 === 0 ? rOuter : rInner;
+        d += (i === 0 ? "M" : "L") + (cx + rr * Math.cos(angle)).toFixed(2) + "," + (cy + rr * Math.sin(angle)).toFixed(2) + " ";
+      }
+      return `<path class="obj" ${idAttr} pointer-events="all" d="${d}Z" fill="${style.fill ?? "none"}" stroke="${style.stroke ?? "none"}" stroke-width="${numOf(style.strokeWidth ?? 0.02) * M}" />`;
+    };
+    window.PlanCore.registerModuleCleanup("star-tool", () => { delete window.PlanModules["star"]; });
+    logModule("'star-tool' (internal) registered shape 'star'");
+  },
+};
+
+// ---------- Tokenizer (unchanged grammar from 13, D-029 renames already reflected) ----------
+const TOKEN_RE = /\s+|\/\/[^\n]*|"(?:[^"\\]|\\.)*"|\d+(?:\.\d+)?(?:cm|m)?\b|[A-Za-z_][A-Za-z0-9_]*|[{}\[\]():,.+\-*/]/y;
+const KEYWORDS = new Set(["node", "module", "connection", "settings", "true", "false"]);
+const PUNCT = { "{": "LBRACE", "}": "RBRACE", "[": "LBRACKET", "]": "RBRACKET",
+  "(": "LPAREN", ")": "RPAREN", ":": "COLON", ",": "COMMA", ".": "DOT",
+  "+": "PLUS", "-": "MINUS", "*": "STAR", "/": "SLASH" };
+
+function tokenize(src) {
+  const tokens = [];
+  let i = 0;
+  while (i < src.length) {
+    TOKEN_RE.lastIndex = i;
+    const m = TOKEN_RE.exec(src);
+    if (!m || m.index !== i) throw new Error(`Unexpected character ${JSON.stringify(src[i])} at position ${i}`);
+    const text = m[0];
+    const start = i;
+    i += text.length;
+    if (/^\s+$/.test(text) || text.startsWith("//")) continue;
+    if (text.startsWith('"')) {
+      tokens.push({ type: "STRING", value: text.slice(1, -1), start, end: i });
+    } else if (/^\d/.test(text)) {
+      const unitMatch = text.match(/(cm|m)$/);
+      const unit = unitMatch ? unitMatch[0] : "";
+      const num = parseFloat(unit ? text.slice(0, -unit.length) : text);
+      tokens.push({ type: "NUMBER", value: unit === "cm" ? num / 100 : num, unit, start, end: i });
+    } else if (/^[A-Za-z_]/.test(text)) {
+      tokens.push({ type: KEYWORDS.has(text) ? text.toUpperCase() : "IDENT", value: text, start, end: i });
+    } else {
+      tokens.push({ type: PUNCT[text], value: text, start, end: i });
+    }
+  }
+  tokens.push({ type: "EOF", value: null, start: i, end: i });
+  return tokens;
+}
+
+// ---------- Parser (unchanged from 13: modules + settings + connections[+props] + expressions
+// + points-as-references + node-block spans for D-030-style whole-block edits) ----------
+function parse(src) {
+  const tokens = tokenize(src);
+  const nodesById = {};
+  let pos = 0;
+  const peek = () => tokens[pos];
+  const next = () => tokens[pos++];
+  const expect = (type) => {
+    if (peek().type !== type) throw new Error(`Expected ${type} but got ${peek().type} (${JSON.stringify(peek().value)})`);
+    return next();
+  };
+
+  function parseProgram() {
+    const modules = [];
+    while (peek().type === "MODULE") { next(); modules.push(expect("STRING").value); }
+    let settings = {};
+    if (peek().type === "SETTINGS") { next(); settings = parseObjectLiteral(); }
+    const root = parseNodeDecl(null);
+    const connections = [];
+    while (peek().type !== "EOF") connections.push(parseConnectionDecl());
+    return { root, nodesById, modules, settings, connections };
+  }
+
+  function parseNodeDecl(parentId) {
+    const startTok = expect("NODE");
+    const id = expect("IDENT").value;
+    expect("LBRACE");
+    const props = {};
+    const children = [];
+    while (peek().type !== "RBRACE") {
+      if (peek().type === "NODE") {
+        children.push(parseNodeDecl(id));
+      } else {
+        const key = expect("IDENT").value;
+        expect("COLON");
+        props[key] = parseValue();
+      }
+    }
+    const endTok = expect("RBRACE");
+    const node = { id, props, children, parentId, start: startTok.start, end: endTok.end };
+    nodesById[id] = node;
+    return node;
+  }
+
+  function parseConnectionDecl() {
+    const startTok = expect("CONNECTION");
+    const from = expect("IDENT").value;
+    const toTok = expect("IDENT");
+    let props = {};
+    let endPos = toTok.end;
+    if (peek().type === "LBRACE") {
+      props = parseObjectLiteral();
+      endPos = tokens[pos - 1].end;
+    }
+    return { from, to: toTok.value, props, start: startTok.start, end: endPos };
+  }
+
+  function parseValue() {
+    if (peek().type === "LBRACKET") return parseArray();
+    if (peek().type === "LBRACE") return parseObjectLiteral();
+    if (peek().type === "STRING") return next().value;
+    if (peek().type === "TRUE") { next(); return true; }
+    if (peek().type === "FALSE") { next(); return false; }
+    return parseExprValue();
+  }
+
+  function parseArray() {
+    expect("LBRACKET");
+    const items = [];
+    while (peek().type !== "RBRACKET") {
+      items.push(parseValue());
+      if (peek().type === "COMMA") next(); else break;
+    }
+    expect("RBRACKET");
+    return items;
+  }
+
+  function parseObjectLiteral() {
+    expect("LBRACE");
+    const obj = {};
+    while (peek().type !== "RBRACE") {
+      const key = expect("IDENT").value;
+      expect("COLON");
+      obj[key] = parseValue();
+      if (peek().type === "COMMA") next();
+    }
+    expect("RBRACE");
+    return obj;
+  }
+
+  function parseExprValue() {
+    const ast = parseExpr();
+    if (ast.type === "num" && !ast.compound) {
+      return { value: ast.value, unit: ast.unit, start: ast.start, end: ast.end };
+    }
+    if (ast.type === "neg" && ast.value.type === "num" && !ast.value.compound) {
+      return { value: -ast.value.value, unit: ast.value.unit, start: ast.start, end: ast.value.end };
+    }
+    if (containsPath(ast)) {
+      const fn = (ctx) => evalAst(ast, ctx);
+      fn.ast = ast;
+      if (ast.type === "path" && ast.segments.length === 1) fn.cornerRef = ast.segments[0];
+      return fn;
+    }
+    return evalAst(ast, null);
+  }
+
+  function parseExpr() {
+    let node = parseTerm();
+    while (peek().type === "PLUS" || peek().type === "MINUS") {
+      const op = next().type;
+      node = { type: "bin", op, left: node, right: parseTerm(), compound: true };
+    }
+    return node;
+  }
+
+  function parseTerm() {
+    let node = parseFactor();
+    while (peek().type === "STAR" || peek().type === "SLASH") {
+      const op = next().type;
+      node = { type: "bin", op, left: node, right: parseFactor(), compound: true };
+    }
+    return node;
+  }
+
+  function parseFactor() {
+    if (peek().type === "MINUS") {
+      const t = next();
+      return { type: "neg", value: parseFactor(), compound: true, start: t.start };
+    }
+    if (peek().type === "LPAREN") { next(); const e = parseExpr(); expect("RPAREN"); return e; }
+    if (peek().type === "NUMBER") {
+      const t = next();
+      return { type: "num", value: t.value, unit: t.unit, start: t.start, end: t.end };
+    }
+    if (peek().type === "IDENT") return { type: "path", segments: parsePath() };
+    throw new Error(`Expected a value, got ${peek().type}`);
+  }
+
+  function parsePath() {
+    const segments = [expect("IDENT").value];
+    while (peek().type === "DOT") { next(); segments.push(expect("IDENT").value); }
+    return segments;
+  }
+
+  return parseProgram();
+}
+
+function containsPath(ast) {
+  if (ast.type === "path") return true;
+  if (ast.type === "neg") return containsPath(ast.value);
+  if (ast.type === "bin") return containsPath(ast.left) || containsPath(ast.right);
+  return false;
+}
+
+function evalAst(ast, ctx) {
+  if (ast.type === "num") return ast.value;
+  if (ast.type === "neg") return -evalAst(ast.value, ctx);
+  if (ast.type === "bin") {
+    const l = evalAst(ast.left, ctx), r = evalAst(ast.right, ctx);
+    if (ast.op === "PLUS") return l + r;
+    if (ast.op === "MINUS") return l - r;
+    if (ast.op === "STAR") return l * r;
+    if (ast.op === "SLASH") return l / r;
+  }
+  if (ast.type === "path") {
+    let cur = ctx;
+    for (const seg of ast.segments) {
+      if (cur == null) throw new Error(`Cannot resolve '${ast.segments.join(".")}' — no value for '${seg}'`);
+      if ((seg === "x" || seg === "y") && Array.isArray(cur)) cur = cur[seg === "x" ? 0 : 1];
+      else cur = numOf(cur[seg]);
+    }
+    return numOf(cur);
+  }
+}
+
+function numOf(v) {
+  return v && typeof v === "object" && "value" in v && typeof v.value === "number" ? v.value : v;
+}
+function isEditable(v) { return v && typeof v === "object" && "start" in v; }
+
+function linearize(ast) {
+  if (ast.type === "num") return { coeff: 0, offset: ast.value };
+  if (ast.type === "path") return { coeff: 1, offset: 0, segments: ast.segments };
+  if (ast.type === "neg") {
+    const v = linearize(ast.value);
+    return v && { coeff: -v.coeff, offset: -v.offset, segments: v.segments };
+  }
+  if (ast.type === "bin") {
+    const l = linearize(ast.left), r = linearize(ast.right);
+    if (!l || !r) return null;
+    const segments = l.segments || r.segments;
+    if (ast.op === "PLUS") return { coeff: l.coeff + r.coeff, offset: l.offset + r.offset, segments };
+    if (ast.op === "MINUS") return { coeff: l.coeff - r.coeff, offset: l.offset - r.offset, segments };
+    if (ast.op === "STAR") {
+      if (l.coeff !== 0 && r.coeff !== 0) return null;
+      return { coeff: l.coeff * r.offset + r.coeff * l.offset, offset: l.offset * r.offset, segments };
+    }
+    if (ast.op === "SLASH") {
+      if (r.coeff !== 0) return null;
+      return { coeff: l.coeff / r.offset, offset: l.offset / r.offset, segments };
+    }
+  }
+  return null;
+}
+
+function trySolveBackward(fn, parentNode, desiredValue, edits, warnings) {
+  const lin = linearize(fn.ast);
+  if (!lin || !lin.segments || lin.coeff === 0) {
+    warnings.push("expression isn't a simple parent.<prop>.<x|y> +/-/*// chain, can't solve backward");
+    return;
+  }
+  const [head, prop, axis] = lin.segments;
+  if (head !== "parent" || (axis !== "x" && axis !== "y") || !parentNode) {
+    warnings.push(`can't solve backward through '${lin.segments.join(".")}', only parent.<prop>.<x|y> is supported`);
+    return;
+  }
+  const index = axis === "x" ? 0 : 1;
+  const target = parentNode.props[prop]?.[index];
+  if (!isEditable(target)) {
+    warnings.push(`${parentNode.id}.${prop}.${axis} isn't a plain literal, can't rewrite it`);
+    return;
+  }
+  const solvedValue = (desiredValue - lin.offset) / lin.coeff;
+  edits.push({ start: target.start, end: target.end, text: formatNumber(solvedValue, target.unit) });
+}
+
+// ---------- Module loading (unchanged from 12/13) ----------
+const loadedExternal = new Set();
+const loadedInternal = new Set();
+// A loaded module can register a cleanup function (registerModuleCleanup, exposed on
+// PlanCore below) — run when that module is no longer in the plan's own module list, so a
+// module with persistent side effects (event listeners, injected DOM/CSS — as opposed to a
+// shape module's pure render-function registration) doesn't just keep running forever once
+// loaded. Found necessary from actually testing this: removing `module
+// "interactivity-module.js"` from the source left every listener still attached, since
+// "loaded once, cached forever" (the pre-existing, correct behavior for a stateless shape
+// renderer) was silently being applied to something stateful too.
+const moduleCleanups = new Map();
+
+function deactivateRemovedModules(currentModuleNames) {
+  for (const [name, cleanup] of [...moduleCleanups]) {
+    if (!currentModuleNames.includes(name)) {
+      cleanup();
+      moduleCleanups.delete(name);
+      loadedExternal.delete(name);
+      loadedInternal.delete(name);
+    }
+  }
+}
+
+function isUrlLike(name) { return name.includes("/") || name.endsWith(".js") || name.includes("://"); }
+
+function loadExternalScript(src) {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = src;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error(`Failed to load external module '${src}'`));
+    document.body.appendChild(script);
+  });
+}
+
+async function ensureModulesLoaded(moduleNames) {
+  for (const name of moduleNames) {
+    if (isUrlLike(name)) {
+      if (!loadedExternal.has(name)) {
+        await loadExternalScript(name);
+        loadedExternal.add(name);
+      }
+    } else if (INTERNAL_MODULES[name]) {
+      if (!loadedInternal.has(name)) {
+        INTERNAL_MODULES[name]();
+        loadedInternal.add(name);
+      }
+    } else {
+      throw new Error(`Unknown internal module '${name}' (no built-in registry entry)`);
+    }
+  }
+}
+
+// ---------- Renderer (two-pass, same geometry as 13 — but no selection/icon awareness at
+// all: no selectedId parameter, no .selected class, no connect/disconnect icons. Those are
+// entirely the interactivity module's responsibility now; see the page's bottom note for
+// what that costs in z-order once the module layers its own icons on top afterward.) ----------
+const M = 60; // meters -> px
+
+function resolvePositionArray(props, parentProps) {
+  const raw = props.position || [0, 0];
+  return raw.map((v) => (typeof v === "function" ? v({ parent: parentProps }) : numOf(v)));
+}
+
+function computePositions(node, parent, offset, positions) {
+  const [px, py] = resolvePositionArray(node.props, parent ? parent.props : null);
+  const abs = [offset[0] + px, offset[1] + py];
+  positions[node.id] = abs;
+  for (const child of node.children) computePositions(child, node, abs, positions);
+}
+
+function computeCornerUsers(node, cornerUsers) {
+  for (const pt of node.props.points ?? []) {
+    if (typeof pt === "function" && pt.cornerRef) (cornerUsers[pt.cornerRef] ??= []).push(node.id);
+  }
+  for (const child of node.children) computeCornerUsers(child, cornerUsers);
+}
+
+function resolvePointAbs(pt, ownAbs, positions) {
+  if (Array.isArray(pt)) return [ownAbs[0] + numOf(pt[0]), ownAbs[1] + numOf(pt[1])];
+  if (typeof pt === "function" && pt.cornerRef) {
+    const p = positions[pt.cornerRef];
+    if (!p) throw new Error(`points reference to unknown node '${pt.cornerRef}'`);
+    return p;
+  }
+  throw new Error("a points entry must be a [x,y] pair or a single sibling node id");
+}
+
+function escapeXml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" }[c]));
+}
+function fmtMeters(n) { return (Math.round(n * 100) / 100).toString(); }
+
+function dimensionText(node) {
+  if (node.props.shape === "rect") {
+    const w = numOf(node.props.size[0]), h = numOf(node.props.size[1]);
+    return `${fmtMeters(w)} × ${fmtMeters(h)} m`;
+  }
+  if (node.props.shape === "circle") {
+    const r = numOf(node.props.radius ?? 0);
+    return `⌀ ${fmtMeters(r * 2)} m`;
+  }
+  return null;
+}
+
+function renderAnnotation(node, anchor, shapesOut) {
+  const label = node.props.label;
+  const dims = node.props.dimensions ? dimensionText(node) : null;
+  if (!label && !dims) return;
+  const showMode = node.props.show === "always" ? "always" : "hover";
+  const lines = [label, dims].filter(Boolean);
+  const lineHeight = 12;
+  const startY = anchor[1] * M - ((lines.length - 1) * lineHeight) / 2;
+  const textEls = lines.map((line, i) =>
+    `<text x="${anchor[0]*M}" y="${startY + i*lineHeight}" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#222">${escapeXml(line)}</text>`
+  ).join("");
+  shapesOut.push(`<g class="annotation" data-show="${showMode}">${textEls}</g>`);
+}
+
+function renderShape(node, positions, cornerUsers, shapesOut, anchorsOut, bboxes) {
+  const ownAbs = positions[node.id];
+  const { shape, style } = node.props;
+  const idAttr = `data-id="${node.id}"`;
+  let anchor = ownAbs;
+
+  if (shape === "rect" && style) {
+    const w = numOf(node.props.size[0]), h = numOf(node.props.size[1]);
+    anchor = [ownAbs[0] + w / 2, ownAbs[1] + h / 2];
+    bboxes[node.id] = { left: ownAbs[0], top: ownAbs[1], right: ownAbs[0] + w, bottom: ownAbs[1] + h };
+    shapesOut.push(`<rect class="obj" ${idAttr} pointer-events="all" x="${ownAbs[0]*M}" y="${ownAbs[1]*M}" width="${w*M}" height="${h*M}"
+      fill="${style.fill ?? "none"}" stroke="${style.stroke ?? "none"}" stroke-width="${numOf(style.strokeWidth ?? 0.02)*M}" />`);
+    renderAnnotation(node, anchor, shapesOut);
+  } else if ((shape === "polyline" || shape === "polygon") && style) {
+    const absPts = node.props.points.map((pt) => resolvePointAbs(pt, ownAbs, positions));
+    anchor = [absPts.reduce((s, p) => s + p[0], 0) / absPts.length, absPts.reduce((s, p) => s + p[1], 0) / absPts.length];
+    const ptsStr = absPts.map(([x, y]) => `${x*M},${y*M}`).join(" ");
+    const dashAttr = style.strokeDash ? `stroke-dasharray="${style.strokeDash.split(",").map(v => v*M).join(",")}"` : "";
+    const tag = shape === "polygon" ? "polygon" : "polyline";
+    shapesOut.push(`<${tag} class="obj" ${idAttr} pointer-events="all" points="${ptsStr}" fill="${style.fill ?? "none"}" stroke="${style.stroke}" stroke-width="${numOf(style.strokeWidth)*M}" ${dashAttr} />`);
+    renderAnnotation(node, anchor, shapesOut);
+  } else if (shape === "circle" && style) {
+    const r = numOf(node.props.radius ?? 0.1);
+    shapesOut.push(`<circle class="obj" ${idAttr} pointer-events="all" cx="${ownAbs[0]*M}" cy="${ownAbs[1]*M}" r="${r*M}"
+      fill="${style.fill ?? "none"}" stroke="${style.stroke ?? "none"}" stroke-width="${numOf(style.strokeWidth ?? 0.02)*M}" />`);
+    renderAnnotation(node, anchor, shapesOut);
+  } else if (window.PlanModules && window.PlanModules[shape]) {
+    shapesOut.push(window.PlanModules[shape](node, ownAbs, M, { numOf, idAttr }));
+    renderAnnotation(node, anchor, shapesOut);
+  } else {
+    const users = (cornerUsers[node.id] || []).join(",");
+    anchorsOut.push(`<circle class="anchor-hit" ${idAttr} data-corner-users="${users}" pointer-events="all" cx="${ownAbs[0]*M}" cy="${ownAbs[1]*M}" r="10" />`);
+  }
+
+  for (const child of node.children) renderShape(child, positions, cornerUsers, shapesOut, anchorsOut, bboxes);
+}
+
+// Cached across renders, cleared explicitly by rerender() unless the caller asks to preserve
+// it (see rerender below) — an auto-refit viewBox would cancel out a drag's own motion, but
+// only *during* a drag; a fresh edit deserves a fresh fit. Deciding which applies is now the
+// caller's job (core can't tell why it was asked to re-render), not a hidden heuristic.
+let fixedViewBox = null;
+
+function render(program) {
+  const positions = {};
+  computePositions(program.root, null, [0, 0], positions);
+  const cornerUsers = {};
+  computeCornerUsers(program.root, cornerUsers);
+  const shapes = [], anchors = [], bboxes = {};
+  renderShape(program.root, positions, cornerUsers, shapes, anchors, bboxes);
+
+  if (!fixedViewBox) {
+    const pts = Object.values(positions);
+    let minX = Math.min(...pts.map(p => p[0])), maxX = Math.max(...pts.map(p => p[0]));
+    let minY = Math.min(...pts.map(p => p[1])), maxY = Math.max(...pts.map(p => p[1]));
+    for (const node of Object.values(program.nodesById)) {
+      if (node.props.shape === "circle" && node.props.radius) {
+        const r = numOf(node.props.radius);
+        const [cx, cy] = positions[node.id];
+        minX = Math.min(minX, cx - r); maxX = Math.max(maxX, cx + r);
+        minY = Math.min(minY, cy - r); maxY = Math.max(maxY, cy + r);
+      }
+    }
+    const pad = 0.7;
+    minX -= pad; maxX += pad; minY -= pad; maxY += pad;
+    fixedViewBox = { minX, minY, vw: (maxX - minX) * M, vh: (maxY - minY) * M };
+  }
+  const { minX, minY, vw, vh } = fixedViewBox;
+  const out = [...shapes, ...anchors];
+  return { svg: `<svg width="${vw}" height="${vh}" viewBox="${minX*M} ${minY*M} ${vw} ${vh}">${out.join("\n")}</svg>`, bboxes };
+}
+
+// ---------- Text-splice helpers, generic enough that the interactivity module reuses them
+// rather than reimplementing offset math — but not parser-internal, so exposed as plain
+// utilities rather than folded into parse/render. ----------
+function formatNumber(value, unit) {
+  const base = unit === "cm" ? value * 100 : value;
+  const rounded = Math.round(base * 1000) / 1000;
+  return `${rounded}${unit}`;
+}
+
+function connectedNodeIds(startId, connections) {
+  const adj = {};
+  for (const c of connections) {
+    (adj[c.from] ??= []).push(c.to);
+    (adj[c.to] ??= []).push(c.from);
+  }
+  const seen = new Set([startId]);
+  const queue = [startId];
+  while (queue.length) {
+    for (const nb of adj[queue.shift()] ?? []) {
+      if (!seen.has(nb)) { seen.add(nb); queue.push(nb); }
+    }
+  }
+  seen.delete(startId);
+  return [...seen];
+}
+
+// ---------- D-020 settings: allowUnrealisticPolygons (F-004) — geometry the drag logic
+// needs, kept in core since it operates on the parsed tree, same as computePositions etc. ----------
+function segmentsIntersect(p1, p2, p3, p4) {
+  const d = (a, b, c) => (b[0]-a[0])*(c[1]-a[1]) - (b[1]-a[1])*(c[0]-a[0]);
+  const d1 = d(p3, p4, p1), d2 = d(p3, p4, p2), d3 = d(p1, p2, p3), d4 = d(p1, p2, p4);
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+}
+
+function polygonSelfIntersects(pts) {
+  const n = pts.length;
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const adjacent = j === (i + 1) % n || i === (j + 1) % n;
+      if (adjacent) continue;
+      if (segmentsIntersect(pts[i], pts[(i+1)%n], pts[j], pts[(j+1)%n])) return true;
+    }
+  }
+  return false;
+}
+
+function checkRealism(nodeId, proposedXY, base, cornerUsers, settings) {
+  if (settings.allowUnrealisticPolygons) return null;
+  const users = cornerUsers[nodeId];
+  if (!users) return null;
+
+  const positions = {};
+  computePositions(base.root, null, [0, 0], positions);
+  positions[nodeId] = proposedXY;
+
+  for (const userId of users) {
+    const userNode = base.nodesById[userId];
+    if (userNode.props.shape !== "polygon") continue;
+    const pts = userNode.props.points.map((pt) => resolvePointAbs(pt, positions[userId], positions));
+    if (polygonSelfIntersects(pts)) {
+      return `${nodeId}: moving here would make '${userId}' self-intersecting (unrealistic). Set allowUnrealisticPolygons: true to allow this.`;
+    }
+  }
+  return null;
+}
+
+function nodeDragEdits(node, parent, dx, dy, base, cornerUsers, warnings) {
+  const edits = [];
+  if (node.props.position) {
+    const [x0, y0] = node.props.position;
+    const parentCtx = { parent: parent ? parent.props : null };
+
+    if (isEditable(x0) && isEditable(y0)) {
+      const proposed = [x0.value + dx, y0.value + dy];
+      const violation = checkRealism(node.id, proposed, base, cornerUsers, base.settings);
+      if (violation) {
+        warnings.push(violation);
+      } else {
+        edits.push({ start: x0.start, end: x0.end, text: formatNumber(proposed[0], x0.unit) });
+        edits.push({ start: y0.start, end: y0.end, text: formatNumber(proposed[1], y0.unit) });
+      }
+    } else {
+      if (isEditable(x0)) edits.push({ start: x0.start, end: x0.end, text: formatNumber(x0.value + dx, x0.unit) });
+      else if (typeof x0 === "function") trySolveBackward(x0, parent, x0(parentCtx) + dx, edits, warnings);
+      if (isEditable(y0)) edits.push({ start: y0.start, end: y0.end, text: formatNumber(y0.value + dy, y0.unit) });
+      else if (typeof y0 === "function") trySolveBackward(y0, parent, y0(parentCtx) + dy, edits, warnings);
+    }
+  }
+
+  if (node.props.points) {
+    for (const pt of node.props.points) {
+      if (Array.isArray(pt)) {
+        const [x, y] = pt;
+        if (isEditable(x)) edits.push({ start: x.start, end: x.end, text: formatNumber(x.value + dx, x.unit) });
+        if (isEditable(y)) edits.push({ start: y.start, end: y.end, text: formatNumber(y.value + dy, y.unit) });
+      } else if (typeof pt === "function" && pt.cornerRef) {
+        warnings.push(`${node.id}: endpoint is pinned to '${pt.cornerRef}' — drag that corner directly to move it`);
+      }
+    }
+  }
+  return edits;
+}
+
+// ---------- Wire up: parse/render/module pipeline only. No pointer/click handling here at
+// all — that's the whole point of this prototype. ----------
+const sourceEl = document.getElementById("source");
+const rootEl = document.getElementById("plan-root");
+const errorEl = document.getElementById("error");
+const dragmsgEl = document.getElementById("dragmsg");
+const modlogEl = document.getElementById("modlog");
+let program = null;
+const renderedCallbacks = [];
+
+function logModule(msg) { modlogEl.textContent += `[module] ${msg}\n`; }
+
+// opts.preserveViewBox: true keeps reusing the cached viewBox instead of recomputing a fresh
+// fit — the interactivity module passes this during a drag's own repeated re-renders (see
+// D-014's viewBox-freeze correction); every other caller (typing in the editor, or the
+// module's own discrete actions) leaves it false and gets a fresh fit.
+async function rerender(opts = {}) {
+  try {
+    const parsed = parse(sourceEl.value);
+    deactivateRemovedModules(parsed.modules);
+    await ensureModulesLoaded(parsed.modules);
+    program = parsed;
+    if (!opts.preserveViewBox) fixedViewBox = null;
+    const result = render(program);
+    rootEl.innerHTML = result.svg;
+    errorEl.textContent = "";
+    for (const cb of renderedCallbacks) cb(program, result);
+    return result;
+  } catch (e) {
+    errorEl.textContent = "Parse/render/module error: " + e.message;
+  }
+}
+
+window.PlanCore = {
+  parse, render,
+  numOf, isEditable, formatNumber,
+  computePositions, computeCornerUsers, resolvePointAbs, connectedNodeIds, nodeDragEdits,
+  rootEl, sourceEl, dragmsgEl, modlogEl,
+  M,
+  rerender,
+  // Returns an unsubscribe function — a module that registers a cleanup (see
+  // registerModuleCleanup) needs this to stop reacting to renders after it's torn down,
+  // or its callback would keep firing (and re-adding its own overlay) even after removal.
+  onRendered: (cb) => {
+    renderedCallbacks.push(cb);
+    return () => {
+      const i = renderedCallbacks.indexOf(cb);
+      if (i !== -1) renderedCallbacks.splice(i, 1);
+    };
+  },
+  // A module with side effects beyond a pure render-function registration (event listeners,
+  // injected DOM/CSS, timers — anything that outlives a single render) should register a
+  // cleanup here, keyed by its own module name (the exact string used in `module "..."`).
+  // Core calls it automatically once that name disappears from the plan's own module list,
+  // and evicts it from the loaded-module cache so re-declaring it later loads it fresh
+  // rather than silently doing nothing (a module without persistent side effects, like a
+  // pure shape renderer, doesn't need this — it has nothing to undo between renders anyway).
+  registerModuleCleanup: (name, cleanupFn) => moduleCleanups.set(name, cleanupFn),
+};
+
+sourceEl.value = EXAMPLE;
+sourceEl.addEventListener("input", () => rerender());
+rerender();
+</script>
+</body>
+</html>

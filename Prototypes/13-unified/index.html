@@ -1,0 +1,1209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>2DPlaner prototype — unified</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 2rem; background: #fafafa; color: #222; }
+  h1 { font-size: 1.1rem; }
+  p.note { color: #666; max-width: 900px; line-height: 1.4; }
+  p.limits { color: #a66; max-width: 900px; line-height: 1.4; font-size: 0.9em; }
+  code { background: #eee; padding: 0.1em 0.3em; border-radius: 3px; }
+  .layout { display: flex; gap: 1.5rem; align-items: flex-start; flex-wrap: wrap; }
+  textarea { width: 560px; height: 720px; font-family: ui-monospace, Consolas, monospace; font-size: 13px;
+    padding: 0.75rem; border: 1px solid #ccc; border-radius: 4px; }
+  svg { background: #fff; border: 1px solid #ccc; }
+  svg [data-id] { cursor: grab; }
+  svg [data-id]:active { cursor: grabbing; }
+
+  svg .obj { transition: filter 0.1s; }
+  /* All native :hover-driven chrome below is scoped to "not currently dragging" — CSS
+     :hover fires for whatever's actually under the cursor regardless of which element a
+     drag started on (see D-009's setPointerCapture correction), so without this, dragging
+     one object across another would light up hover effects for elements the user isn't
+     actually interacting with. #plan-root gets a "dragging" class for the duration. */
+  #plan-root:not(.dragging) svg .obj:hover { filter: drop-shadow(0 0 2px #37f) drop-shadow(0 0 2px #37f); }
+  svg .obj.connected-highlight { filter: drop-shadow(0 0 3px #e80) drop-shadow(0 0 3px #e80); }
+  svg .obj.selected { stroke-width: 3px !important; }
+  svg .icon-btn { cursor: pointer; }
+  svg .icon-btn circle { transition: r 0.1s; }
+  #plan-root:not(.dragging) svg .icon-btn:hover circle { r: 11; }
+
+  .anchor-hit { fill: transparent; }
+  #plan-root:not(.dragging) .anchor-hit:hover { fill: #e33; opacity: 0.7; }
+  svg .obj.corner-preview { stroke: #e33 !important; filter: drop-shadow(0 0 2px #e33); }
+
+  svg .annotation text { pointer-events: none; font-family: system-ui, sans-serif; }
+  svg .annotation[data-show="hover"] { opacity: 0; transition: opacity 0.15s; }
+  #plan-root:not(.dragging) svg .obj:hover + .annotation[data-show="hover"] { opacity: 1; }
+
+  .context-menu { position: fixed; z-index: 1000; margin: 0; padding: 4px 0; min-width: 170px;
+    list-style: none; background: #fff; border: 1px solid #ccc; border-radius: 6px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.18); font-family: system-ui, sans-serif; font-size: 13px; }
+  .context-menu[hidden] { display: none; }
+  .context-menu li { padding: 6px 16px; cursor: pointer; }
+  .context-menu li:hover { background: #eef2ff; }
+  .context-menu li.danger { color: #a11; }
+
+  #error { color: #a11; white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+  #dragmsg { color: #666; white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 13px; min-height: 1.2em; }
+  #modlog { color: #266; white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 12px; min-height: 1.4em; }
+</style>
+</head>
+<body>
+<h1>2DPlaner prototype: unified</h1>
+<p class="note">
+  <em>Terminology note: this prototype predates D-033's rename of the <code>node</code>
+  keyword to <code>element</code> and <code>allowUnrealisticPolygons</code> to
+  <code>allowSelfIntersectingPolygons</code> — kept as originally built, not rewritten. See
+  <a href="../15-utility-connection/">15</a> for the current names.</em>
+</p>
+<p class="note">
+  Everything validated in 01–12, combined into one plan: a small studio apartment. Walls with
+  a door share exact corner points (D-018); <code>bed</code>/<code>desk</code>/<code>side_table</code>
+  are plain rects/circle; <code>rug</code> is a 5-point polygon (also via shared corners);
+  <code>stove</code> and <code>counter</code> are joined with a real <code>connection</code>
+  (drag one, both move — try it, then select either and use the × icon at their contact point
+  to disconnect). Drag them apart and back near each other, then hit the + icon to reconnect —
+  it snaps them exactly flush even if the drag left a small gap or overlap, rather than
+  connecting them wherever they happened to land. <code>desk</code>'s
+  <code>label</code>/<code>show</code>/<code>dimensions</code> demonstrate D-026, and
+  <code>star_decoration</code> is rendered entirely by the <code>"star-tool"</code> module
+  declared in the preamble — the core renderer has no built-in idea what a "star" is.
+</p>
+<p class="limits">
+  An earlier version of this example gave <code>desk</code> an expression-backed position
+  (<code>parent.size.x - 1.2m - 0.2m</code>) specifically to demonstrate D-012 solve-backward.
+  In practice, that meant dragging the desk resized the entire room — reported back as
+  nonsensical, correctly: a piece of furniture moving shouldn't move the wall. Solve-backward
+  itself still works (see D-012 in decisions.md for where it's actually appropriate); this
+  particular composition, rewriting a parent's own <em>size</em> as a side effect of moving a
+  child, just isn't a good default and was removed from the example rather than kept as a
+  "this is fine" demo. <code>desk</code>'s position is a plain literal now.
+</p>
+<p class="limits">
+  Deliberately not attempted here: no live constraint solver beyond D-012's simple linear
+  solve-backward (F-001), connections only work between rect-shaped nodes since adjacency is
+  computed from axis-aligned bounding boxes (matches 08's scope note), and modules only get to
+  contribute a shape renderer — no interactivity hooks, no "selected" outline on
+  <code>star_decoration</code> (F-002 remains rendering-only). No backend: this is still
+  frontend-only, per the explicit scope for this prototype.
+</p>
+<p class="limits">
+  One real bug found while building this and fixed here (not present in the individual
+  09/10 prototypes only because their examples never happened to hit it): the parser's
+  "is this a plain editable literal" check only recognized a bare number token
+  (<code>5m</code>), not a unary-negated one (<code>-5m</code>) — so a node dragged to a
+  negative coordinate would parse back as a plain non-editable number and silently stop being
+  draggable on the <em>next</em> move. Fixed by also recognizing <code>neg(num)</code> as an
+  editable literal, spanning from the minus sign through the number.
+</p>
+<p class="limits">
+  Two more bugs found from actually using this, both fixed: selecting <code>room</code> (a
+  rect that's also the parent of every piece of furniture) offered a connect-icon to nearly
+  everything inside it, since 08's adjacency test only checked "do these boxes overlap" —
+  true for full containment, not just edge contact. Fixed by requiring a genuine near-zero
+  gap on one axis, not just any overlap. Separately, dragging one object across a polygon's
+  corner lit up that corner as if hovering it directly — without <code>setPointerCapture</code>
+  (dropped early on, see D-009), the pointer still fires over/out events for whatever's
+  actually under the cursor mid-drag. Fixed by suppressing the hover preview while a drag is
+  active.
+</p>
+<p class="limits">
+  A naming/syntax review then changed six things (see D-029 in decisions.md): the open line
+  shape is now <code>"polyline"</code> (was <code>"line"</code> — misleadingly implied
+  exactly 2 points); <code>showDimensions</code> is now <code>dimensions</code> (no longer
+  sharing the word "show" with the unrelated <code>show</code> visibility property);
+  <code>style.dash</code> is now <code>style.strokeDash</code> (consistent with
+  <code>strokeWidth</code> — both are stroke-only); and <code>connection</code> now accepts
+  an optional trailing <code>{ ... }</code> for properties (e.g. <code>kind</code>, D-014),
+  which had no syntax at all before. One caveat on that last one:
+  <code>removeConnection</code> deletes a connection by its whole *line*, so a property
+  block written across multiple lines would only be partially removed — fine for what this
+  prototype ever writes itself (always one line), a real gap if hand-formatted differently.
+</p>
+<p class="note">
+  Right-click any object for a custom context menu (D-030), replacing the browser's default
+  one — currently just <b>Delete Element</b>, more to follow. Deleting removes the node's own
+  block plus any <code>connection</code> mentioning it; deleting the plan's root or a node
+  still referenced as a shared corner (D-018) is refused with a message instead of silently
+  breaking whatever depends on it.
+</p>
+<div class="layout">
+  <textarea id="source" spellcheck="false"></textarea>
+  <div>
+    <div id="plan-root"></div>
+    <div id="error"></div>
+    <div id="dragmsg"></div>
+    <div id="modlog"></div>
+  </div>
+</div>
+
+<!-- Outside #plan-root deliberately: that div's innerHTML gets replaced wholesale on every
+     render, which would wipe this out mid-interaction if it were nested inside. -->
+<ul id="context-menu" class="context-menu" hidden></ul>
+
+<script>
+const EXAMPLE = `module "star-tool"
+
+settings {
+  allowUnrealisticPolygons: false
+}
+
+node room {
+  shape: "rect"
+  size: [5m, 4m]
+  position: [0m, 0m]
+  style: { fill: "#f7f5f0", stroke: "#333", strokeWidth: 0.04 }
+
+  node corner_1 { position: [0m, 0m] }
+  node corner_2 { position: [2.2m, 0m] }
+  node corner_3 { position: [3.1m, 0m] }
+  node corner_4 { position: [5m, 0m] }
+
+  node wall_a {
+    shape: "polyline"
+    points: [corner_1, corner_2]
+    style: { stroke: "#444", strokeWidth: 0.1 }
+  }
+  node door {
+    shape: "polyline"
+    points: [corner_2, corner_3]
+    style: { stroke: "#8a6a42", strokeWidth: 0.1, strokeDash: "0.15,0.1" }
+    label: "Tür"
+    show: "hover"
+  }
+  node wall_b {
+    shape: "polyline"
+    points: [corner_3, corner_4]
+    style: { stroke: "#444", strokeWidth: 0.1 }
+  }
+
+  node bed {
+    shape: "rect"
+    size: [1.6m, 2m]
+    position: [0.3m, 0.4m]
+    style: { fill: "#cfe0f5", stroke: "#4a76a8", strokeWidth: 0.02 }
+    label: "Bett"
+    show: "hover"
+  }
+
+  node desk {
+    shape: "rect"
+    size: [1.2m, 0.6m]
+    position: [3.6m, 0.2m]
+    style: { fill: "#fbe3b0", stroke: "#a87a2b", strokeWidth: 0.02 }
+    label: "Schreibtisch"
+    show: "hover"
+  }
+
+  node side_table {
+    shape: "circle"
+    radius: 0.35m
+    position: [2.5m, 3.3m]
+    style: { fill: "#bfe3f5", stroke: "#3a7a9a", strokeWidth: 0.03 }
+    label: "Tisch"
+    show: "always"
+    dimensions: true
+  }
+
+  node stove {
+    shape: "rect"
+    size: [0.6m, 0.6m]
+    position: [4.1m, 2.6m]
+    style: { fill: "#d9534f", stroke: "#8a2f2a", strokeWidth: 0.02 }
+    label: "Herd"
+    show: "hover"
+  }
+
+  node counter {
+    shape: "rect"
+    size: [0.5m, 1.2m]
+    position: [4.1m, 1.4m]
+    style: { fill: "#e8c896", stroke: "#a9895c", strokeWidth: 0.02 }
+    label: "Ablage"
+    show: "hover"
+  }
+
+  node rug_1 { position: [1m, 2.6m] }
+  node rug_2 { position: [1.9m, 2.5m] }
+  node rug_3 { position: [2.1m, 3.4m] }
+  node rug_4 { position: [1.5m, 3.9m] }
+  node rug_5 { position: [0.7m, 3.5m] }
+
+  node rug {
+    shape: "polygon"
+    points: [rug_1, rug_2, rug_3, rug_4, rug_5]
+    style: { fill: "#e0d5c0", stroke: "#b0a080", strokeWidth: 0.02 }
+    label: "Teppich"
+    show: "hover"
+  }
+
+  node star_decoration {
+    shape: "star"
+    radius: 0.15m
+    position: [0.3m, 3.8m]
+    style: { fill: "#f0c419", stroke: "#a67c00", strokeWidth: 0.02 }
+  }
+}
+
+// connection also accepts an optional trailing { ... } for properties (e.g. { kind:
+// "directional" }, D-014) — omitted here since this pair is symmetric; the drag/render
+// logic doesn't yet treat "kind" differently either way, only the syntax now allows it.
+connection stove counter
+`;
+
+// ---------- Built-in ("internal") module registry — bundled in this page's own script,
+// same convention as 12 (an external module would instead be fetched via <script src>). ----------
+const INTERNAL_MODULES = {
+  "star-tool": () => {
+    window.PlanModules = window.PlanModules || {};
+    window.PlanModules["star"] = (node, ownAbs, M, { numOf, idAttr }) => {
+      const r = numOf(node.props.radius ?? 0.3);
+      const style = node.props.style ?? {};
+      const cx = ownAbs[0] * M, cy = ownAbs[1] * M, rOuter = r * M, rInner = r * M * 0.42;
+      let d = "";
+      for (let i = 0; i < 10; i++) {
+        const angle = -Math.PI / 2 + i * Math.PI / 5;
+        const rr = i % 2 === 0 ? rOuter : rInner;
+        d += (i === 0 ? "M" : "L") + (cx + rr * Math.cos(angle)).toFixed(2) + "," + (cy + rr * Math.sin(angle)).toFixed(2) + " ";
+      }
+      return `<path class="obj" ${idAttr} pointer-events="all" d="${d}Z" fill="${style.fill ?? "none"}" stroke="${style.stroke ?? "none"}" stroke-width="${numOf(style.strokeWidth ?? 0.02) * M}" />`;
+    };
+    logModule("'star-tool' (internal) registered shape 'star'");
+  },
+};
+
+// ---------- Tokenizer (tracks source spans, needed to splice edits back in) ----------
+const TOKEN_RE = /\s+|\/\/[^\n]*|"(?:[^"\\]|\\.)*"|\d+(?:\.\d+)?(?:cm|m)?\b|[A-Za-z_][A-Za-z0-9_]*|[{}\[\]():,.+\-*/]/y;
+const KEYWORDS = new Set(["node", "module", "connection", "settings", "true", "false"]);
+const PUNCT = { "{": "LBRACE", "}": "RBRACE", "[": "LBRACKET", "]": "RBRACKET",
+  "(": "LPAREN", ")": "RPAREN", ":": "COLON", ",": "COMMA", ".": "DOT",
+  "+": "PLUS", "-": "MINUS", "*": "STAR", "/": "SLASH" };
+
+function tokenize(src) {
+  const tokens = [];
+  let i = 0;
+  while (i < src.length) {
+    TOKEN_RE.lastIndex = i;
+    const m = TOKEN_RE.exec(src);
+    if (!m || m.index !== i) throw new Error(`Unexpected character ${JSON.stringify(src[i])} at position ${i}`);
+    const text = m[0];
+    const start = i;
+    i += text.length;
+    if (/^\s+$/.test(text) || text.startsWith("//")) continue;
+    if (text.startsWith('"')) {
+      tokens.push({ type: "STRING", value: text.slice(1, -1), start, end: i });
+    } else if (/^\d/.test(text)) {
+      const unitMatch = text.match(/(cm|m)$/);
+      const unit = unitMatch ? unitMatch[0] : "";
+      const num = parseFloat(unit ? text.slice(0, -unit.length) : text);
+      tokens.push({ type: "NUMBER", value: unit === "cm" ? num / 100 : num, unit, start, end: i });
+    } else if (/^[A-Za-z_]/.test(text)) {
+      tokens.push({ type: KEYWORDS.has(text) ? text.toUpperCase() : "IDENT", value: text, start, end: i });
+    } else {
+      tokens.push({ type: PUNCT[text], value: text, start, end: i });
+    }
+  }
+  tokens.push({ type: "EOF", value: null, start: i, end: i });
+  return tokens;
+}
+
+// ---------- Parser (modules + settings + connections + expressions + points-as-references) ----------
+function parse(src) {
+  const tokens = tokenize(src);
+  const nodesById = {};
+  let pos = 0;
+  const peek = () => tokens[pos];
+  const next = () => tokens[pos++];
+  const expect = (type) => {
+    if (peek().type !== type) throw new Error(`Expected ${type} but got ${peek().type} (${JSON.stringify(peek().value)})`);
+    return next();
+  };
+
+  function parseProgram() {
+    const modules = [];
+    while (peek().type === "MODULE") { next(); modules.push(expect("STRING").value); }
+    let settings = {};
+    if (peek().type === "SETTINGS") { next(); settings = parseObjectLiteral(); }
+    const root = parseNodeDecl(null);
+    const connections = [];
+    while (peek().type !== "EOF") connections.push(parseConnectionDecl());
+    return { root, nodesById, modules, settings, connections };
+  }
+
+  function parseNodeDecl(parentId) {
+    const startTok = expect("NODE");
+    const id = expect("IDENT").value;
+    expect("LBRACE");
+    const props = {};
+    const children = [];
+    while (peek().type !== "RBRACE") {
+      if (peek().type === "NODE") {
+        children.push(parseNodeDecl(id));
+      } else {
+        const key = expect("IDENT").value;
+        expect("COLON");
+        props[key] = parseValue();
+      }
+    }
+    const endTok = expect("RBRACE");
+    // start/end span the whole declaration (children included) — needed to delete a node
+    // as one unit, the way individual value spans are already needed to edit one in place.
+    const node = { id, props, children, parentId, start: startTok.start, end: endTok.end };
+    nodesById[id] = node;
+    return node;
+  }
+
+  // Positional `from`/`to`, plus an optional trailing { ... } for properties (D-014's
+  // symmetric/directional "kind" is the motivating one) — previously there was no syntax
+  // at all for a connection's own properties, even though D-014 describes them as existing.
+  // Spans the whole statement (brace included, if present) so disconnect can splice it out.
+  function parseConnectionDecl() {
+    const startTok = expect("CONNECTION");
+    const from = expect("IDENT").value;
+    const toTok = expect("IDENT");
+    let props = {};
+    let endPos = toTok.end;
+    if (peek().type === "LBRACE") {
+      props = parseObjectLiteral();
+      endPos = tokens[pos - 1].end; // the RBRACE just consumed
+    }
+    return { from, to: toTok.value, props, start: startTok.start, end: endPos };
+  }
+
+  function parseValue() {
+    if (peek().type === "LBRACKET") return parseArray();
+    if (peek().type === "LBRACE") return parseObjectLiteral();
+    if (peek().type === "STRING") return next().value;
+    if (peek().type === "TRUE") { next(); return true; }
+    if (peek().type === "FALSE") { next(); return false; }
+    return parseExprValue();
+  }
+
+  function parseArray() {
+    expect("LBRACKET");
+    const items = [];
+    while (peek().type !== "RBRACKET") {
+      items.push(parseValue());
+      if (peek().type === "COMMA") next(); else break;
+    }
+    expect("RBRACKET");
+    return items;
+  }
+
+  function parseObjectLiteral() {
+    expect("LBRACE");
+    const obj = {};
+    while (peek().type !== "RBRACE") {
+      const key = expect("IDENT").value;
+      expect("COLON");
+      obj[key] = parseValue();
+      if (peek().type === "COMMA") next();
+    }
+    expect("RBRACE");
+    return obj;
+  }
+
+  function parseExprValue() {
+    const ast = parseExpr();
+    if (ast.type === "num" && !ast.compound) {
+      return { value: ast.value, unit: ast.unit, start: ast.start, end: ast.end };
+    }
+    // A negated bare number (`-5m`) is *also* a plain editable literal — the span just has
+    // to include the minus sign. Without this, a node dragged past zero once would parse
+    // back as a plain non-editable number and silently stop being draggable (see the note
+    // above the editor).
+    if (ast.type === "neg" && ast.value.type === "num" && !ast.value.compound) {
+      return { value: -ast.value.value, unit: ast.value.unit, start: ast.start, end: ast.value.end };
+    }
+    if (containsPath(ast)) {
+      const fn = (ctx) => evalAst(ast, ctx);
+      fn.ast = ast;
+      if (ast.type === "path" && ast.segments.length === 1) fn.cornerRef = ast.segments[0];
+      return fn;
+    }
+    return evalAst(ast, null);
+  }
+
+  function parseExpr() {
+    let node = parseTerm();
+    while (peek().type === "PLUS" || peek().type === "MINUS") {
+      const op = next().type;
+      node = { type: "bin", op, left: node, right: parseTerm(), compound: true };
+    }
+    return node;
+  }
+
+  function parseTerm() {
+    let node = parseFactor();
+    while (peek().type === "STAR" || peek().type === "SLASH") {
+      const op = next().type;
+      node = { type: "bin", op, left: node, right: parseFactor(), compound: true };
+    }
+    return node;
+  }
+
+  function parseFactor() {
+    if (peek().type === "MINUS") {
+      const t = next();
+      return { type: "neg", value: parseFactor(), compound: true, start: t.start };
+    }
+    if (peek().type === "LPAREN") { next(); const e = parseExpr(); expect("RPAREN"); return e; }
+    if (peek().type === "NUMBER") {
+      const t = next();
+      return { type: "num", value: t.value, unit: t.unit, start: t.start, end: t.end };
+    }
+    if (peek().type === "IDENT") return { type: "path", segments: parsePath() };
+    throw new Error(`Expected a value, got ${peek().type}`);
+  }
+
+  function parsePath() {
+    const segments = [expect("IDENT").value];
+    while (peek().type === "DOT") { next(); segments.push(expect("IDENT").value); }
+    return segments;
+  }
+
+  return parseProgram();
+}
+
+function containsPath(ast) {
+  if (ast.type === "path") return true;
+  if (ast.type === "neg") return containsPath(ast.value);
+  if (ast.type === "bin") return containsPath(ast.left) || containsPath(ast.right);
+  return false;
+}
+
+function evalAst(ast, ctx) {
+  if (ast.type === "num") return ast.value;
+  if (ast.type === "neg") return -evalAst(ast.value, ctx);
+  if (ast.type === "bin") {
+    const l = evalAst(ast.left, ctx), r = evalAst(ast.right, ctx);
+    if (ast.op === "PLUS") return l + r;
+    if (ast.op === "MINUS") return l - r;
+    if (ast.op === "STAR") return l * r;
+    if (ast.op === "SLASH") return l / r;
+  }
+  if (ast.type === "path") {
+    let cur = ctx;
+    for (const seg of ast.segments) {
+      if (cur == null) throw new Error(`Cannot resolve '${ast.segments.join(".")}' — no value for '${seg}'`);
+      if ((seg === "x" || seg === "y") && Array.isArray(cur)) cur = cur[seg === "x" ? 0 : 1];
+      else cur = numOf(cur[seg]);
+    }
+    return numOf(cur);
+  }
+}
+
+function numOf(v) {
+  return v && typeof v === "object" && "value" in v && typeof v.value === "number" ? v.value : v;
+}
+function isEditable(v) { return v && typeof v === "object" && "start" in v; }
+
+// D-012 solve-backward: linearize as coeff*pathValue + offset.
+function linearize(ast) {
+  if (ast.type === "num") return { coeff: 0, offset: ast.value };
+  if (ast.type === "path") return { coeff: 1, offset: 0, segments: ast.segments };
+  if (ast.type === "neg") {
+    const v = linearize(ast.value);
+    return v && { coeff: -v.coeff, offset: -v.offset, segments: v.segments };
+  }
+  if (ast.type === "bin") {
+    const l = linearize(ast.left), r = linearize(ast.right);
+    if (!l || !r) return null;
+    const segments = l.segments || r.segments;
+    if (ast.op === "PLUS") return { coeff: l.coeff + r.coeff, offset: l.offset + r.offset, segments };
+    if (ast.op === "MINUS") return { coeff: l.coeff - r.coeff, offset: l.offset - r.offset, segments };
+    if (ast.op === "STAR") {
+      if (l.coeff !== 0 && r.coeff !== 0) return null;
+      return { coeff: l.coeff * r.offset + r.coeff * l.offset, offset: l.offset * r.offset, segments };
+    }
+    if (ast.op === "SLASH") {
+      if (r.coeff !== 0) return null;
+      return { coeff: l.coeff / r.offset, offset: l.offset / r.offset, segments };
+    }
+  }
+  return null;
+}
+
+function trySolveBackward(fn, parentNode, desiredValue, edits, warnings) {
+  const lin = linearize(fn.ast);
+  if (!lin || !lin.segments || lin.coeff === 0) {
+    warnings.push("expression isn't a simple parent.<prop>.<x|y> +/-/*// chain, can't solve backward");
+    return;
+  }
+  const [head, prop, axis] = lin.segments;
+  if (head !== "parent" || (axis !== "x" && axis !== "y") || !parentNode) {
+    warnings.push(`can't solve backward through '${lin.segments.join(".")}', only parent.<prop>.<x|y> is supported`);
+    return;
+  }
+  const index = axis === "x" ? 0 : 1;
+  const target = parentNode.props[prop]?.[index];
+  if (!isEditable(target)) {
+    warnings.push(`${parentNode.id}.${prop}.${axis} isn't a plain literal, can't rewrite it`);
+    return;
+  }
+  const solvedValue = (desiredValue - lin.offset) / lin.coeff;
+  edits.push({ start: target.start, end: target.end, text: formatNumber(solvedValue, target.unit) });
+}
+
+// ---------- Module loading (same as 12) ----------
+const loadedExternal = new Set();
+const loadedInternal = new Set();
+
+function isUrlLike(name) { return name.includes("/") || name.endsWith(".js") || name.includes("://"); }
+
+function loadExternalScript(src) {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = src;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error(`Failed to load external module '${src}'`));
+    document.body.appendChild(script);
+  });
+}
+
+async function ensureModulesLoaded(moduleNames) {
+  for (const name of moduleNames) {
+    if (isUrlLike(name)) {
+      if (!loadedExternal.has(name)) {
+        await loadExternalScript(name);
+        loadedExternal.add(name);
+      }
+    } else if (INTERNAL_MODULES[name]) {
+      if (!loadedInternal.has(name)) {
+        INTERNAL_MODULES[name]();
+        loadedInternal.add(name);
+      }
+    } else {
+      throw new Error(`Unknown internal module '${name}' (no built-in registry entry)`);
+    }
+  }
+}
+
+// ---------- Renderer (two-pass, same as 04/05/09/10) ----------
+const M = 60; // meters -> px
+
+function resolvePositionArray(props, parentProps) {
+  const raw = props.position || [0, 0];
+  return raw.map((v) => (typeof v === "function" ? v({ parent: parentProps }) : numOf(v)));
+}
+
+function computePositions(node, parent, offset, positions) {
+  const [px, py] = resolvePositionArray(node.props, parent ? parent.props : null);
+  const abs = [offset[0] + px, offset[1] + py];
+  positions[node.id] = abs;
+  for (const child of node.children) computePositions(child, node, abs, positions);
+}
+
+function computeCornerUsers(node, cornerUsers) {
+  for (const pt of node.props.points ?? []) {
+    if (typeof pt === "function" && pt.cornerRef) (cornerUsers[pt.cornerRef] ??= []).push(node.id);
+  }
+  for (const child of node.children) computeCornerUsers(child, cornerUsers);
+}
+
+function resolvePointAbs(pt, ownAbs, positions) {
+  if (Array.isArray(pt)) return [ownAbs[0] + numOf(pt[0]), ownAbs[1] + numOf(pt[1])];
+  if (typeof pt === "function" && pt.cornerRef) {
+    const p = positions[pt.cornerRef];
+    if (!p) throw new Error(`points reference to unknown node '${pt.cornerRef}'`);
+    return p;
+  }
+  throw new Error("a points entry must be a [x,y] pair or a single sibling node id");
+}
+
+function escapeXml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" }[c]));
+}
+function fmtMeters(n) { return (Math.round(n * 100) / 100).toString(); }
+
+function dimensionText(node) {
+  if (node.props.shape === "rect") {
+    const w = numOf(node.props.size[0]), h = numOf(node.props.size[1]);
+    return `${fmtMeters(w)} × ${fmtMeters(h)} m`;
+  }
+  if (node.props.shape === "circle") {
+    const r = numOf(node.props.radius ?? 0);
+    return `⌀ ${fmtMeters(r * 2)} m`;
+  }
+  return null;
+}
+
+function renderAnnotation(node, anchor, shapesOut) {
+  const label = node.props.label;
+  const dims = node.props.dimensions ? dimensionText(node) : null;
+  if (!label && !dims) return;
+  const showMode = node.props.show === "always" ? "always" : "hover";
+  const lines = [label, dims].filter(Boolean);
+  const lineHeight = 12;
+  const startY = anchor[1] * M - ((lines.length - 1) * lineHeight) / 2;
+  const textEls = lines.map((line, i) =>
+    `<text x="${anchor[0]*M}" y="${startY + i*lineHeight}" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#222">${escapeXml(line)}</text>`
+  ).join("");
+  shapesOut.push(`<g class="annotation" data-show="${showMode}">${textEls}</g>`);
+}
+
+// bboxes: populated for rect nodes only (connections/adjacency operate on whole-object AABBs,
+// same scope as 08). shapesOut/anchorsOut kept separate — anchors are always painted last.
+function renderShape(node, positions, cornerUsers, shapesOut, anchorsOut, bboxes) {
+  const ownAbs = positions[node.id];
+  const { shape, style } = node.props;
+  const idAttr = `data-id="${node.id}"`;
+  const selectedClass = node.id === selectedId ? " selected" : "";
+  let anchor = ownAbs;
+
+  if (shape === "rect" && style) {
+    const w = numOf(node.props.size[0]), h = numOf(node.props.size[1]);
+    anchor = [ownAbs[0] + w / 2, ownAbs[1] + h / 2];
+    bboxes[node.id] = { left: ownAbs[0], top: ownAbs[1], right: ownAbs[0] + w, bottom: ownAbs[1] + h };
+    shapesOut.push(`<rect class="obj${selectedClass}" ${idAttr} pointer-events="all" x="${ownAbs[0]*M}" y="${ownAbs[1]*M}" width="${w*M}" height="${h*M}"
+      fill="${style.fill ?? "none"}" stroke="${style.stroke ?? "none"}" stroke-width="${numOf(style.strokeWidth ?? 0.02)*M}" />`);
+    renderAnnotation(node, anchor, shapesOut);
+  } else if ((shape === "polyline" || shape === "polygon") && style) {
+    const absPts = node.props.points.map((pt) => resolvePointAbs(pt, ownAbs, positions));
+    anchor = [absPts.reduce((s, p) => s + p[0], 0) / absPts.length, absPts.reduce((s, p) => s + p[1], 0) / absPts.length];
+    const ptsStr = absPts.map(([x, y]) => `${x*M},${y*M}`).join(" ");
+    const dashAttr = style.strokeDash ? `stroke-dasharray="${style.strokeDash.split(",").map(v => v*M).join(",")}"` : "";
+    const tag = shape === "polygon" ? "polygon" : "polyline";
+    shapesOut.push(`<${tag} class="obj${selectedClass}" ${idAttr} pointer-events="all" points="${ptsStr}" fill="${style.fill ?? "none"}" stroke="${style.stroke}" stroke-width="${numOf(style.strokeWidth)*M}" ${dashAttr} />`);
+    renderAnnotation(node, anchor, shapesOut);
+  } else if (shape === "circle" && style) {
+    const r = numOf(node.props.radius ?? 0.1);
+    shapesOut.push(`<circle class="obj${selectedClass}" ${idAttr} pointer-events="all" cx="${ownAbs[0]*M}" cy="${ownAbs[1]*M}" r="${r*M}"
+      fill="${style.fill ?? "none"}" stroke="${style.stroke ?? "none"}" stroke-width="${numOf(style.strokeWidth ?? 0.02)*M}" />`);
+    renderAnnotation(node, anchor, shapesOut);
+  } else if (window.PlanModules && window.PlanModules[shape]) {
+    shapesOut.push(window.PlanModules[shape](node, ownAbs, M, { numOf, idAttr }));
+    renderAnnotation(node, anchor, shapesOut);
+  } else {
+    const users = (cornerUsers[node.id] || []).join(",");
+    anchorsOut.push(`<circle class="anchor-hit" ${idAttr} data-corner-users="${users}" pointer-events="all" cx="${ownAbs[0]*M}" cy="${ownAbs[1]*M}" r="10" />`);
+  }
+
+  for (const child of node.children) renderShape(child, positions, cornerUsers, shapesOut, anchorsOut, bboxes);
+}
+
+// Standalone bbox pass (rect nodes only), independent of markup generation — used both by
+// renderShape's inline bbox tracking during a normal render, and by createConnection's snap
+// calculation, which needs current bboxes without rendering anything.
+function computeBboxes(node, positions, bboxes) {
+  if (node.props.shape === "rect" && node.props.size) {
+    const abs = positions[node.id];
+    const w = numOf(node.props.size[0]), h = numOf(node.props.size[1]);
+    bboxes[node.id] = { left: abs[0], top: abs[1], right: abs[0] + w, bottom: abs[1] + h };
+  }
+  for (const child of node.children) computeBboxes(child, positions, bboxes);
+}
+
+// Computed once from the first render, then reused — an auto-refit viewBox would cancel out
+// a drag that moves everything together (rigid connection propagation, or a parent move).
+let fixedViewBox = null;
+
+function renderPlan(program) {
+  const positions = {};
+  computePositions(program.root, null, [0, 0], positions);
+  const cornerUsers = {};
+  computeCornerUsers(program.root, cornerUsers);
+  const shapes = [], anchors = [], bboxes = {};
+  renderShape(program.root, positions, cornerUsers, shapes, anchors, bboxes);
+
+  const icons = [];
+  for (const c of program.connections) {
+    if (c.from !== selectedId && c.to !== selectedId) continue;
+    const a = bboxes[c.from], b = bboxes[c.to];
+    if (!a || !b) continue;
+    const [cx, cy] = contactPoint(a, b);
+    icons.push(iconMarkup("disconnect", cx * M, cy * M, c.from, c.to));
+  }
+  if (selectedId && bboxes[selectedId]) {
+    const sel = bboxes[selectedId];
+    for (const [otherId, b] of Object.entries(bboxes)) {
+      if (otherId === selectedId || !isAdjacent(sel, b)) continue;
+      const already = program.connections.some(c =>
+        (c.from === selectedId && c.to === otherId) || (c.from === otherId && c.to === selectedId));
+      if (already) continue;
+      const [cx, cy] = contactPoint(sel, b);
+      icons.push(iconMarkup("connect", cx * M, cy * M, selectedId, otherId));
+    }
+  }
+
+  if (!fixedViewBox) {
+    const pts = Object.values(positions);
+    let minX = Math.min(...pts.map(p => p[0])), maxX = Math.max(...pts.map(p => p[0]));
+    let minY = Math.min(...pts.map(p => p[1])), maxY = Math.max(...pts.map(p => p[1]));
+    for (const node of Object.values(program.nodesById)) {
+      if (node.props.shape === "circle" && node.props.radius) {
+        const r = numOf(node.props.radius);
+        const [cx, cy] = positions[node.id];
+        minX = Math.min(minX, cx - r); maxX = Math.max(maxX, cx + r);
+        minY = Math.min(minY, cy - r); maxY = Math.max(maxY, cy + r);
+      }
+    }
+    const pad = 0.7;
+    minX -= pad; maxX += pad; minY -= pad; maxY += pad;
+    fixedViewBox = { minX, minY, vw: (maxX - minX) * M, vh: (maxY - minY) * M };
+  }
+  const { minX, minY, vw, vh } = fixedViewBox;
+  // Anchors always last (painted on top) — icons before them, everything else before that.
+  const out = [...shapes, ...icons, ...anchors];
+  return { svg: `<svg width="${vw}" height="${vh}" viewBox="${minX*M} ${minY*M} ${vw} ${vh}">${out.join("\n")}</svg>`, bboxes };
+}
+
+// ---------- Adjacency + contact-point ----------
+// Extended past 08's original version: 08's two example rects were always siblings, never
+// one containing the other, so a plain "AABBs overlap" test was enough. Here `room` is
+// itself a rect *and* the parent of every piece of furniture — a plain overlap test would
+// call every piece of furniture "adjacent" to the room it sits inside (bug found while
+// building this: selecting the room offered a connect-icon to nearly everything in it).
+// Fixed by requiring genuine edge contact: one axis's gap between the two intervals must be
+// near zero (an edge touching, not a deep overlap) while the other axis's intervals actually
+// overlap (so they're side by side along that edge, not just touching at a lone corner).
+const TOUCH_TOLERANCE = 0.05;
+
+function isAdjacent(a, b) {
+  const xGap = Math.max(a.left, b.left) - Math.min(a.right, b.right);
+  const yGap = Math.max(a.top, b.top) - Math.min(a.bottom, b.bottom);
+  const xTouch = Math.abs(xGap) <= TOUCH_TOLERANCE;
+  const yTouch = Math.abs(yGap) <= TOUCH_TOLERANCE;
+  if (xTouch && yGap < 0) return true;
+  if (yTouch && xGap < 0) return true;
+  return false;
+}
+
+function contactPoint(a, b) {
+  const xOverlap = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+  const yOverlap = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+  if (xOverlap < yOverlap) {
+    const cx = a.right <= b.left ? (a.right + b.left) / 2 : (b.right + a.left) / 2;
+    const cy = (Math.max(a.top, b.top) + Math.min(a.bottom, b.bottom)) / 2;
+    return [cx, cy];
+  }
+  const cy = a.bottom <= b.top ? (a.bottom + b.top) / 2 : (b.bottom + a.top) / 2;
+  const cx = (Math.max(a.left, b.left) + Math.min(a.right, b.right)) / 2;
+  return [cx, cy];
+}
+
+function iconMarkup(action, cx, cy, aId, bId) {
+  const color = action === "connect" ? "#2a8a3e" : "#c0392b";
+  const symbol = action === "connect"
+    ? `<line x1="${cx-4}" y1="${cy}" x2="${cx+4}" y2="${cy}" stroke="white" stroke-width="2" stroke-linecap="round" />
+       <line x1="${cx}" y1="${cy-4}" x2="${cx}" y2="${cy+4}" stroke="white" stroke-width="2" stroke-linecap="round" />`
+    : `<line x1="${cx-4}" y1="${cy-4}" x2="${cx+4}" y2="${cy+4}" stroke="white" stroke-width="2" stroke-linecap="round" />
+       <line x1="${cx-4}" y1="${cy+4}" x2="${cx+4}" y2="${cy-4}" stroke="white" stroke-width="2" stroke-linecap="round" />`;
+  return `<g class="icon-btn" data-action="${action}" data-a="${aId}" data-b="${bId}" pointer-events="all">
+    <circle cx="${cx}" cy="${cy}" r="9" fill="${color}" stroke="white" stroke-width="1.5" />
+    ${symbol}
+  </g>`;
+}
+
+// ---------- D-020 settings: allowUnrealisticPolygons (F-004), same as 05/09/10 ----------
+function segmentsIntersect(p1, p2, p3, p4) {
+  const d = (a, b, c) => (b[0]-a[0])*(c[1]-a[1]) - (b[1]-a[1])*(c[0]-a[0]);
+  const d1 = d(p3, p4, p1), d2 = d(p3, p4, p2), d3 = d(p1, p2, p3), d4 = d(p1, p2, p4);
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+}
+
+function polygonSelfIntersects(pts) {
+  const n = pts.length;
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const adjacent = j === (i + 1) % n || i === (j + 1) % n;
+      if (adjacent) continue;
+      if (segmentsIntersect(pts[i], pts[(i+1)%n], pts[j], pts[(j+1)%n])) return true;
+    }
+  }
+  return false;
+}
+
+function checkRealism(nodeId, proposedXY, base, cornerUsers, settings) {
+  if (settings.allowUnrealisticPolygons) return null;
+  const users = cornerUsers[nodeId];
+  if (!users) return null;
+
+  const positions = {};
+  computePositions(base.root, null, [0, 0], positions);
+  positions[nodeId] = proposedXY;
+
+  for (const userId of users) {
+    const userNode = base.nodesById[userId];
+    if (userNode.props.shape !== "polygon") continue;
+    const pts = userNode.props.points.map((pt) => resolvePointAbs(pt, positions[userId], positions));
+    if (polygonSelfIntersects(pts)) {
+      return `${nodeId}: moving here would make '${userId}' self-intersecting (unrealistic). Set allowUnrealisticPolygons: true to allow this.`;
+    }
+  }
+  return null;
+}
+
+// ---------- Drag -> text splice ----------
+function formatNumber(value, unit) {
+  const base = unit === "cm" ? value * 100 : value;
+  const rounded = Math.round(base * 1000) / 1000;
+  return `${rounded}${unit}`;
+}
+
+function connectedNodeIds(startId, connections) {
+  const adj = {};
+  for (const c of connections) {
+    (adj[c.from] ??= []).push(c.to);
+    (adj[c.to] ??= []).push(c.from);
+  }
+  const seen = new Set([startId]);
+  const queue = [startId];
+  while (queue.length) {
+    for (const nb of adj[queue.shift()] ?? []) {
+      if (!seen.has(nb)) { seen.add(nb); queue.push(nb); }
+    }
+  }
+  seen.delete(startId);
+  return [...seen];
+}
+
+// All the edits needed to move one node by (dx, dy): its own position (literal, or solved
+// backward through a parent.<prop>.<x|y> expression, with a realism check against anything
+// its corners feed into) plus any points entries that are literal [x,y] pairs. Used both for
+// the node the user is directly dragging and for anything rigidly connected to it.
+function nodeDragEdits(node, parent, dx, dy, base, cornerUsers, warnings) {
+  const edits = [];
+  if (node.props.position) {
+    const [x0, y0] = node.props.position;
+    const parentCtx = { parent: parent ? parent.props : null };
+
+    if (isEditable(x0) && isEditable(y0)) {
+      const proposed = [x0.value + dx, y0.value + dy];
+      const violation = checkRealism(node.id, proposed, base, cornerUsers, base.settings);
+      if (violation) {
+        warnings.push(violation);
+      } else {
+        edits.push({ start: x0.start, end: x0.end, text: formatNumber(proposed[0], x0.unit) });
+        edits.push({ start: y0.start, end: y0.end, text: formatNumber(proposed[1], y0.unit) });
+      }
+    } else {
+      if (isEditable(x0)) edits.push({ start: x0.start, end: x0.end, text: formatNumber(x0.value + dx, x0.unit) });
+      else if (typeof x0 === "function") trySolveBackward(x0, parent, x0(parentCtx) + dx, edits, warnings);
+      if (isEditable(y0)) edits.push({ start: y0.start, end: y0.end, text: formatNumber(y0.value + dy, y0.unit) });
+      else if (typeof y0 === "function") trySolveBackward(y0, parent, y0(parentCtx) + dy, edits, warnings);
+    }
+  }
+
+  if (node.props.points) {
+    for (const pt of node.props.points) {
+      if (Array.isArray(pt)) {
+        const [x, y] = pt;
+        if (isEditable(x)) edits.push({ start: x.start, end: x.end, text: formatNumber(x.value + dx, x.unit) });
+        if (isEditable(y)) edits.push({ start: y.start, end: y.end, text: formatNumber(y.value + dy, y.unit) });
+      } else if (typeof pt === "function" && pt.cornerRef) {
+        warnings.push(`${node.id}: endpoint is pinned to '${pt.cornerRef}' — drag that corner directly to move it`);
+      }
+    }
+  }
+  return edits;
+}
+
+// ---------- Wire up ----------
+const sourceEl = document.getElementById("source");
+const rootEl = document.getElementById("plan-root");
+const errorEl = document.getElementById("error");
+const dragmsgEl = document.getElementById("dragmsg");
+const modlogEl = document.getElementById("modlog");
+let program = null;
+let selectedId = null; // gates connection connect/disconnect icon visibility (08)
+
+function logModule(msg) { modlogEl.textContent += `[module] ${msg}\n`; }
+
+async function run() {
+  try {
+    const parsed = parse(sourceEl.value);
+    await ensureModulesLoaded(parsed.modules);
+    program = parsed;
+    const result = renderPlan(program);
+    rootEl.innerHTML = result.svg;
+    errorEl.textContent = "";
+  } catch (e) {
+    errorEl.textContent = "Parse/render/module error: " + e.message;
+  }
+}
+
+// Connecting two objects that are close but not quite flush (the connect icon only appears
+// within TOUCH_TOLERANCE, so any gap/overlap here is always small) snaps `toId` the rest of
+// the way so they touch exactly, along whichever axis they're touching across — the other
+// axis (where they already share extent) is left untouched.
+function snapEdits(base, fromId, toId) {
+  const positions = {};
+  computePositions(base.root, null, [0, 0], positions);
+  const bboxes = {};
+  computeBboxes(base.root, positions, bboxes);
+  const a = bboxes[fromId], b = bboxes[toId];
+  if (!a || !b) return [];
+
+  const xGap = Math.max(a.left, b.left) - Math.min(a.right, b.right);
+  const yGap = Math.max(a.top, b.top) - Math.min(a.bottom, b.bottom);
+  let dx = 0, dy = 0;
+  // xGap/yGap only give the *magnitude* of the residual gap — closing it means moving `b`
+  // toward `a`, and which direction that is depends on which side `b` is actually on. Get
+  // this backwards (as an earlier version did) and it pushes them further apart instead.
+  if (Math.abs(xGap) <= TOUCH_TOLERANCE && yGap < 0) {
+    const bIsRight = (b.left + b.right) >= (a.left + a.right);
+    dx = bIsRight ? -xGap : xGap;
+  } else if (Math.abs(yGap) <= TOUCH_TOLERANCE && xGap < 0) {
+    const bIsBelow = (b.top + b.bottom) >= (a.top + a.bottom);
+    dy = bIsBelow ? -yGap : yGap;
+  }
+  if (!dx && !dy) return [];
+
+  const toNode = base.nodesById[toId];
+  const toParent = toNode.parentId ? base.nodesById[toNode.parentId] : null;
+  const cornerUsers = {};
+  computeCornerUsers(base.root, cornerUsers);
+  return nodeDragEdits(toNode, toParent, dx, dy, base, cornerUsers, []);
+}
+
+function createConnection(fromId, toId) {
+  let text = sourceEl.value;
+  let base;
+  try { base = parse(text); } catch (e) { base = null; }
+  if (base) {
+    const edits = snapEdits(base, fromId, toId);
+    if (edits.length) {
+      edits.sort((a, b) => b.start - a.start);
+      for (const ed of edits) text = text.slice(0, ed.start) + ed.text + text.slice(ed.end);
+    }
+  }
+  sourceEl.value = text.trimEnd() + `\nconnection ${fromId} ${toId}\n`;
+  dragmsgEl.textContent = `Connected: ${fromId} – ${toId}`;
+  run();
+}
+
+// Extends [start, end) to cover every full line it touches — used for deleting a whole
+// statement/block without leaving a blank or half-emptied line behind. Doesn't handle two
+// touching spans that share a line (not a case that arises here: connections and node
+// blocks each occupy their own lines in every plan this prototype ever produces).
+function toLineSpan(text, start, end) {
+  while (start > 0 && text[start - 1] !== "\n") start--;
+  while (end < text.length && text[end] !== "\n") end++;
+  if (text[end] === "\n") end++;
+  return { start, end };
+}
+
+function deleteSpans(text, spans) {
+  const lineSpans = spans.map(({ start, end }) => toLineSpan(text, start, end))
+    .sort((a, b) => b.start - a.start);
+  let out = text;
+  for (const { start, end } of lineSpans) out = out.slice(0, start) + out.slice(end);
+  return out;
+}
+
+function removeConnection(fromId, toId) {
+  const text = sourceEl.value;
+  let base;
+  try { base = parse(text); } catch (e) { return; }
+  const conn = base.connections.find(c =>
+    (c.from === fromId && c.to === toId) || (c.from === toId && c.to === fromId));
+  if (!conn) return;
+  sourceEl.value = deleteSpans(text, [conn]);
+  dragmsgEl.textContent = `Disconnected '${fromId}' and '${toId}'.`;
+  run();
+}
+
+// D-030: right-click -> "Delete Element". Removes the node's own block plus any connection
+// statement mentioning it (a dangling reference would just quietly do nothing at render
+// time, but leaving it in the source is confusing either way). Refuses rather than silently
+// breaking geometry elsewhere: the plan's root has nowhere to go, and a node still used as a
+// shared corner (D-018) would leave whatever referenced it unresolvable.
+function deleteElement(nodeId) {
+  const text = sourceEl.value;
+  let base;
+  try { base = parse(text); } catch (e) { return; }
+  const node = base.nodesById[nodeId];
+  if (!node) return;
+  if (!node.parentId) {
+    dragmsgEl.textContent = `${nodeId}: can't delete the plan's root node.`;
+    return;
+  }
+  const cornerUsers = {};
+  computeCornerUsers(base.root, cornerUsers);
+  const users = cornerUsers[nodeId];
+  if (users && users.length) {
+    dragmsgEl.textContent = `${nodeId}: still referenced as a corner by ${users.join(", ")} — remove those references first.`;
+    return;
+  }
+
+  const spans = [node, ...base.connections.filter((c) => c.from === nodeId || c.to === nodeId)];
+  sourceEl.value = deleteSpans(text, spans);
+  if (selectedId === nodeId) selectedId = null;
+  fixedViewBox = null; // a real content change, not a drag continuation — deserves a fresh fit
+  dragmsgEl.textContent = `Deleted '${nodeId}'.`;
+  run();
+}
+
+let drag = null;
+
+rootEl.addEventListener("pointerdown", (e) => {
+  // Without this, a right-click would *also* start a drag/selection (pointerdown fires for
+  // any button) on top of opening the context menu below — found while tracing through the
+  // new contextmenu handler, not from a report.
+  if (e.button !== 0) return;
+  if (!program) return;
+
+  const iconEl = e.target.closest("[data-action]");
+  if (iconEl) {
+    const { action, a, b } = iconEl.dataset;
+    if (action === "connect") createConnection(a, b);
+    else removeConnection(a, b);
+    return;
+  }
+
+  const el = e.target.closest("[data-id]");
+  if (!el) { selectedId = null; run(); return; }
+  const node = program.nodesById[el.dataset.id];
+  if (!node.props.position && !node.props.points) { dragmsgEl.textContent = `${node.id}: has no explicit position/points in source, nothing to drag`; return; }
+  drag = { id: node.id, baseText: sourceEl.value, clientX: e.clientX, clientY: e.clientY, singleOnly: e.shiftKey };
+  rootEl.classList.add("dragging");
+});
+
+// Right-click on an object -> a small custom menu, replacing the browser's default one.
+// Items are data, not hardcoded markup, specifically so more can be added later without
+// restructuring this (D-030 currently has exactly one: "Delete Element").
+const contextMenuEl = document.getElementById("context-menu");
+let contextMenuItems = [];
+
+function openContextMenu(nodeId, x, y) {
+  contextMenuItems = [
+    { label: "Delete Element", danger: true, action: () => deleteElement(nodeId) },
+  ];
+  contextMenuEl.innerHTML = contextMenuItems.map((item, i) =>
+    `<li data-i="${i}"${item.danger ? ' class="danger"' : ""}>${escapeXml(item.label)}</li>`
+  ).join("");
+  contextMenuEl.style.left = `${x}px`;
+  contextMenuEl.style.top = `${y}px`;
+  contextMenuEl.hidden = false;
+}
+
+function closeContextMenu() {
+  contextMenuEl.hidden = true;
+  contextMenuItems = [];
+}
+
+rootEl.addEventListener("contextmenu", (e) => {
+  const el = e.target.closest("[data-id]");
+  if (!el || !program) return;
+  e.preventDefault();
+  openContextMenu(el.dataset.id, e.clientX, e.clientY);
+});
+
+contextMenuEl.addEventListener("click", (e) => {
+  const li = e.target.closest("li[data-i]");
+  if (!li) return;
+  const item = contextMenuItems[Number(li.dataset.i)];
+  closeContextMenu();
+  item?.action();
+});
+
+window.addEventListener("pointerdown", (e) => {
+  if (!contextMenuEl.hidden && !contextMenuEl.contains(e.target)) closeContextMenu();
+});
+window.addEventListener("keydown", (e) => { if (e.key === "Escape") closeContextMenu(); });
+
+window.addEventListener("pointermove", (e) => {
+  if (!drag) return;
+  const dx = (e.clientX - drag.clientX) / M;
+  const dy = (e.clientY - drag.clientY) / M;
+  applyDrag(drag, dx, dy);
+});
+
+window.addEventListener("pointerup", () => {
+  rootEl.classList.remove("dragging");
+  if (drag) {
+    selectedId = drag.id; // click or drag-and-release both select the object
+    drag = null;
+    run();
+  }
+});
+
+rootEl.addEventListener("pointerover", (e) => {
+  // Suppressed while dragging: without setPointerCapture (see D-009's correction), the
+  // pointer still fires over/out on whatever happens to sit under the cursor mid-drag —
+  // dragging some other object across a polygon corner would otherwise highlight that
+  // corner as if the user were about to interact with it, which they aren't.
+  if (drag) return;
+  const el = e.target.closest("[data-id]");
+  if (!el || !program) return;
+  const users = el.dataset.cornerUsers;
+  if (users) {
+    for (const uid of users.split(",").filter(Boolean)) {
+      rootEl.querySelector(`[data-id="${CSS.escape(uid)}"]`)?.classList.add("corner-preview");
+    }
+  }
+  for (const c of program.connections) {
+    const partnerId = c.from === el.dataset.id ? c.to : c.to === el.dataset.id ? c.from : null;
+    if (!partnerId) continue;
+    el.classList.add("connected-highlight");
+    rootEl.querySelector(`[data-id="${CSS.escape(partnerId)}"]`)?.classList.add("connected-highlight");
+  }
+});
+rootEl.addEventListener("pointerout", (e) => {
+  const el = e.target.closest("[data-id]");
+  if (!el || !program) return;
+  const users = el.dataset.cornerUsers;
+  if (users) {
+    for (const uid of users.split(",").filter(Boolean)) {
+      rootEl.querySelector(`[data-id="${CSS.escape(uid)}"]`)?.classList.remove("corner-preview");
+    }
+  }
+  for (const c of program.connections) {
+    const partnerId = c.from === el.dataset.id ? c.to : c.to === el.dataset.id ? c.from : null;
+    if (!partnerId) continue;
+    el.classList.remove("connected-highlight");
+    rootEl.querySelector(`[data-id="${CSS.escape(partnerId)}"]`)?.classList.remove("connected-highlight");
+  }
+});
+
+function applyDrag(dragState, dx, dy) {
+  let base;
+  try {
+    base = parse(dragState.baseText);
+  } catch (e) {
+    dragmsgEl.textContent = `Can't continue this drag: the source text is currently invalid (${e.message}). Fix it in the editor or reload to reset.`;
+    return;
+  }
+  const cornerUsers = {};
+  computeCornerUsers(base.root, cornerUsers);
+  const warnings = [];
+  const node = base.nodesById[dragState.id];
+  const parent = node.parentId ? base.nodesById[node.parentId] : null;
+  const edits = [...nodeDragEdits(node, parent, dx, dy, base, cornerUsers, warnings)];
+
+  if (!dragState.singleOnly) {
+    for (const otherId of connectedNodeIds(dragState.id, base.connections)) {
+      const otherNode = base.nodesById[otherId];
+      const otherParent = otherNode.parentId ? base.nodesById[otherNode.parentId] : null;
+      edits.push(...nodeDragEdits(otherNode, otherParent, dx, dy, base, cornerUsers, warnings));
+    }
+  }
+
+  if (edits.length === 0) {
+    dragmsgEl.textContent = warnings.length ? warnings.join("\n") : `${dragState.id}: nothing solvable to drag`;
+    return;
+  }
+
+  edits.sort((a, b) => b.start - a.start);
+  let text = dragState.baseText;
+  for (const ed of edits) text = text.slice(0, ed.start) + ed.text + text.slice(ed.end);
+
+  sourceEl.value = text;
+  dragmsgEl.textContent = (dragState.singleOnly ? `${dragState.id}: moved alone (Shift held)\n` : "") + warnings.join("\n");
+  run();
+}
+
+sourceEl.value = EXAMPLE;
+// A plain text edit (typing, or pasting a duplicated block) is not a drag continuation, so
+// there's no risk of an auto-refit viewBox cancelling out motion the way there is mid-drag
+// (see the fixedViewBox comment above renderPlan) — it should get a fresh fit. Note that
+// applyDrag's own `sourceEl.value = text` during a drag does *not* fire "input" (assigning
+// .value programmatically never does), so this reset never touches an in-progress drag.
+sourceEl.addEventListener("input", () => { fixedViewBox = null; run(); });
+run();
+</script>
+</body>
+</html>

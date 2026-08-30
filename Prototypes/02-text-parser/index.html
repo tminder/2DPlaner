@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>2DPlaner prototype — text parser</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 2rem; background: #fafafa; color: #222; }
+  h1 { font-size: 1.1rem; }
+  p.note { color: #666; max-width: 900px; line-height: 1.4; }
+  code { background: #eee; padding: 0.1em 0.3em; border-radius: 3px; }
+  .layout { display: flex; gap: 1.5rem; align-items: flex-start; flex-wrap: wrap; }
+  textarea { width: 480px; height: 520px; font-family: ui-monospace, Consolas, monospace; font-size: 13px;
+    padding: 0.75rem; border: 1px solid #ccc; border-radius: 4px; }
+  svg { background: #fff; border: 1px solid #ccc; }
+  .anchor-hit { fill: transparent; }
+  .anchor-hit:hover { fill: #e33; opacity: 0.6; }
+  #error { color: #a11; white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+</style>
+</head>
+<body>
+<h1>2DPlaner prototype: plan text &rarr; parser &rarr; SVG</h1>
+<p class="note">
+  Throwaway parser prototype (see <code>planning/decisions.md</code> D-017: syntax
+  optimized for AI generation — low-ambiguity, token-efficient, own dedicated format).
+  Edit the text on the left; it re-parses and re-renders on every keystroke. This is a
+  hand-rolled recursive-descent parser for a first concrete syntax guess, not a finalized
+  grammar. Core primitives are <code>node</code> and <code>connection</code> (D-013); a
+  node's own key/value properties (<code>shape</code>, <code>size</code>, <code>style</code>,
+  ...) are plain conventions the renderer below interprets, not language keywords.
+</p>
+<div class="layout">
+  <textarea id="source" spellcheck="false"></textarea>
+  <div>
+    <div id="plan-root"></div>
+    <div id="error"></div>
+  </div>
+</div>
+
+<script>
+const EXAMPLE = `// example plan: a bedroom with a wall/door/wall composition (D-013)
+node room {
+  shape: "rect"
+  size: [4m, 3.5m]
+  style: { stroke: "#333", strokeWidth: 0.06, fill: "none" }
+
+  node wall_a {
+    shape: "line"
+    points: [[0m, 0m], [1.2m, 0m]]
+    style: { stroke: "#333", strokeWidth: 0.1 }
+  }
+
+  node door {
+    shape: "line"
+    points: [[1.2m, 0m], [2.1m, 0m]]
+    style: { stroke: "#6a8f4a", strokeWidth: 0.1, dash: "0.1,0.1" }
+  }
+
+  node wall_b {
+    shape: "line"
+    points: [[2.1m, 0m], [4m, 0m]]
+    style: { stroke: "#333", strokeWidth: 0.1 }
+  }
+
+  node bed {
+    shape: "rect"
+    size: [1.6m, 2m]
+    position: [0.3m, 0.3m]
+    style: { fill: "#cfe0f5", stroke: "#4a76a8" }
+  }
+
+  // expression referencing the parent's own size (D-010: local scope only)
+  node desk {
+    shape: "rect"
+    size: [1.2m, 0.6m]
+    position: [parent.size.x - 1.2m - 0.2m, 0.2m]
+    style: { fill: "#fbe3b0", stroke: "#a87a2b" }
+  }
+
+  // coordinates only, no shape/style -> invisible but hoverable (D-016)
+  node window_center {
+    position: [1.85m, 0m]
+  }
+}
+
+connection wall_a door
+connection door wall_b
+`;
+
+// ---------- Tokenizer ----------
+const TOKEN_RE = /\s+|\/\/[^\n]*|"(?:[^"\\]|\\.)*"|\d+(?:\.\d+)?(?:cm|m)?\b|[A-Za-z_][A-Za-z0-9_]*|[{}\[\]():,.+\-*/]/y;
+const KEYWORDS = new Set(["node", "connection", "true", "false"]);
+const PUNCT = { "{": "LBRACE", "}": "RBRACE", "[": "LBRACKET", "]": "RBRACKET",
+  "(": "LPAREN", ")": "RPAREN", ":": "COLON", ",": "COMMA", ".": "DOT",
+  "+": "PLUS", "-": "MINUS", "*": "STAR", "/": "SLASH" };
+
+function tokenize(src) {
+  const tokens = [];
+  TOKEN_RE.lastIndex = 0;
+  let i = 0;
+  while (i < src.length) {
+    TOKEN_RE.lastIndex = i;
+    const m = TOKEN_RE.exec(src);
+    if (!m || m.index !== i) throw new Error(`Unexpected character ${JSON.stringify(src[i])} at position ${i}`);
+    const text = m[0];
+    i += text.length;
+    if (/^\s+$/.test(text) || text.startsWith("//")) continue;
+    if (text.startsWith('"')) {
+      tokens.push({ type: "STRING", value: text.slice(1, -1) });
+    } else if (/^\d/.test(text)) {
+      const unitMatch = text.match(/(cm|m)$/);
+      const unit = unitMatch ? unitMatch[0] : "";
+      const num = parseFloat(unit ? text.slice(0, -unit.length) : text);
+      tokens.push({ type: "NUMBER", value: unit === "cm" ? num / 100 : num });
+    } else if (/^[A-Za-z_]/.test(text)) {
+      tokens.push({ type: KEYWORDS.has(text) ? text.toUpperCase() : "IDENT", value: text });
+    } else {
+      tokens.push({ type: PUNCT[text], value: text });
+    }
+  }
+  tokens.push({ type: "EOF", value: null });
+  return tokens;
+}
+
+// ---------- Parser (recursive descent) ----------
+function parse(src) {
+  const tokens = tokenize(src);
+  let pos = 0;
+  const peek = () => tokens[pos];
+  const next = () => tokens[pos++];
+  const expect = (type) => {
+    if (peek().type !== type) throw new Error(`Expected ${type} but got ${peek().type} (${JSON.stringify(peek().value)})`);
+    return next();
+  };
+
+  function parseProgram() {
+    let root = null;
+    const connections = [];
+    while (peek().type !== "EOF") {
+      if (peek().type === "NODE") {
+        if (root) throw new Error("Only one top-level node (the plan root) is supported in this prototype");
+        root = parseNodeDecl();
+      } else if (peek().type === "CONNECTION") {
+        connections.push(parseConnectionDecl());
+      } else {
+        throw new Error(`Expected 'node' or 'connection' at top level, got ${peek().type}`);
+      }
+    }
+    if (!root) throw new Error("Plan has no root node");
+    return { root, connections };
+  }
+
+  function parseNodeDecl() {
+    expect("NODE");
+    const id = expect("IDENT").value;
+    expect("LBRACE");
+    const props = {};
+    const children = [];
+    while (peek().type !== "RBRACE") {
+      if (peek().type === "NODE") {
+        children.push(parseNodeDecl());
+      } else {
+        const key = expect("IDENT").value;
+        expect("COLON");
+        props[key] = parseValue();
+      }
+    }
+    expect("RBRACE");
+    return { id, props, children };
+  }
+
+  function parseConnectionDecl() {
+    expect("CONNECTION");
+    const from = expect("IDENT").value;
+    const to = expect("IDENT").value;
+    let props = {};
+    if (peek().type === "LBRACE") {
+      next();
+      while (peek().type !== "RBRACE") {
+        const key = expect("IDENT").value;
+        expect("COLON");
+        props[key] = parseValue();
+      }
+      expect("RBRACE");
+    }
+    return { from, to, props };
+  }
+
+  function parseValue() {
+    if (peek().type === "LBRACKET") return parseArray();
+    if (peek().type === "LBRACE") return parseObjectLiteral();
+    if (peek().type === "STRING") return next().value;
+    if (peek().type === "TRUE") { next(); return true; }
+    if (peek().type === "FALSE") { next(); return false; }
+    return parseExprValue();
+  }
+
+  function parseArray() {
+    expect("LBRACKET");
+    const items = [];
+    while (peek().type !== "RBRACKET") {
+      items.push(parseValue());
+      if (peek().type === "COMMA") next(); else break;
+    }
+    expect("RBRACKET");
+    return items;
+  }
+
+  function parseObjectLiteral() {
+    expect("LBRACE");
+    const obj = {};
+    while (peek().type !== "RBRACE") {
+      const key = expect("IDENT").value;
+      expect("COLON");
+      obj[key] = parseValue();
+      if (peek().type === "COMMA") next();
+    }
+    expect("RBRACE");
+    return obj;
+  }
+
+  // Expressions: literal numbers fold to plain numbers immediately; anything
+  // referencing a path (e.g. parent.size.x) becomes a function(ctx) evaluated at render time.
+  function parseExprValue() {
+    const ast = parseExpr();
+    return containsPath(ast) ? (ctx) => evalAst(ast, ctx) : evalAst(ast, null);
+  }
+
+  function parseExpr() {
+    let node = parseTerm();
+    while (peek().type === "PLUS" || peek().type === "MINUS") {
+      const op = next().type;
+      node = { type: "bin", op, left: node, right: parseTerm() };
+    }
+    return node;
+  }
+
+  function parseTerm() {
+    let node = parseFactor();
+    while (peek().type === "STAR" || peek().type === "SLASH") {
+      const op = next().type;
+      node = { type: "bin", op, left: node, right: parseFactor() };
+    }
+    return node;
+  }
+
+  function parseFactor() {
+    if (peek().type === "MINUS") { next(); return { type: "neg", value: parseFactor() }; }
+    if (peek().type === "LPAREN") { next(); const e = parseExpr(); expect("RPAREN"); return e; }
+    if (peek().type === "NUMBER") return { type: "num", value: next().value };
+    if (peek().type === "IDENT") return { type: "path", segments: parsePath() };
+    throw new Error(`Expected a value, got ${peek().type}`);
+  }
+
+  function parsePath() {
+    const segments = [expect("IDENT").value];
+    while (peek().type === "DOT") { next(); segments.push(expect("IDENT").value); }
+    return segments;
+  }
+
+  return parseProgram();
+}
+
+function containsPath(ast) {
+  if (ast.type === "path") return true;
+  if (ast.type === "neg") return containsPath(ast.value);
+  if (ast.type === "bin") return containsPath(ast.left) || containsPath(ast.right);
+  return false;
+}
+
+function evalAst(ast, ctx) {
+  if (ast.type === "num") return ast.value;
+  if (ast.type === "neg") return -evalAst(ast.value, ctx);
+  if (ast.type === "bin") {
+    const l = evalAst(ast.left, ctx), r = evalAst(ast.right, ctx);
+    if (ast.op === "PLUS") return l + r;
+    if (ast.op === "MINUS") return l - r;
+    if (ast.op === "STAR") return l * r;
+    if (ast.op === "SLASH") return l / r;
+  }
+  if (ast.type === "path") {
+    let cur = ctx;
+    for (const seg of ast.segments) {
+      if (cur == null) throw new Error(`Cannot resolve '${ast.segments.join(".")}' — no value for '${seg}' (e.g. root node has no 'parent')`);
+      if ((seg === "x" || seg === "y") && Array.isArray(cur)) cur = cur[seg === "x" ? 0 : 1];
+      else cur = cur[seg];
+    }
+    return cur;
+  }
+}
+
+// ---------- Renderer (same shape/style conventions as Prototypes/01) ----------
+const M = 60; // meters -> px
+
+function resolvePositionArray(props, parentProps) {
+  const raw = props.position || [0, 0];
+  return raw.map((v) => (typeof v === "function" ? v({ parent: parentProps }) : v));
+}
+
+function renderNode(node, parent, offset, out, anchors) {
+  const [px, py] = resolvePositionArray(node.props, parent ? parent.props : null);
+  const abs = [offset[0] + px, offset[1] + py];
+  const { shape, style } = node.props;
+  let anchor = abs;
+
+  if (shape === "rect" && style) {
+    const [w, h] = node.props.size;
+    anchor = [abs[0] + w / 2, abs[1] + h / 2];
+    out.push(`<rect x="${abs[0]*M}" y="${abs[1]*M}" width="${w*M}" height="${h*M}"
+      fill="${style.fill ?? "none"}" stroke="${style.stroke ?? "none"}" stroke-width="${(style.strokeWidth ?? 0.02)*M}" />`);
+  } else if (shape === "line" && style) {
+    const absPts = node.props.points.map(([x, y]) => [abs[0] + x, abs[1] + y]);
+    anchor = [
+      absPts.reduce((s, p) => s + p[0], 0) / absPts.length,
+      absPts.reduce((s, p) => s + p[1], 0) / absPts.length,
+    ];
+    const ptsStr = absPts.map(([x, y]) => `${x*M},${y*M}`).join(" ");
+    const dashAttr = style.dash ? `stroke-dasharray="${style.dash.split(",").map(v => v*M).join(",")}"` : "";
+    out.push(`<polyline points="${ptsStr}" fill="none" stroke="${style.stroke}" stroke-width="${style.strokeWidth*M}" ${dashAttr} />`);
+  } else {
+    out.push(`<circle class="anchor-hit" cx="${abs[0]*M}" cy="${abs[1]*M}" r="10" />`);
+  }
+
+  anchors[node.id] = anchor;
+  for (const child of node.children) renderNode(child, node, abs, out, anchors);
+}
+
+function renderPlan({ root, connections }) {
+  const svgParts = [];
+  const anchors = {};
+  renderNode(root, null, [0, 0], svgParts, anchors);
+  for (const c of connections) {
+    if (!(c.from in anchors)) throw new Error(`connection references unknown node '${c.from}'`);
+    if (!(c.to in anchors)) throw new Error(`connection references unknown node '${c.to}'`);
+    const a = anchors[c.from], b = anchors[c.to];
+    svgParts.push(`<line x1="${a[0]*M}" y1="${a[1]*M}" x2="${b[0]*M}" y2="${b[1]*M}" stroke="#c33" stroke-width="1" stroke-dasharray="4,4" />`);
+  }
+  const [rw, rh] = root.props.size;
+  return `<svg width="${rw*M + 40}" height="${rh*M + 40}" viewBox="-20 -20 ${rw*M+40} ${rh*M+40}">${svgParts.join("\n")}</svg>`;
+}
+
+// ---------- Wire up ----------
+const sourceEl = document.getElementById("source");
+const rootEl = document.getElementById("plan-root");
+const errorEl = document.getElementById("error");
+
+function run() {
+  try {
+    const program = parse(sourceEl.value);
+    rootEl.innerHTML = renderPlan(program);
+    errorEl.textContent = "";
+  } catch (e) {
+    errorEl.textContent = "Parse/render error: " + e.message;
+  }
+}
+
+sourceEl.value = EXAMPLE;
+sourceEl.addEventListener("input", run);
+run();
+</script>
+</body>
+</html>

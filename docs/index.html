@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>2DPlaner</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; margin: 0; background: #f4f4f2; color: #222; }
+  header { display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 1rem;
+    background: #fff; border-bottom: 1px solid #ddd; flex-wrap: wrap; }
+  header h1 { font-size: 1.05rem; margin: 0; margin-right: 0.5rem; white-space: nowrap; }
+  header .spacer { flex: 1; }
+  button, select { font: inherit; font-size: 0.85rem; padding: 0.4rem 0.7rem; border: 1px solid #ccc;
+    border-radius: 5px; background: #fff; cursor: pointer; }
+  button:hover, select:hover { background: #f0f0f0; }
+  main { padding: 1rem; }
+  .layout { display: flex; gap: 1rem; align-items: flex-start; flex-wrap: wrap; }
+  textarea { width: 480px; height: 640px; font-family: ui-monospace, Consolas, monospace; font-size: 13px;
+    padding: 0.75rem; border: 1px solid #ccc; border-radius: 6px; resize: vertical; }
+  svg { background: #fff; border: 1px solid #ccc; border-radius: 6px; }
+
+  svg .obj { transition: filter 0.1s; }
+  .anchor-hit { fill: transparent; }
+  svg .annotation text { pointer-events: none; font-family: system-ui, sans-serif; }
+  svg .annotation[data-show="hover"] { opacity: 0; transition: opacity 0.15s; }
+  svg .obj:hover + .annotation[data-show="hover"] { opacity: 1; }
+
+  .status { max-width: 480px; }
+  #error { color: #a11; white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 12px; min-height: 1.2em; }
+  #dragmsg { color: #666; white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 12px; min-height: 1.2em; }
+  #modlog { color: #588; white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 11px; opacity: 0.85; }
+
+  #file-input { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>2DPlaner</h1>
+  <select id="example-picker">
+    <option value="" disabled selected>New from example…</option>
+    <option value="blank">Blank</option>
+    <option value="apartment">Studio Apartment</option>
+    <option value="utility">Utility Connection</option>
+  </select>
+  <button id="open-btn">Open…</button>
+  <button id="save-btn">Save as…</button>
+  <input type="file" id="file-input" accept=".2dplan,.txt,text/plain">
+  <div class="spacer"></div>
+  <span style="font-size: 0.8rem; color: #888;">Saved automatically in this browser</span>
+</header>
+<main>
+  <div class="layout">
+    <textarea id="source" spellcheck="false"></textarea>
+    <div>
+      <div id="plan-root"></div>
+      <div class="status">
+        <div id="error"></div>
+        <div id="dragmsg"></div>
+        <div id="modlog"></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+// ---------- Example plans ----------
+const EXAMPLES = {
+  blank: `element plan {
+  shape: "rect"
+  size: [4m, 3m]
+  position: [0m, 0m]
+  style: { fill: "#f7f5f0", stroke: "#333", strokeWidth: 0.04 }
+}
+`,
+  apartment: `settings {
+  allowSelfIntersectingPolygons: false
+}
+
+element room {
+  shape: "rect"
+  size: [5m, 4m]
+  position: [0m, 0m]
+  style: { fill: "#f7f5f0", stroke: "#333", strokeWidth: 0.04 }
+
+  element corner_1 { position: [0m, 0m] }
+  element corner_2 { position: [2.2m, 0m] }
+  element corner_3 { position: [3.1m, 0m] }
+  element corner_4 { position: [5m, 0m] }
+
+  element wall_a {
+    shape: "polyline"
+    points: [corner_1, corner_2]
+    style: { stroke: "#444", strokeWidth: 0.1 }
+  }
+  element door {
+    shape: "polyline"
+    points: [corner_2, corner_3]
+    style: { stroke: "#8a6a42", strokeWidth: 0.1, strokeDash: "0.15,0.1" }
+    label: "Tür"
+    show: "hover"
+  }
+  element wall_b {
+    shape: "polyline"
+    points: [corner_3, corner_4]
+    style: { stroke: "#444", strokeWidth: 0.1 }
+  }
+
+  element bed {
+    shape: "rect"
+    size: [1.6m, 2m]
+    position: [0.3m, 0.4m]
+    style: { fill: "#cfe0f5", stroke: "#4a76a8", strokeWidth: 0.02 }
+    label: "Bett"
+    show: "hover"
+  }
+
+  element desk {
+    shape: "rect"
+    size: [1.2m, 0.6m]
+    position: [3.6m, 0.2m]
+    style: { fill: "#fbe3b0", stroke: "#a87a2b", strokeWidth: 0.02 }
+    label: "Schreibtisch"
+    show: "hover"
+  }
+
+  element side_table {
+    shape: "circle"
+    radius: 0.35m
+    position: [2.5m, 3.3m]
+    style: { fill: "#bfe3f5", stroke: "#3a7a9a", strokeWidth: 0.03 }
+    label: "Tisch"
+    show: "always"
+    dimensions: true
+  }
+
+  element stove {
+    shape: "rect"
+    size: [0.6m, 0.6m]
+    position: [4.1m, 2.6m]
+    style: { fill: "#d9534f", stroke: "#8a2f2a", strokeWidth: 0.02 }
+    label: "Herd"
+    show: "hover"
+  }
+
+  element counter {
+    shape: "rect"
+    size: [0.5m, 1.2m]
+    position: [4.1m, 1.4m]
+    style: { fill: "#e8c896", stroke: "#a9895c", strokeWidth: 0.02 }
+    label: "Ablage"
+    show: "hover"
+  }
+
+  element rug_1 { position: [1m, 2.6m] }
+  element rug_2 { position: [1.9m, 2.5m] }
+  element rug_3 { position: [2.1m, 3.4m] }
+  element rug_4 { position: [1.5m, 3.9m] }
+  element rug_5 { position: [0.7m, 3.5m] }
+
+  element rug {
+    shape: "polygon"
+    points: [rug_1, rug_2, rug_3, rug_4, rug_5]
+    style: { fill: "#e0d5c0", stroke: "#b0a080", strokeWidth: 0.02 }
+    label: "Teppich"
+    show: "hover"
+  }
+}
+
+connection stove counter
+`,
+  utility: `module "interactivity-module.js"
+
+settings {
+  allowSelfIntersectingPolygons: false
+}
+
+element grundstueck {
+  shape: "polygon"
+  points: [ecke_1, ecke_2, ecke_3, ecke_4]
+  style: { fill: "#dce8c8", stroke: "#7a9a5a", strokeWidth: 0.06 }
+  label: "Grundstück"
+  show: "hover"
+
+  element ecke_1 { position: [0m, 0m] }
+  element ecke_2 { position: [11m, 0m] }
+  element ecke_3 { position: [12m, 9m] }
+  element ecke_4 { position: [-1m, 9m] }
+
+  element haus {
+    shape: "rect"
+    size: [5.5m, 4m]
+    position: [3m, 3m]
+    style: { fill: "#e8d6b8", stroke: "#8a6a42", strokeWidth: 0.08 }
+    label: "Haus"
+    show: "always"
+    dimensions: true
+  }
+
+  element strasse_anschluss { position: [1.5m, 0.5m] }
+  element kabel_knick { position: [1.5m, 4.5m] }
+  element haus_anschluss { position: [3m, 4.5m] }
+
+  element stromanschluss {
+    shape: "polyline"
+    points: [strasse_anschluss, kabel_knick, haus_anschluss]
+    style: { stroke: "#e0a800", strokeWidth: 0.05, strokeDash: "0.3,0.15" }
+    label: "Stromanschluss"
+    show: "hover"
+  }
+}
+
+connection haus_anschluss haus
+`,
+};
+
+// The apartment and blank examples don't declare the interactivity module themselves, so
+// it's added automatically if missing (see loadPlan below) — every plan gets drag/select/
+// connect for free, the same way core aim #1 intends, without every example having to
+// remember to ask for it.
+const DEFAULT_MODULE_DECLARATION = `module "interactivity-module.js"\n\n`;
+
+// ---------- Built-in ("internal") module registry — none shipped by default; a plan can
+// still load its own via module "name.js" (external) or a bare internal name if one is
+// registered here later. ----------
+const INTERNAL_MODULES = {};
+
+// ---------- Tokenizer ----------
+const TOKEN_RE = /\s+|\/\/[^\n]*|"(?:[^"\\]|\\.)*"|\d+(?:\.\d+)?(?:cm|m)?\b|[A-Za-z_][A-Za-z0-9_]*|[{}\[\]():,.+\-*/]/y;
+const KEYWORDS = new Set(["element", "module", "connection", "settings", "true", "false"]);
+const PUNCT = { "{": "LBRACE", "}": "RBRACE", "[": "LBRACKET", "]": "RBRACKET",
+  "(": "LPAREN", ")": "RPAREN", ":": "COLON", ",": "COMMA", ".": "DOT",
+  "+": "PLUS", "-": "MINUS", "*": "STAR", "/": "SLASH" };
+
+function tokenize(src) {
+  const tokens = [];
+  let i = 0;
+  while (i < src.length) {
+    TOKEN_RE.lastIndex = i;
+    const m = TOKEN_RE.exec(src);
+    if (!m || m.index !== i) throw new Error(`Unexpected character ${JSON.stringify(src[i])} at position ${i}`);
+    const text = m[0];
+    const start = i;
+    i += text.length;
+    if (/^\s+$/.test(text) || text.startsWith("//")) continue;
+    if (text.startsWith('"')) {
+      tokens.push({ type: "STRING", value: text.slice(1, -1), start, end: i });
+    } else if (/^\d/.test(text)) {
+      const unitMatch = text.match(/(cm|m)$/);
+      const unit = unitMatch ? unitMatch[0] : "";
+      const num = parseFloat(unit ? text.slice(0, -unit.length) : text);
+      tokens.push({ type: "NUMBER", value: unit === "cm" ? num / 100 : num, unit, start, end: i });
+    } else if (/^[A-Za-z_]/.test(text)) {
+      tokens.push({ type: KEYWORDS.has(text) ? text.toUpperCase() : "IDENT", value: text, start, end: i });
+    } else {
+      tokens.push({ type: PUNCT[text], value: text, start, end: i });
+    }
+  }
+  tokens.push({ type: "EOF", value: null, start: i, end: i });
+  return tokens;
+}
+
+// ---------- Parser ----------
+function parse(src) {
+  const tokens = tokenize(src);
+  const nodesById = {};
+  let pos = 0;
+  const peek = () => tokens[pos];
+  const next = () => tokens[pos++];
+  const expect = (type) => {
+    if (peek().type !== type) throw new Error(`Expected ${type} but got ${peek().type} (${JSON.stringify(peek().value)})`);
+    return next();
+  };
+
+  function parseProgram() {
+    const modules = [];
+    while (peek().type === "MODULE") { next(); modules.push(expect("STRING").value); }
+    let settings = {};
+    if (peek().type === "SETTINGS") { next(); settings = parseObjectLiteral(); }
+    const root = parseElementDecl(null);
+    const connections = [];
+    while (peek().type !== "EOF") connections.push(parseConnectionDecl());
+    return { root, nodesById, modules, settings, connections };
+  }
+
+  function parseElementDecl(parentId) {
+    const startTok = expect("ELEMENT");
+    const id = expect("IDENT").value;
+    expect("LBRACE");
+    const props = {};
+    const children = [];
+    while (peek().type !== "RBRACE") {
+      if (peek().type === "ELEMENT") {
+        children.push(parseElementDecl(id));
+      } else {
+        const key = expect("IDENT").value;
+        expect("COLON");
+        props[key] = parseValue();
+      }
+    }
+    const endTok = expect("RBRACE");
+    const node = { id, props, children, parentId, start: startTok.start, end: endTok.end };
+    nodesById[id] = node;
+    return node;
+  }
+
+  function parseConnectionDecl() {
+    const startTok = expect("CONNECTION");
+    const from = expect("IDENT").value;
+    const toTok = expect("IDENT");
+    let props = {};
+    let endPos = toTok.end;
+    if (peek().type === "LBRACE") {
+      props = parseObjectLiteral();
+      endPos = tokens[pos - 1].end;
+    }
+    return { from, to: toTok.value, props, start: startTok.start, end: endPos };
+  }
+
+  function parseValue() {
+    if (peek().type === "LBRACKET") return parseArray();
+    if (peek().type === "LBRACE") return parseObjectLiteral();
+    if (peek().type === "STRING") return next().value;
+    if (peek().type === "TRUE") { next(); return true; }
+    if (peek().type === "FALSE") { next(); return false; }
+    return parseExprValue();
+  }
+
+  function parseArray() {
+    expect("LBRACKET");
+    const items = [];
+    while (peek().type !== "RBRACKET") {
+      items.push(parseValue());
+      if (peek().type === "COMMA") next(); else break;
+    }
+    expect("RBRACKET");
+    return items;
+  }
+
+  function parseObjectLiteral() {
+    expect("LBRACE");
+    const obj = {};
+    while (peek().type !== "RBRACE") {
+      const key = expect("IDENT").value;
+      expect("COLON");
+      obj[key] = parseValue();
+      if (peek().type === "COMMA") next();
+    }
+    expect("RBRACE");
+    return obj;
+  }
+
+  function parseExprValue() {
+    const ast = parseExpr();
+    if (ast.type === "num" && !ast.compound) {
+      return { value: ast.value, unit: ast.unit, start: ast.start, end: ast.end };
+    }
+    if (ast.type === "neg" && ast.value.type === "num" && !ast.value.compound) {
+      return { value: -ast.value.value, unit: ast.value.unit, start: ast.start, end: ast.value.end };
+    }
+    if (containsPath(ast)) {
+      const fn = (ctx) => evalAst(ast, ctx);
+      fn.ast = ast;
+      if (ast.type === "path" && ast.segments.length === 1) fn.cornerRef = ast.segments[0];
+      return fn;
+    }
+    return evalAst(ast, null);
+  }
+
+  function parseExpr() {
+    let node = parseTerm();
+    while (peek().type === "PLUS" || peek().type === "MINUS") {
+      const op = next().type;
+      node = { type: "bin", op, left: node, right: parseTerm(), compound: true };
+    }
+    return node;
+  }
+
+  function parseTerm() {
+    let node = parseFactor();
+    while (peek().type === "STAR" || peek().type === "SLASH") {
+      const op = next().type;
+      node = { type: "bin", op, left: node, right: parseFactor(), compound: true };
+    }
+    return node;
+  }
+
+  function parseFactor() {
+    if (peek().type === "MINUS") {
+      const t = next();
+      return { type: "neg", value: parseFactor(), compound: true, start: t.start };
+    }
+    if (peek().type === "LPAREN") { next(); const e = parseExpr(); expect("RPAREN"); return e; }
+    if (peek().type === "NUMBER") {
+      const t = next();
+      return { type: "num", value: t.value, unit: t.unit, start: t.start, end: t.end };
+    }
+    if (peek().type === "IDENT") return { type: "path", segments: parsePath() };
+    throw new Error(`Expected a value, got ${peek().type}`);
+  }
+
+  function parsePath() {
+    const segments = [expect("IDENT").value];
+    while (peek().type === "DOT") { next(); segments.push(expect("IDENT").value); }
+    return segments;
+  }
+
+  return parseProgram();
+}
+
+function containsPath(ast) {
+  if (ast.type === "path") return true;
+  if (ast.type === "neg") return containsPath(ast.value);
+  if (ast.type === "bin") return containsPath(ast.left) || containsPath(ast.right);
+  return false;
+}
+
+function evalAst(ast, ctx) {
+  if (ast.type === "num") return ast.value;
+  if (ast.type === "neg") return -evalAst(ast.value, ctx);
+  if (ast.type === "bin") {
+    const l = evalAst(ast.left, ctx), r = evalAst(ast.right, ctx);
+    if (ast.op === "PLUS") return l + r;
+    if (ast.op === "MINUS") return l - r;
+    if (ast.op === "STAR") return l * r;
+    if (ast.op === "SLASH") return l / r;
+  }
+  if (ast.type === "path") {
+    let cur = ctx;
+    for (const seg of ast.segments) {
+      if (cur == null) throw new Error(`Cannot resolve '${ast.segments.join(".")}' — no value for '${seg}'`);
+      if ((seg === "x" || seg === "y") && Array.isArray(cur)) cur = cur[seg === "x" ? 0 : 1];
+      else cur = numOf(cur[seg]);
+    }
+    return numOf(cur);
+  }
+}
+
+function numOf(v) {
+  return v && typeof v === "object" && "value" in v && typeof v.value === "number" ? v.value : v;
+}
+function isEditable(v) { return v && typeof v === "object" && "start" in v; }
+
+function linearize(ast) {
+  if (ast.type === "num") return { coeff: 0, offset: ast.value };
+  if (ast.type === "path") return { coeff: 1, offset: 0, segments: ast.segments };
+  if (ast.type === "neg") {
+    const v = linearize(ast.value);
+    return v && { coeff: -v.coeff, offset: -v.offset, segments: v.segments };
+  }
+  if (ast.type === "bin") {
+    const l = linearize(ast.left), r = linearize(ast.right);
+    if (!l || !r) return null;
+    const segments = l.segments || r.segments;
+    if (ast.op === "PLUS") return { coeff: l.coeff + r.coeff, offset: l.offset + r.offset, segments };
+    if (ast.op === "MINUS") return { coeff: l.coeff - r.coeff, offset: l.offset - r.offset, segments };
+    if (ast.op === "STAR") {
+      if (l.coeff !== 0 && r.coeff !== 0) return null;
+      return { coeff: l.coeff * r.offset + r.coeff * l.offset, offset: l.offset * r.offset, segments };
+    }
+    if (ast.op === "SLASH") {
+      if (r.coeff !== 0) return null;
+      return { coeff: l.coeff / r.offset, offset: l.offset / r.offset, segments };
+    }
+  }
+  return null;
+}
+
+function trySolveBackward(fn, parentNode, desiredValue, edits, warnings) {
+  const lin = linearize(fn.ast);
+  if (!lin || !lin.segments || lin.coeff === 0) {
+    warnings.push("expression isn't a simple parent.<prop>.<x|y> +/-/*// chain, can't solve backward");
+    return;
+  }
+  const [head, prop, axis] = lin.segments;
+  if (head !== "parent" || (axis !== "x" && axis !== "y") || !parentNode) {
+    warnings.push(`can't solve backward through '${lin.segments.join(".")}', only parent.<prop>.<x|y> is supported`);
+    return;
+  }
+  const index = axis === "x" ? 0 : 1;
+  const target = parentNode.props[prop]?.[index];
+  if (!isEditable(target)) {
+    warnings.push(`${parentNode.id}.${prop}.${axis} isn't a plain literal, can't rewrite it`);
+    return;
+  }
+  const solvedValue = (desiredValue - lin.offset) / lin.coeff;
+  edits.push({ start: target.start, end: target.end, text: formatNumber(solvedValue, target.unit) });
+}
+
+// ---------- Module loading. Cleanup-aware: a module removed from the plan's own module
+// list gets its cleanup run and is evicted from the loaded cache, so re-declaring it later
+// loads it fresh rather than leaving stale listeners/DOM behind. ----------
+const loadedExternal = new Set();
+const loadedInternal = new Set();
+const moduleCleanups = new Map();
+
+function deactivateRemovedModules(currentModuleNames) {
+  for (const [name, cleanup] of [...moduleCleanups]) {
+    if (!currentModuleNames.includes(name)) {
+      cleanup();
+      moduleCleanups.delete(name);
+      loadedExternal.delete(name);
+      loadedInternal.delete(name);
+    }
+  }
+}
+
+function isUrlLike(name) { return name.includes("/") || name.endsWith(".js") || name.includes("://"); }
+
+function loadExternalScript(src) {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = src;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error(`Failed to load module '${src}'`));
+    document.body.appendChild(script);
+  });
+}
+
+async function ensureModulesLoaded(moduleNames) {
+  for (const name of moduleNames) {
+    if (isUrlLike(name)) {
+      if (!loadedExternal.has(name)) {
+        await loadExternalScript(name);
+        loadedExternal.add(name);
+      }
+    } else if (INTERNAL_MODULES[name]) {
+      if (!loadedInternal.has(name)) {
+        INTERNAL_MODULES[name]();
+        loadedInternal.add(name);
+      }
+    } else {
+      throw new Error(`Unknown internal module '${name}'`);
+    }
+  }
+}
+
+// ---------- Renderer (pure: parsed tree -> SVG string + rect bboxes; no selection/drag
+// state of its own — that's the interactivity module's job, loaded like any other module). ----------
+const M = 60; // meters -> px
+
+function resolvePositionArray(props, parentProps) {
+  const raw = props.position || [0, 0];
+  return raw.map((v) => (typeof v === "function" ? v({ parent: parentProps }) : numOf(v)));
+}
+
+function computePositions(node, parent, offset, positions) {
+  const [px, py] = resolvePositionArray(node.props, parent ? parent.props : null);
+  const abs = [offset[0] + px, offset[1] + py];
+  positions[node.id] = abs;
+  for (const child of node.children) computePositions(child, node, abs, positions);
+}
+
+function computeCornerUsers(node, cornerUsers) {
+  for (const pt of node.props.points ?? []) {
+    if (typeof pt === "function" && pt.cornerRef) (cornerUsers[pt.cornerRef] ??= []).push(node.id);
+  }
+  for (const child of node.children) computeCornerUsers(child, cornerUsers);
+}
+
+function resolvePointAbs(pt, ownAbs, positions) {
+  if (Array.isArray(pt)) return [ownAbs[0] + numOf(pt[0]), ownAbs[1] + numOf(pt[1])];
+  if (typeof pt === "function" && pt.cornerRef) {
+    const p = positions[pt.cornerRef];
+    if (!p) throw new Error(`points reference to unknown element '${pt.cornerRef}'`);
+    return p;
+  }
+  throw new Error("a points entry must be a [x,y] pair or a single sibling element id");
+}
+
+function escapeXml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" }[c]));
+}
+function fmtMeters(n) { return (Math.round(n * 100) / 100).toString(); }
+
+function dimensionText(node) {
+  if (node.props.shape === "rect") {
+    const w = numOf(node.props.size[0]), h = numOf(node.props.size[1]);
+    return `${fmtMeters(w)} × ${fmtMeters(h)} m`;
+  }
+  if (node.props.shape === "circle") {
+    const r = numOf(node.props.radius ?? 0);
+    return `⌀ ${fmtMeters(r * 2)} m`;
+  }
+  return null;
+}
+
+function renderAnnotation(node, anchor, shapesOut) {
+  const label = node.props.label;
+  const dims = node.props.dimensions ? dimensionText(node) : null;
+  if (!label && !dims) return;
+  const showMode = node.props.show === "always" ? "always" : "hover";
+  const lines = [label, dims].filter(Boolean);
+  const lineHeight = 12;
+  const startY = anchor[1] * M - ((lines.length - 1) * lineHeight) / 2;
+  const textEls = lines.map((line, i) =>
+    `<text x="${anchor[0]*M}" y="${startY + i*lineHeight}" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#222">${escapeXml(line)}</text>`
+  ).join("");
+  shapesOut.push(`<g class="annotation" data-show="${showMode}">${textEls}</g>`);
+}
+
+function renderShape(node, positions, cornerUsers, shapesOut, anchorsOut, bboxes) {
+  const ownAbs = positions[node.id];
+  const { shape, style } = node.props;
+  const idAttr = `data-id="${node.id}"`;
+  let anchor = ownAbs;
+
+  if (shape === "rect" && style) {
+    const w = numOf(node.props.size[0]), h = numOf(node.props.size[1]);
+    anchor = [ownAbs[0] + w / 2, ownAbs[1] + h / 2];
+    bboxes[node.id] = { left: ownAbs[0], top: ownAbs[1], right: ownAbs[0] + w, bottom: ownAbs[1] + h };
+    shapesOut.push(`<rect class="obj" ${idAttr} pointer-events="all" x="${ownAbs[0]*M}" y="${ownAbs[1]*M}" width="${w*M}" height="${h*M}"
+      fill="${style.fill ?? "none"}" stroke="${style.stroke ?? "none"}" stroke-width="${numOf(style.strokeWidth ?? 0.02)*M}" />`);
+    renderAnnotation(node, anchor, shapesOut);
+  } else if ((shape === "polyline" || shape === "polygon") && style) {
+    const absPts = node.props.points.map((pt) => resolvePointAbs(pt, ownAbs, positions));
+    anchor = [absPts.reduce((s, p) => s + p[0], 0) / absPts.length, absPts.reduce((s, p) => s + p[1], 0) / absPts.length];
+    const ptsStr = absPts.map(([x, y]) => `${x*M},${y*M}`).join(" ");
+    const dashAttr = style.strokeDash ? `stroke-dasharray="${style.strokeDash.split(",").map(v => v*M).join(",")}"` : "";
+    const tag = shape === "polygon" ? "polygon" : "polyline";
+    shapesOut.push(`<${tag} class="obj" ${idAttr} pointer-events="all" points="${ptsStr}" fill="${style.fill ?? "none"}" stroke="${style.stroke}" stroke-width="${numOf(style.strokeWidth)*M}" ${dashAttr} />`);
+    renderAnnotation(node, anchor, shapesOut);
+  } else if (shape === "circle" && style) {
+    const r = numOf(node.props.radius ?? 0.1);
+    shapesOut.push(`<circle class="obj" ${idAttr} pointer-events="all" cx="${ownAbs[0]*M}" cy="${ownAbs[1]*M}" r="${r*M}"
+      fill="${style.fill ?? "none"}" stroke="${style.stroke ?? "none"}" stroke-width="${numOf(style.strokeWidth ?? 0.02)*M}" />`);
+    renderAnnotation(node, anchor, shapesOut);
+  } else if (window.PlanModules && window.PlanModules[shape]) {
+    shapesOut.push(window.PlanModules[shape](node, ownAbs, M, { numOf, idAttr }));
+    renderAnnotation(node, anchor, shapesOut);
+  } else {
+    const users = (cornerUsers[node.id] || []).join(",");
+    anchorsOut.push(`<circle class="anchor-hit" ${idAttr} data-corner-users="${users}" pointer-events="all" cx="${ownAbs[0]*M}" cy="${ownAbs[1]*M}" r="10" />`);
+  }
+
+  for (const child of node.children) renderShape(child, positions, cornerUsers, shapesOut, anchorsOut, bboxes);
+}
+
+// Cached across renders, cleared unless the caller asks to preserve it (an in-progress drag
+// re-renders repeatedly and must not have its own motion cancelled by an auto-refit camera).
+let fixedViewBox = null;
+
+function render(program) {
+  const positions = {};
+  computePositions(program.root, null, [0, 0], positions);
+  const cornerUsers = {};
+  computeCornerUsers(program.root, cornerUsers);
+  const shapes = [], anchors = [], bboxes = {};
+  renderShape(program.root, positions, cornerUsers, shapes, anchors, bboxes);
+
+  if (!fixedViewBox) {
+    const pts = Object.values(positions);
+    let minX = Math.min(...pts.map(p => p[0])), maxX = Math.max(...pts.map(p => p[0]));
+    let minY = Math.min(...pts.map(p => p[1])), maxY = Math.max(...pts.map(p => p[1]));
+    for (const node of Object.values(program.nodesById)) {
+      if (node.props.shape === "circle" && node.props.radius) {
+        const r = numOf(node.props.radius);
+        const [cx, cy] = positions[node.id];
+        minX = Math.min(minX, cx - r); maxX = Math.max(maxX, cx + r);
+        minY = Math.min(minY, cy - r); maxY = Math.max(maxY, cy + r);
+      }
+    }
+    const pad = 0.7;
+    minX -= pad; maxX += pad; minY -= pad; maxY += pad;
+    fixedViewBox = { minX, minY, vw: (maxX - minX) * M, vh: (maxY - minY) * M };
+  }
+  const { minX, minY, vw, vh } = fixedViewBox;
+  const out = [...shapes, ...anchors];
+  return { svg: `<svg width="${vw}" height="${vh}" viewBox="${minX*M} ${minY*M} ${vw} ${vh}">${out.join("\n")}</svg>`, bboxes };
+}
+
+function formatNumber(value, unit) {
+  const base = unit === "cm" ? value * 100 : value;
+  const rounded = Math.round(base * 1000) / 1000;
+  return `${rounded}${unit}`;
+}
+
+function connectedNodeIds(startId, connections) {
+  const adj = {};
+  for (const c of connections) {
+    (adj[c.from] ??= []).push(c.to);
+    (adj[c.to] ??= []).push(c.from);
+  }
+  const seen = new Set([startId]);
+  const queue = [startId];
+  while (queue.length) {
+    for (const nb of adj[queue.shift()] ?? []) {
+      if (!seen.has(nb)) { seen.add(nb); queue.push(nb); }
+    }
+  }
+  seen.delete(startId);
+  return [...seen];
+}
+
+function segmentsIntersect(p1, p2, p3, p4) {
+  const d = (a, b, c) => (b[0]-a[0])*(c[1]-a[1]) - (b[1]-a[1])*(c[0]-a[0]);
+  const d1 = d(p3, p4, p1), d2 = d(p3, p4, p2), d3 = d(p1, p2, p3), d4 = d(p1, p2, p4);
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+}
+
+function polygonSelfIntersects(pts) {
+  const n = pts.length;
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const adjacent = j === (i + 1) % n || i === (j + 1) % n;
+      if (adjacent) continue;
+      if (segmentsIntersect(pts[i], pts[(i+1)%n], pts[j], pts[(j+1)%n])) return true;
+    }
+  }
+  return false;
+}
+
+function checkRealism(nodeId, proposedXY, base, cornerUsers, settings) {
+  if (settings.allowSelfIntersectingPolygons) return null;
+  const users = cornerUsers[nodeId];
+  if (!users) return null;
+
+  const positions = {};
+  computePositions(base.root, null, [0, 0], positions);
+  positions[nodeId] = proposedXY;
+
+  for (const userId of users) {
+    const userNode = base.nodesById[userId];
+    if (userNode.props.shape !== "polygon") continue;
+    const pts = userNode.props.points.map((pt) => resolvePointAbs(pt, positions[userId], positions));
+    if (polygonSelfIntersects(pts)) {
+      return `${nodeId}: moving here would make '${userId}' self-intersecting. Set allowSelfIntersectingPolygons: true to allow this.`;
+    }
+  }
+  return null;
+}
+
+function nodeDragEdits(node, parent, dx, dy, base, cornerUsers, warnings) {
+  const edits = [];
+  if (node.props.position) {
+    const [x0, y0] = node.props.position;
+    const parentCtx = { parent: parent ? parent.props : null };
+
+    if (isEditable(x0) && isEditable(y0)) {
+      const proposed = [x0.value + dx, y0.value + dy];
+      const violation = checkRealism(node.id, proposed, base, cornerUsers, base.settings);
+      if (violation) {
+        warnings.push(violation);
+      } else {
+        edits.push({ start: x0.start, end: x0.end, text: formatNumber(proposed[0], x0.unit) });
+        edits.push({ start: y0.start, end: y0.end, text: formatNumber(proposed[1], y0.unit) });
+      }
+    } else {
+      if (isEditable(x0)) edits.push({ start: x0.start, end: x0.end, text: formatNumber(x0.value + dx, x0.unit) });
+      else if (typeof x0 === "function") trySolveBackward(x0, parent, x0(parentCtx) + dx, edits, warnings);
+      if (isEditable(y0)) edits.push({ start: y0.start, end: y0.end, text: formatNumber(y0.value + dy, y0.unit) });
+      else if (typeof y0 === "function") trySolveBackward(y0, parent, y0(parentCtx) + dy, edits, warnings);
+    }
+  }
+
+  if (node.props.points) {
+    for (const pt of node.props.points) {
+      if (Array.isArray(pt)) {
+        const [x, y] = pt;
+        if (isEditable(x)) edits.push({ start: x.start, end: x.end, text: formatNumber(x.value + dx, x.unit) });
+        if (isEditable(y)) edits.push({ start: y.start, end: y.end, text: formatNumber(y.value + dy, y.unit) });
+      } else if (typeof pt === "function" && pt.cornerRef) {
+        warnings.push(`${node.id}: endpoint is pinned to '${pt.cornerRef}' — drag that corner directly to move it`);
+      }
+    }
+  }
+  return edits;
+}
+
+// ---------- Wire up ----------
+const sourceEl = document.getElementById("source");
+const rootEl = document.getElementById("plan-root");
+const errorEl = document.getElementById("error");
+const dragmsgEl = document.getElementById("dragmsg");
+const modlogEl = document.getElementById("modlog");
+let program = null;
+const renderedCallbacks = [];
+
+function logModule(msg) { modlogEl.textContent += `[module] ${msg}\n`; }
+
+const STORAGE_KEY = "2dplaner:currentPlan";
+
+async function rerender(opts = {}) {
+  try { localStorage.setItem(STORAGE_KEY, sourceEl.value); } catch (e) { /* private mode / quota — not fatal */ }
+  try {
+    const parsed = parse(sourceEl.value);
+    deactivateRemovedModules(parsed.modules);
+    await ensureModulesLoaded(parsed.modules);
+    program = parsed;
+    if (!opts.preserveViewBox) fixedViewBox = null;
+    const result = render(program);
+    rootEl.innerHTML = result.svg;
+    errorEl.textContent = "";
+    for (const cb of renderedCallbacks) cb(program, result);
+    return result;
+  } catch (e) {
+    errorEl.textContent = "Error: " + e.message;
+  }
+}
+
+window.PlanCore = {
+  parse, render,
+  numOf, isEditable, formatNumber,
+  computePositions, computeCornerUsers, resolvePointAbs, connectedNodeIds, nodeDragEdits,
+  rootEl, sourceEl, dragmsgEl, modlogEl,
+  M,
+  rerender,
+  onRendered: (cb) => {
+    renderedCallbacks.push(cb);
+    return () => {
+      const i = renderedCallbacks.indexOf(cb);
+      if (i !== -1) renderedCallbacks.splice(i, 1);
+    };
+  },
+  registerModuleCleanup: (name, cleanupFn) => moduleCleanups.set(name, cleanupFn),
+};
+
+// ---------- Toolbar: examples, open/save, local persistence ----------
+function loadPlan(text, { resetViewBox = true } = {}) {
+  const hasModule = /^\s*module\s+"[^"]*interactivity-module\.js"/m.test(text);
+  sourceEl.value = hasModule ? text : DEFAULT_MODULE_DECLARATION + text;
+  if (resetViewBox) fixedViewBox = null;
+  rerender();
+}
+
+function confirmReplace() {
+  if (!sourceEl.value.trim()) return true;
+  return confirm("Replace the current plan? It's saved in this browser, but this will overwrite it.");
+}
+
+document.getElementById("example-picker").addEventListener("change", (e) => {
+  const key = e.target.value;
+  e.target.value = "";
+  if (!key || !EXAMPLES[key]) return;
+  if (!confirmReplace()) return;
+  loadPlan(EXAMPLES[key]);
+});
+
+document.getElementById("save-btn").addEventListener("click", () => {
+  const blob = new Blob([sourceEl.value], { type: "text/plain" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "plan.2dplan";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+});
+
+const fileInput = document.getElementById("file-input");
+document.getElementById("open-btn").addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", async () => {
+  const file = fileInput.files[0];
+  fileInput.value = "";
+  if (!file) return;
+  if (!confirmReplace()) return;
+  loadPlan(await file.text());
+});
+
+// ---------- Startup: resume the last plan from this browser, or the default example ----------
+let initial;
+try { initial = localStorage.getItem(STORAGE_KEY); } catch (e) { initial = null; }
+loadPlan(initial || EXAMPLES.apartment, { resetViewBox: true });
+sourceEl.addEventListener("input", () => rerender());
+</script>
+</body>
+</html>

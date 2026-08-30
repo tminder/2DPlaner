@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>2DPlaner prototype — drag syncs code</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 2rem; background: #fafafa; color: #222; }
+  h1 { font-size: 1.1rem; }
+  p.note { color: #666; max-width: 900px; line-height: 1.4; }
+  p.limits { color: #a66; max-width: 900px; line-height: 1.4; font-size: 0.9em; }
+  code { background: #eee; padding: 0.1em 0.3em; border-radius: 3px; }
+  .layout { display: flex; gap: 1.5rem; align-items: flex-start; flex-wrap: wrap; }
+  textarea { width: 480px; height: 520px; font-family: ui-monospace, Consolas, monospace; font-size: 13px;
+    padding: 0.75rem; border: 1px solid #ccc; border-radius: 4px; }
+  svg { background: #fff; border: 1px solid #ccc; }
+  svg [data-id] { cursor: grab; }
+  svg [data-id]:active { cursor: grabbing; }
+  .anchor-hit { fill: transparent; }
+  .anchor-hit:hover { fill: #e33; opacity: 0.6; }
+  #error { color: #a11; white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+  #dragmsg { color: #666; white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 13px; min-height: 1.2em; }
+</style>
+</head>
+<body>
+<h1>2DPlaner prototype: drag the plan &rarr; code updates (and back)</h1>
+<p class="note">
+  Throwaway prototype for core aim #1 ("code and plan change together") and D-009
+  (every visual element must be drag-and-drop editable). Builds on
+  <a href="../02-text-parser/">02-text-parser</a>: same syntax and renderer, plus dragging.
+  Drag <code>bed</code> or <code>window_center</code> to rewrite a plain literal in the
+  source. Drag <code>desk</code> to see D-012's solve-backward: its x position is the
+  expression <code>parent.size.x - 1.2m - 0.2m</code>, so dragging it rewrites
+  <code>room</code>'s own <code>size</code> instead of the expression. Drag any wall
+  segment to see D-014's rigid connection propagation: <code>wall_a</code>,
+  <code>door</code> and <code>wall_b</code> are connected, so they move together.
+  Hold <b>Shift</b> while dragging a connected node to move it <i>alone</i>, ignoring its
+  connections — a UI escape hatch on top of D-014's default, not a change to the decision.
+</p>
+<p class="limits">
+  Known simplifications, honestly: connection propagation here is a uniform translation
+  of everything reachable in the connection graph (the "simple chain" case F-001 asked
+  for first) — no per-endpoint constraint solving, no rotation, and D-014's
+  symmetric-vs-directional distinction isn't honored (everything propagates both ways).
+  Solve-backward (D-012) only handles one level of <code>parent.&lt;prop&gt;.&lt;x|y&gt;</code>
+  in a linear +/-/*// chain. An unsolvable drag is rejected with a message rather than
+  D-015's "complete visually and flag" — implementing a true visual-only override wasn't
+  worth it for this throwaway.
+</p>
+<div class="layout">
+  <textarea id="source" spellcheck="false"></textarea>
+  <div>
+    <div id="plan-root"></div>
+    <div id="error"></div>
+    <div id="dragmsg"></div>
+  </div>
+</div>
+
+<script>
+const EXAMPLE = `// example plan: a bedroom with a wall/door/wall composition (D-013)
+node room {
+  shape: "rect"
+  size: [4m, 3.5m]
+  style: { stroke: "#333", strokeWidth: 0.06, fill: "none" }
+
+  node wall_a {
+    shape: "line"
+    points: [[0m, 0m], [1.2m, 0m]]
+    style: { stroke: "#333", strokeWidth: 0.1 }
+  }
+
+  node door {
+    shape: "line"
+    points: [[1.2m, 0m], [2.1m, 0m]]
+    style: { stroke: "#6a8f4a", strokeWidth: 0.1, dash: "0.1,0.1" }
+  }
+
+  node wall_b {
+    shape: "line"
+    points: [[2.1m, 0m], [4m, 0m]]
+    style: { stroke: "#333", strokeWidth: 0.1 }
+  }
+
+  node bed {
+    shape: "rect"
+    size: [1.6m, 2m]
+    position: [0.3m, 0.3m]
+    style: { fill: "#cfe0f5", stroke: "#4a76a8" }
+  }
+
+  // expression referencing the parent's own size (D-010: local scope only)
+  node desk {
+    shape: "rect"
+    size: [1.2m, 0.6m]
+    position: [parent.size.x - 1.2m - 0.2m, 0.2m]
+    style: { fill: "#fbe3b0", stroke: "#a87a2b" }
+  }
+
+  // coordinates only, no shape/style -> invisible but hoverable (D-016)
+  node window_center {
+    position: [1.85m, 0m]
+  }
+}
+
+connection wall_a door
+connection door wall_b
+`;
+
+// ---------- Tokenizer (tracks source spans, needed to splice edits back in) ----------
+const TOKEN_RE = /\s+|\/\/[^\n]*|"(?:[^"\\]|\\.)*"|\d+(?:\.\d+)?(?:cm|m)?\b|[A-Za-z_][A-Za-z0-9_]*|[{}\[\]():,.+\-*/]/y;
+const KEYWORDS = new Set(["node", "connection", "true", "false"]);
+const PUNCT = { "{": "LBRACE", "}": "RBRACE", "[": "LBRACKET", "]": "RBRACKET",
+  "(": "LPAREN", ")": "RPAREN", ":": "COLON", ",": "COMMA", ".": "DOT",
+  "+": "PLUS", "-": "MINUS", "*": "STAR", "/": "SLASH" };
+
+function tokenize(src) {
+  const tokens = [];
+  let i = 0;
+  while (i < src.length) {
+    TOKEN_RE.lastIndex = i;
+    const m = TOKEN_RE.exec(src);
+    if (!m || m.index !== i) throw new Error(`Unexpected character ${JSON.stringify(src[i])} at position ${i}`);
+    const text = m[0];
+    const start = i;
+    i += text.length;
+    if (/^\s+$/.test(text) || text.startsWith("//")) continue;
+    if (text.startsWith('"')) {
+      tokens.push({ type: "STRING", value: text.slice(1, -1), start, end: i });
+    } else if (/^\d/.test(text)) {
+      const unitMatch = text.match(/(cm|m)$/);
+      const unit = unitMatch ? unitMatch[0] : "";
+      const num = parseFloat(unit ? text.slice(0, -unit.length) : text);
+      tokens.push({ type: "NUMBER", value: unit === "cm" ? num / 100 : num, unit, start, end: i });
+    } else if (/^[A-Za-z_]/.test(text)) {
+      tokens.push({ type: KEYWORDS.has(text) ? text.toUpperCase() : "IDENT", value: text, start, end: i });
+    } else {
+      tokens.push({ type: PUNCT[text], value: text, start, end: i });
+    }
+  }
+  tokens.push({ type: "EOF", value: null, start: i, end: i });
+  return tokens;
+}
+
+// ---------- Parser ----------
+// A bare numeric literal (no operators) parses to a `{value, unit, start, end}` "editable"
+// object instead of a plain number, so a drag can later splice its exact source span.
+// Anything else (arithmetic, or an expression touching a `parent.*` path) parses to a
+// plain number (constant-folded) or a function(ctx) as before.
+function parse(src) {
+  const tokens = tokenize(src);
+  const nodesById = {};
+  let pos = 0;
+  const peek = () => tokens[pos];
+  const next = () => tokens[pos++];
+  const expect = (type) => {
+    if (peek().type !== type) throw new Error(`Expected ${type} but got ${peek().type} (${JSON.stringify(peek().value)})`);
+    return next();
+  };
+
+  function parseProgram() {
+    let root = null;
+    const connections = [];
+    while (peek().type !== "EOF") {
+      if (peek().type === "NODE") {
+        if (root) throw new Error("Only one top-level node (the plan root) is supported in this prototype");
+        root = parseNodeDecl(null);
+      } else if (peek().type === "CONNECTION") {
+        connections.push(parseConnectionDecl());
+      } else {
+        throw new Error(`Expected 'node' or 'connection' at top level, got ${peek().type}`);
+      }
+    }
+    if (!root) throw new Error("Plan has no root node");
+    return { root, connections, nodesById };
+  }
+
+  function parseNodeDecl(parentId) {
+    expect("NODE");
+    const id = expect("IDENT").value;
+    expect("LBRACE");
+    const props = {};
+    const children = [];
+    while (peek().type !== "RBRACE") {
+      if (peek().type === "NODE") {
+        children.push(parseNodeDecl(id));
+      } else {
+        const key = expect("IDENT").value;
+        expect("COLON");
+        props[key] = parseValue();
+      }
+    }
+    expect("RBRACE");
+    const node = { id, props, children, parentId };
+    nodesById[id] = node;
+    return node;
+  }
+
+  function parseConnectionDecl() {
+    expect("CONNECTION");
+    const from = expect("IDENT").value;
+    const to = expect("IDENT").value;
+    return { from, to };
+  }
+
+  function parseValue() {
+    if (peek().type === "LBRACKET") return parseArray();
+    if (peek().type === "LBRACE") return parseObjectLiteral();
+    if (peek().type === "STRING") return next().value;
+    if (peek().type === "TRUE") { next(); return true; }
+    if (peek().type === "FALSE") { next(); return false; }
+    return parseExprValue();
+  }
+
+  function parseArray() {
+    expect("LBRACKET");
+    const items = [];
+    while (peek().type !== "RBRACKET") {
+      items.push(parseValue());
+      if (peek().type === "COMMA") next(); else break;
+    }
+    expect("RBRACKET");
+    return items;
+  }
+
+  function parseObjectLiteral() {
+    expect("LBRACE");
+    const obj = {};
+    while (peek().type !== "RBRACE") {
+      const key = expect("IDENT").value;
+      expect("COLON");
+      obj[key] = parseValue();
+      if (peek().type === "COMMA") next();
+    }
+    expect("RBRACE");
+    return obj;
+  }
+
+  function parseExprValue() {
+    const ast = parseExpr();
+    if (ast.type === "num" && !ast.compound) {
+      return { value: ast.value, unit: ast.unit, start: ast.start, end: ast.end };
+    }
+    if (containsPath(ast)) {
+      const fn = (ctx) => evalAst(ast, ctx);
+      fn.ast = ast; // exposed so a drag can solve backward through it (D-012)
+      return fn;
+    }
+    return evalAst(ast, null);
+  }
+
+  function parseExpr() {
+    let node = parseTerm();
+    while (peek().type === "PLUS" || peek().type === "MINUS") {
+      const op = next().type;
+      node = { type: "bin", op, left: node, right: parseTerm(), compound: true };
+    }
+    return node;
+  }
+
+  function parseTerm() {
+    let node = parseFactor();
+    while (peek().type === "STAR" || peek().type === "SLASH") {
+      const op = next().type;
+      node = { type: "bin", op, left: node, right: parseFactor(), compound: true };
+    }
+    return node;
+  }
+
+  function parseFactor() {
+    if (peek().type === "MINUS") { next(); return { type: "neg", value: parseFactor(), compound: true }; }
+    if (peek().type === "LPAREN") { next(); const e = parseExpr(); expect("RPAREN"); return e; }
+    if (peek().type === "NUMBER") {
+      const t = next();
+      return { type: "num", value: t.value, unit: t.unit, start: t.start, end: t.end };
+    }
+    if (peek().type === "IDENT") return { type: "path", segments: parsePath() };
+    throw new Error(`Expected a value, got ${peek().type}`);
+  }
+
+  function parsePath() {
+    const segments = [expect("IDENT").value];
+    while (peek().type === "DOT") { next(); segments.push(expect("IDENT").value); }
+    return segments;
+  }
+
+  return parseProgram();
+}
+
+function containsPath(ast) {
+  if (ast.type === "path") return true;
+  if (ast.type === "neg") return containsPath(ast.value);
+  if (ast.type === "bin") return containsPath(ast.left) || containsPath(ast.right);
+  return false;
+}
+
+// Evaluates an AST. Editable-literal objects ({value,unit,start,end}) count as plain
+// numbers here — evaluation only cares about `.value`.
+function evalAst(ast, ctx) {
+  if (ast.type === "num") return ast.value;
+  if (ast.type === "neg") return -evalAst(ast.value, ctx);
+  if (ast.type === "bin") {
+    const l = evalAst(ast.left, ctx), r = evalAst(ast.right, ctx);
+    if (ast.op === "PLUS") return l + r;
+    if (ast.op === "MINUS") return l - r;
+    if (ast.op === "STAR") return l * r;
+    if (ast.op === "SLASH") return l / r;
+  }
+  if (ast.type === "path") {
+    let cur = ctx;
+    for (const seg of ast.segments) {
+      if (cur == null) throw new Error(`Cannot resolve '${ast.segments.join(".")}' — no value for '${seg}'`);
+      if ((seg === "x" || seg === "y") && Array.isArray(cur)) cur = cur[seg === "x" ? 0 : 1];
+      else cur = numOf(cur[seg]);
+    }
+    return numOf(cur);
+  }
+}
+
+// Unwraps an editable-literal object ({value,...}) to a plain number; passes numbers through.
+function numOf(v) {
+  return v && typeof v === "object" && "value" in v && typeof v.value === "number" ? v.value : v;
+}
+function isEditable(v) { return v && typeof v === "object" && "start" in v; }
+
+// ---------- D-012 solve-backward: linearize an expression as coeff*pathValue + offset ----------
+// Only handles a single distinct path (matches D-010: local scope) through +, -, *, / by
+// constants. Returns null if the expression isn't linear in its path (can't solve).
+function linearize(ast) {
+  if (ast.type === "num") return { coeff: 0, offset: ast.value };
+  if (ast.type === "path") return { coeff: 1, offset: 0, segments: ast.segments };
+  if (ast.type === "neg") {
+    const v = linearize(ast.value);
+    return v && { coeff: -v.coeff, offset: -v.offset, segments: v.segments };
+  }
+  if (ast.type === "bin") {
+    const l = linearize(ast.left), r = linearize(ast.right);
+    if (!l || !r) return null;
+    const segments = l.segments || r.segments;
+    if (ast.op === "PLUS") return { coeff: l.coeff + r.coeff, offset: l.offset + r.offset, segments };
+    if (ast.op === "MINUS") return { coeff: l.coeff - r.coeff, offset: l.offset - r.offset, segments };
+    if (ast.op === "STAR") {
+      if (l.coeff !== 0 && r.coeff !== 0) return null; // variable * variable: nonlinear
+      return { coeff: l.coeff * r.offset + r.coeff * l.offset, offset: l.offset * r.offset, segments };
+    }
+    if (ast.op === "SLASH") {
+      if (r.coeff !== 0) return null; // dividing by a variable: nonlinear
+      return { coeff: l.coeff / r.offset, offset: l.offset / r.offset, segments };
+    }
+  }
+  return null;
+}
+
+// ---------- Renderer ----------
+const M = 60; // meters -> px
+
+function resolvePositionArray(props, parentProps) {
+  const raw = props.position || [0, 0];
+  return raw.map((v) => (typeof v === "function" ? v({ parent: parentProps }) : numOf(v)));
+}
+
+function renderNode(node, parent, offset, out, anchors) {
+  const [px, py] = resolvePositionArray(node.props, parent ? parent.props : null);
+  const abs = [offset[0] + px, offset[1] + py];
+  const { shape, style } = node.props;
+  let anchor = abs;
+  const idAttr = `data-id="${node.id}"`;
+
+  if (shape === "rect" && style) {
+    const w = numOf(node.props.size[0]), h = numOf(node.props.size[1]);
+    anchor = [abs[0] + w / 2, abs[1] + h / 2];
+    out.push(`<rect ${idAttr} pointer-events="all" x="${abs[0]*M}" y="${abs[1]*M}" width="${w*M}" height="${h*M}"
+      fill="${style.fill ?? "none"}" stroke="${style.stroke ?? "none"}" stroke-width="${numOf(style.strokeWidth ?? 0.02)*M}" />`);
+  } else if (shape === "line" && style) {
+    const absPts = node.props.points.map(([x, y]) => [abs[0] + numOf(x), abs[1] + numOf(y)]);
+    anchor = [
+      absPts.reduce((s, p) => s + p[0], 0) / absPts.length,
+      absPts.reduce((s, p) => s + p[1], 0) / absPts.length,
+    ];
+    const ptsStr = absPts.map(([x, y]) => `${x*M},${y*M}`).join(" ");
+    const dashAttr = style.dash ? `stroke-dasharray="${style.dash.split(",").map(v => v*M).join(",")}"` : "";
+    out.push(`<polyline ${idAttr} pointer-events="all" points="${ptsStr}" fill="none" stroke="${style.stroke}" stroke-width="${numOf(style.strokeWidth)*M}" ${dashAttr} />`);
+  } else {
+    out.push(`<circle ${idAttr} pointer-events="all" class="anchor-hit" cx="${abs[0]*M}" cy="${abs[1]*M}" r="10" />`);
+  }
+
+  anchors[node.id] = anchor;
+  for (const child of node.children) renderNode(child, node, abs, out, anchors);
+}
+
+function renderPlan(program) {
+  const svgParts = [];
+  const anchors = {};
+  renderNode(program.root, null, [0, 0], svgParts, anchors);
+  for (const c of program.connections) {
+    if (!(c.from in anchors)) throw new Error(`connection references unknown node '${c.from}'`);
+    if (!(c.to in anchors)) throw new Error(`connection references unknown node '${c.to}'`);
+    const a = anchors[c.from], b = anchors[c.to];
+    svgParts.push(`<line x1="${a[0]*M}" y1="${a[1]*M}" x2="${b[0]*M}" y2="${b[1]*M}" stroke="#c33" stroke-width="1" stroke-dasharray="4,4" />`);
+  }
+  const rw = numOf(program.root.props.size[0]), rh = numOf(program.root.props.size[1]);
+  return `<svg width="${rw*M + 40}" height="${rh*M + 40}" viewBox="-20 -20 ${rw*M+40} ${rh*M+40}">${svgParts.join("\n")}</svg>`;
+}
+
+// ---------- Drag -> text splice ----------
+function formatNumber(value, unit) {
+  const base = unit === "cm" ? value * 100 : value;
+  const rounded = Math.round(base * 1000) / 1000;
+  return `${rounded}${unit}`;
+}
+
+function connectedNodeIds(startId, connections) {
+  const adj = {};
+  for (const c of connections) {
+    (adj[c.from] ??= []).push(c.to);
+    (adj[c.to] ??= []).push(c.from);
+  }
+  const seen = new Set([startId]);
+  const queue = [startId];
+  while (queue.length) {
+    for (const nb of adj[queue.shift()] ?? []) {
+      if (!seen.has(nb)) { seen.add(nb); queue.push(nb); }
+    }
+  }
+  seen.delete(startId);
+  return [...seen];
+}
+
+// Collects {start,end,text} edits for translating a node's own position/points literals
+// by (dx, dy). Non-editable entries (expressions on a *propagated* node) are skipped and
+// reported, rather than attempted — see the "known simplifications" note on the page.
+function collectTranslateEdits(node, dx, dy, warnings) {
+  const edits = [];
+  const applyPair = (xVal, yVal) => {
+    if (isEditable(xVal)) edits.push({ start: xVal.start, end: xVal.end, text: formatNumber(xVal.value + dx, xVal.unit) });
+    else if (xVal != null) warnings.push(`${node.id}: can't drag an expression-backed x coordinate here, skipped`);
+    if (isEditable(yVal)) edits.push({ start: yVal.start, end: yVal.end, text: formatNumber(yVal.value + dy, yVal.unit) });
+    else if (yVal != null) warnings.push(`${node.id}: can't drag an expression-backed y coordinate here, skipped`);
+  };
+  if (node.props.position) applyPair(node.props.position[0], node.props.position[1]);
+  if (node.props.points) for (const [x, y] of node.props.points) applyPair(x, y);
+  return edits;
+}
+
+// D-012: solve backward through one `parent.<prop>.<x|y>` expression, pushing the
+// resulting edit onto `edits` (targeting the *parent's* own literal), or a message onto
+// `warnings` if it can't be solved (D-015 territory — see the "known simplifications" note).
+function trySolveBackward(fn, parentNode, desiredValue, edits, warnings) {
+  const lin = linearize(fn.ast);
+  if (!lin || !lin.segments || lin.coeff === 0) {
+    warnings.push("expression isn't a simple parent.<prop>.<x|y> +/-/*// chain, can't solve backward");
+    return;
+  }
+  const [head, prop, axis] = lin.segments;
+  if (head !== "parent" || (axis !== "x" && axis !== "y") || !parentNode) {
+    warnings.push(`can't solve backward through '${lin.segments.join(".")}', only parent.<prop>.<x|y> is supported`);
+    return;
+  }
+  const index = axis === "x" ? 0 : 1;
+  const target = parentNode.props[prop]?.[index];
+  if (!isEditable(target)) {
+    warnings.push(`${parentNode.id}.${prop}.${axis} isn't a plain literal, can't rewrite it`);
+    return;
+  }
+  const solvedValue = (desiredValue - lin.offset) / lin.coeff;
+  edits.push({ start: target.start, end: target.end, text: formatNumber(solvedValue, target.unit) });
+}
+
+// ---------- Wire up ----------
+const sourceEl = document.getElementById("source");
+const rootEl = document.getElementById("plan-root");
+const errorEl = document.getElementById("error");
+const dragmsgEl = document.getElementById("dragmsg");
+let program = null; // last successfully parsed program, for drag handling
+
+function run() {
+  try {
+    program = parse(sourceEl.value);
+    rootEl.innerHTML = renderPlan(program);
+    errorEl.textContent = "";
+  } catch (e) {
+    errorEl.textContent = "Parse/render error: " + e.message;
+  }
+}
+
+let drag = null; // { id, baseText, startX, startY, pointerStartClientX/Y }
+
+rootEl.addEventListener("pointerdown", (e) => {
+  const el = e.target.closest("[data-id]");
+  if (!el || !program) return;
+  const node = program.nodesById[el.dataset.id];
+  if (!node.props.position && !node.props.points) { dragmsgEl.textContent = `${node.id}: has no explicit position/points in source, nothing to drag`; return; }
+  drag = { id: node.id, baseText: sourceEl.value, clientX: e.clientX, clientY: e.clientY, singleOnly: e.shiftKey };
+  // No setPointerCapture: every move re-renders via innerHTML, which destroys whatever
+  // element originally had capture and silently breaks delivery of further move/up events.
+  // Listening on window instead (below) keeps working regardless of what gets replaced.
+});
+
+window.addEventListener("pointermove", (e) => {
+  if (!drag) return;
+  const dx = (e.clientX - drag.clientX) / M;
+  const dy = (e.clientY - drag.clientY) / M;
+  applyDrag(drag, dx, dy);
+});
+
+window.addEventListener("pointerup", () => { drag = null; });
+
+function applyDrag(dragState, dx, dy) {
+  // Re-parse the immutable text captured at drag-start, so every move computes a fresh
+  // edit list against stable source offsets (splicing into a progressively-mutated string
+  // would invalidate previously-captured spans).
+  let base;
+  try { base = parse(dragState.baseText); } catch (e) { return; }
+  const node = base.nodesById[dragState.id];
+  const parent = node.parentId ? base.nodesById[node.parentId] : null;
+  const warnings = [];
+  let edits = [];
+
+  if (node.props.position) {
+    const [x0, y0] = node.props.position;
+    const parentCtx = { parent: parent ? parent.props : null };
+    if (isEditable(x0)) {
+      edits.push({ start: x0.start, end: x0.end, text: formatNumber(x0.value + dx, x0.unit) });
+    } else if (typeof x0 === "function") {
+      trySolveBackward(x0, parent, x0(parentCtx) + dx, edits, warnings);
+    }
+    if (isEditable(y0)) {
+      edits.push({ start: y0.start, end: y0.end, text: formatNumber(y0.value + dy, y0.unit) });
+    } else if (typeof y0 === "function") {
+      trySolveBackward(y0, parent, y0(parentCtx) + dy, edits, warnings);
+    }
+  }
+
+  if (node.props.points) {
+    for (const [x, y] of node.props.points) {
+      if (isEditable(x)) edits.push({ start: x.start, end: x.end, text: formatNumber(x.value + dx, x.unit) });
+      if (isEditable(y)) edits.push({ start: y.start, end: y.end, text: formatNumber(y.value + dy, y.unit) });
+    }
+  }
+
+  // Shift+drag moves just this node, ignoring its connections (D-014's rigid propagation
+  // is still the plan-language default — this is a UI escape hatch, not a language change).
+  if (!dragState.singleOnly) {
+    for (const otherId of connectedNodeIds(dragState.id, base.connections)) {
+      edits.push(...collectTranslateEdits(base.nodesById[otherId], dx, dy, warnings));
+    }
+  }
+
+  if (edits.length === 0) {
+    dragmsgEl.textContent = warnings.length ? warnings.join("\n") : `${dragState.id}: nothing solvable to drag`;
+    return;
+  }
+
+  edits.sort((a, b) => b.start - a.start);
+  let text = dragState.baseText;
+  for (const ed of edits) text = text.slice(0, ed.start) + ed.text + text.slice(ed.end);
+
+  sourceEl.value = text;
+  dragmsgEl.textContent = warnings.join("\n");
+  run();
+}
+
+sourceEl.value = EXAMPLE;
+sourceEl.addEventListener("input", run);
+run();
+</script>
+</body>
+</html>

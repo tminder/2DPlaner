@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>2DPlaner prototype — loading modules</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 2rem; background: #fafafa; color: #222; }
+  h1 { font-size: 1.1rem; }
+  p.note { color: #666; max-width: 900px; line-height: 1.4; }
+  p.limits { color: #a66; max-width: 900px; line-height: 1.4; font-size: 0.9em; }
+  code { background: #eee; padding: 0.1em 0.3em; border-radius: 3px; }
+  .layout { display: flex; gap: 1.5rem; align-items: flex-start; flex-wrap: wrap; }
+  textarea { width: 420px; height: 340px; font-family: ui-monospace, Consolas, monospace; font-size: 13px;
+    padding: 0.75rem; border: 1px solid #ccc; border-radius: 4px; }
+  svg { background: #fff; border: 1px solid #ccc; }
+  svg [data-id] { cursor: grab; }
+  svg [data-id]:active { cursor: grabbing; }
+  svg .obj { transition: filter 0.1s; }
+  svg .obj:hover { filter: drop-shadow(0 0 2px #37f) drop-shadow(0 0 2px #37f); }
+  #error { color: #a11; white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+  #dragmsg { color: #666; white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 13px; min-height: 1.2em; }
+  #modlog { color: #266; white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 12px; min-height: 2.5em; }
+</style>
+</head>
+<body>
+<h1>2DPlaner prototype: loading modules</h1>
+<p class="note">
+  Tests core aim #3 directly — no prototype had ever actually loaded or run a module
+  before this one, despite <code>module "..."</code> being documented syntax (D-020) since
+  early on. Two module declarations in the preamble below: <code>"star-tool"</code>
+  resolves against a small built-in registry bundled in <em>this page's own script</em>
+  (representing "ships with the app"); <code>"heart-module.js"</code> is fetched at
+  runtime from <a href="heart-module.js">a separate file</a> sitting next to this one
+  (representing "external, loaded from wherever the URL points"). Neither <code>star</code>
+  nor <code>heart</code> is a shape the core renderer knows about — both only exist because
+  their module registered a renderer function for that shape name.
+</p>
+<p class="note">
+  A minimal module API surface, tried for the first time here (F-002 remains open — this
+  is one rough attempt, not a proposal): a module calls
+  <code>PlanModules[shapeName] = (node, ownAbs, M, helpers) =&gt; svgMarkupString</code>.
+  The core renderer, when it meets a <code>shape</code> value it doesn't recognize
+  (not <code>rect</code>/<code>line</code>/<code>polygon</code>/<code>circle</code>),
+  checks that registry before falling back to D-016's invisible-anchor default — so a
+  module can add an entirely new visual shape without the core needing to know it exists
+  in advance.
+</p>
+<p class="limits">
+  Known gaps, on purpose: no sandboxing (matches D-020's decision — trusted like an npm
+  package, not an untrusted download), no version/conflict handling if two modules
+  registered the same shape name, and the module only gets to contribute *rendering* — it
+  can't yet hook into drag behavior or add new primitives beyond a shape renderer. D-020
+  said modules should eventually reach further than this; this prototype only tests the
+  rendering-extension slice.
+</p>
+<div class="layout">
+  <textarea id="source" spellcheck="false"></textarea>
+  <div>
+    <div id="plan-root"></div>
+    <div id="error"></div>
+    <div id="dragmsg"></div>
+    <div id="modlog"></div>
+  </div>
+</div>
+
+<script>
+const EXAMPLE = `module "star-tool"
+module "heart-module.js"
+
+node plan {
+  node landmark_1 {
+    shape: "star"
+    radius: 0.5m
+    position: [1m, 1m]
+    style: { fill: "#f0c419", stroke: "#a67c00", strokeWidth: 0.03 }
+  }
+
+  node landmark_2 {
+    shape: "heart"
+    radius: 0.4m
+    position: [3m, 1.4m]
+    style: { fill: "#e0607a", stroke: "#a02040", strokeWidth: 0.03 }
+  }
+
+  node bench {
+    shape: "rect"
+    size: [1m, 0.4m]
+    position: [1m, 2.6m]
+    style: { fill: "#c2a878", stroke: "#8a6a42", strokeWidth: 0.02 }
+  }
+}
+`;
+
+// ---------- Built-in ("internal") module registry — bundled in this page's own script ----------
+const INTERNAL_MODULES = {
+  "star-tool": () => {
+    window.PlanModules = window.PlanModules || {};
+    window.PlanModules["star"] = (node, ownAbs, M, { numOf, idAttr }) => {
+      const r = numOf(node.props.radius ?? 0.3);
+      const style = node.props.style ?? {};
+      const cx = ownAbs[0] * M, cy = ownAbs[1] * M, rOuter = r * M, rInner = r * M * 0.42;
+      let d = "";
+      for (let i = 0; i < 10; i++) {
+        const angle = -Math.PI / 2 + i * Math.PI / 5;
+        const rr = i % 2 === 0 ? rOuter : rInner;
+        d += (i === 0 ? "M" : "L") + (cx + rr * Math.cos(angle)).toFixed(2) + "," + (cy + rr * Math.sin(angle)).toFixed(2) + " ";
+      }
+      return `<path class="obj" ${idAttr} pointer-events="all" d="${d}Z" fill="${style.fill ?? "none"}" stroke="${style.stroke ?? "none"}" stroke-width="${numOf(style.strokeWidth ?? 0.02) * M}" />`;
+    };
+    logModule("'star-tool' (internal) registered shape 'star'");
+  },
+};
+
+// ---------- Tokenizer/parser (extended with `module "..."` preamble statements) ----------
+const TOKEN_RE = /\s+|\/\/[^\n]*|"(?:[^"\\]|\\.)*"|\d+(?:\.\d+)?(?:cm|m)?\b|[A-Za-z_][A-Za-z0-9_]*|[{}\[\]():,]/y;
+const KEYWORDS = new Set(["node", "module", "true", "false"]);
+const PUNCT = { "{": "LBRACE", "}": "RBRACE", "[": "LBRACKET", "]": "RBRACKET",
+  "(": "LPAREN", ")": "RPAREN", ":": "COLON", ",": "COMMA" };
+
+function tokenize(src) {
+  const tokens = [];
+  let i = 0;
+  while (i < src.length) {
+    TOKEN_RE.lastIndex = i;
+    const m = TOKEN_RE.exec(src);
+    if (!m || m.index !== i) throw new Error(`Unexpected character ${JSON.stringify(src[i])} at position ${i}`);
+    const text = m[0];
+    const start = i;
+    i += text.length;
+    if (/^\s+$/.test(text) || text.startsWith("//")) continue;
+    if (text.startsWith('"')) {
+      tokens.push({ type: "STRING", value: text.slice(1, -1), start, end: i });
+    } else if (/^\d/.test(text)) {
+      const unitMatch = text.match(/(cm|m)$/);
+      const unit = unitMatch ? unitMatch[0] : "";
+      const num = parseFloat(unit ? text.slice(0, -unit.length) : text);
+      tokens.push({ type: "NUMBER", value: unit === "cm" ? num / 100 : num, unit, start, end: i });
+    } else if (/^[A-Za-z_]/.test(text)) {
+      tokens.push({ type: KEYWORDS.has(text) ? text.toUpperCase() : "IDENT", value: text, start, end: i });
+    } else {
+      tokens.push({ type: PUNCT[text], value: text, start, end: i });
+    }
+  }
+  tokens.push({ type: "EOF", value: null, start: i, end: i });
+  return tokens;
+}
+
+function parse(src) {
+  const tokens = tokenize(src);
+  const nodesById = {};
+  let pos = 0;
+  const peek = () => tokens[pos];
+  const next = () => tokens[pos++];
+  const expect = (type) => {
+    if (peek().type !== type) throw new Error(`Expected ${type} but got ${peek().type} (${JSON.stringify(peek().value)})`);
+    return next();
+  };
+
+  function parseProgram() {
+    const modules = [];
+    while (peek().type === "MODULE") { next(); modules.push(expect("STRING").value); }
+    const root = parseNodeDecl(null);
+    if (peek().type !== "EOF") throw new Error("Only one top-level node is supported in this prototype");
+    return { root, nodesById, modules };
+  }
+
+  function parseNodeDecl(parentId) {
+    expect("NODE");
+    const id = expect("IDENT").value;
+    expect("LBRACE");
+    const props = {};
+    const children = [];
+    while (peek().type !== "RBRACE") {
+      if (peek().type === "NODE") children.push(parseNodeDecl(id));
+      else { const key = expect("IDENT").value; expect("COLON"); props[key] = parseValue(); }
+    }
+    expect("RBRACE");
+    const node = { id, props, children, parentId };
+    nodesById[id] = node;
+    return node;
+  }
+
+  function parseValue() {
+    if (peek().type === "LBRACKET") return parseArray();
+    if (peek().type === "LBRACE") return parseObjectLiteral();
+    if (peek().type === "STRING") return next().value;
+    if (peek().type === "TRUE") { next(); return true; }
+    if (peek().type === "FALSE") { next(); return false; }
+    if (peek().type === "NUMBER") { const t = next(); return { value: t.value, unit: t.unit, start: t.start, end: t.end }; }
+    throw new Error(`Expected a value, got ${peek().type}`);
+  }
+  function parseArray() {
+    expect("LBRACKET"); const items = [];
+    while (peek().type !== "RBRACKET") { items.push(parseValue()); if (peek().type === "COMMA") next(); else break; }
+    expect("RBRACKET"); return items;
+  }
+  function parseObjectLiteral() {
+    expect("LBRACE"); const obj = {};
+    while (peek().type !== "RBRACE") { const key = expect("IDENT").value; expect("COLON"); obj[key] = parseValue(); if (peek().type === "COMMA") next(); }
+    expect("RBRACE"); return obj;
+  }
+
+  return parseProgram();
+}
+
+function numOf(v) { return v && typeof v === "object" && "value" in v ? v.value : v; }
+function isEditable(v) { return v && typeof v === "object" && "start" in v; }
+
+// ---------- Module loading ----------
+const loadedExternal = new Set();
+const loadedInternal = new Set();
+
+function isUrlLike(name) { return name.includes("/") || name.endsWith(".js") || name.includes("://"); }
+
+function loadExternalScript(src) {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = src;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error(`Failed to load external module '${src}'`));
+    document.body.appendChild(script);
+  });
+}
+
+async function ensureModulesLoaded(moduleNames) {
+  for (const name of moduleNames) {
+    if (isUrlLike(name)) {
+      if (!loadedExternal.has(name)) {
+        await loadExternalScript(name);
+        loadedExternal.add(name);
+      }
+    } else if (INTERNAL_MODULES[name]) {
+      if (!loadedInternal.has(name)) {
+        INTERNAL_MODULES[name]();
+        loadedInternal.add(name);
+      }
+    } else {
+      throw new Error(`Unknown internal module '${name}' (no built-in registry entry)`);
+    }
+  }
+}
+
+// ---------- Renderer ----------
+const M = 80; // meters -> px
+
+function resolvePositionArray(props) {
+  const raw = props.position || [0, 0];
+  return raw.map(numOf);
+}
+function computePositions(node, offset, positions) {
+  const [px, py] = resolvePositionArray(node.props);
+  const abs = [offset[0] + px, offset[1] + py];
+  positions[node.id] = abs;
+  for (const child of node.children) computePositions(child, abs, positions);
+}
+
+function renderShape(node, positions, shapesOut, anchorsOut) {
+  const ownAbs = positions[node.id];
+  const { shape, style } = node.props;
+  const idAttr = `data-id="${node.id}"`;
+
+  if (shape === "rect" && style) {
+    const w = numOf(node.props.size[0]), h = numOf(node.props.size[1]);
+    shapesOut.push(`<rect class="obj" ${idAttr} pointer-events="all" x="${ownAbs[0]*M}" y="${ownAbs[1]*M}" width="${w*M}" height="${h*M}" fill="${style.fill ?? "none"}" stroke="${style.stroke ?? "none"}" stroke-width="${numOf(style.strokeWidth ?? 0.02)*M}" />`);
+  } else if (shape === "circle" && style) {
+    const r = numOf(node.props.radius ?? 0.1);
+    shapesOut.push(`<circle class="obj" ${idAttr} pointer-events="all" cx="${ownAbs[0]*M}" cy="${ownAbs[1]*M}" r="${r*M}" fill="${style.fill ?? "none"}" stroke="${style.stroke ?? "none"}" stroke-width="${numOf(style.strokeWidth ?? 0.02)*M}" />`);
+  } else if (window.PlanModules && window.PlanModules[shape]) {
+    // F-002's first rough attempt at a module API surface: a module registers a function
+    // for a shape name; the core calls it exactly like a built-in shape, no special-casing.
+    shapesOut.push(window.PlanModules[shape](node, ownAbs, M, { numOf, idAttr }));
+  } else {
+    anchorsOut.push(`<circle class="anchor-hit" ${idAttr} pointer-events="all" cx="${ownAbs[0]*M}" cy="${ownAbs[1]*M}" r="8" fill="transparent" />`);
+  }
+
+  for (const child of node.children) renderShape(child, positions, shapesOut, anchorsOut);
+}
+
+function renderPlan(program) {
+  const positions = {};
+  computePositions(program.root, [0, 0], positions);
+  const shapes = [], anchors = [];
+  renderShape(program.root, positions, shapes, anchors);
+  const pts = Object.values(positions);
+  const minX = Math.min(...pts.map(p => p[0])) - 0.6, maxX = Math.max(...pts.map(p => p[0])) + 0.6;
+  const minY = Math.min(...pts.map(p => p[1])) - 0.6, maxY = Math.max(...pts.map(p => p[1])) + 0.6;
+  const vw = (maxX - minX) * M, vh = (maxY - minY) * M;
+  return `<svg width="${vw}" height="${vh}" viewBox="${minX*M} ${minY*M} ${vw} ${vh}">${[...shapes, ...anchors].join("\n")}</svg>`;
+}
+
+function formatNumber(value, unit) {
+  const base = unit === "cm" ? value * 100 : value;
+  return `${Math.round(base * 1000) / 1000}${unit}`;
+}
+
+// ---------- Wire up ----------
+const sourceEl = document.getElementById("source");
+const rootEl = document.getElementById("plan-root");
+const errorEl = document.getElementById("error");
+const dragmsgEl = document.getElementById("dragmsg");
+const modlogEl = document.getElementById("modlog");
+let program = null;
+
+function logModule(msg) { modlogEl.textContent += `[module] ${msg}\n`; }
+
+async function run() {
+  try {
+    const parsed = parse(sourceEl.value);
+    await ensureModulesLoaded(parsed.modules);
+    program = parsed;
+    rootEl.innerHTML = renderPlan(program);
+    errorEl.textContent = "";
+  } catch (e) {
+    errorEl.textContent = "Parse/render/module error: " + e.message;
+  }
+}
+
+let drag = null;
+
+rootEl.addEventListener("pointerdown", (e) => {
+  const el = e.target.closest("[data-id]");
+  if (!el || !program) return;
+  const node = program.nodesById[el.dataset.id];
+  if (!node.props.position) { dragmsgEl.textContent = `${node.id}: has no explicit position, nothing to drag`; return; }
+  drag = { id: node.id, baseText: sourceEl.value, clientX: e.clientX, clientY: e.clientY };
+});
+
+window.addEventListener("pointermove", (e) => {
+  if (!drag) return;
+  const dx = (e.clientX - drag.clientX) / M;
+  const dy = (e.clientY - drag.clientY) / M;
+  applyDrag(drag, dx, dy);
+});
+
+window.addEventListener("pointerup", () => { drag = null; });
+
+function applyDrag(dragState, dx, dy) {
+  let base;
+  try { base = parse(dragState.baseText); } catch (e) { return; }
+  const node = base.nodesById[dragState.id];
+  if (!node.props.position) return;
+  const [x0, y0] = node.props.position;
+  if (!isEditable(x0) || !isEditable(y0)) return;
+  const edits = [
+    { start: x0.start, end: x0.end, text: formatNumber(x0.value + dx, x0.unit) },
+    { start: y0.start, end: y0.end, text: formatNumber(y0.value + dy, y0.unit) },
+  ].sort((a, b) => b.start - a.start);
+  let text = dragState.baseText;
+  for (const ed of edits) text = text.slice(0, ed.start) + ed.text + text.slice(ed.end);
+  sourceEl.value = text;
+  run();
+}
+
+sourceEl.value = EXAMPLE;
+sourceEl.addEventListener("input", run);
+run();
+</script>
+</body>
+</html>
