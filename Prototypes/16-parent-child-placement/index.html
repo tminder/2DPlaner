@@ -436,19 +436,18 @@ function nearestEdgeNormal(point, poly) {
   return best ? best.normal : null;
 }
 
-// Same shape as D-041's clampToNoCollision — binary-search the boundary point along the
-// attempted move where the child would first leave the parent, then slide the remaining
-// distance along the parent boundary's tangent at that point, instead of freezing outright.
+// Binary-search the boundary point along the attempted move where the child would first
+// leave the parent, then slide the remaining distance along the parent boundary's tangent
+// at that point (D-041's clampToNoCollision shape), instead of freezing outright.
 //
-// Near a corner (two walls close together), "the nearest edge" is a discontinuous function
-// of position — a tiny change in the attempted (dx, dy) can flip which wall the tangent is
-// built from, which can visibly jump the resolved position between two different single-
-// edge answers rather than settling smoothly into the corner. A single pass can't fix that
-// (it only ever consults one edge); iterating the same boundary-then-slide step a few times,
-// each one starting from the previous pass's own result, converges toward the corner itself
-// instead — reported as an occasional jump during testing, not confirmed fully gone after
-// this, since a real fix would need the nearest point on the *whole* boundary (vertices
-// included), not just the nearest edge.
+// Found NOT to be reliable right at a corner, confirmed visually (screenshot: the sofa
+// sitting mostly outside the room's top-left corner while the status line still said
+// "stays inside"): the tangent is built from nearest-edge-to-the-child's-*center*, but at a
+// corner the center can stay fully inside the parent while an actual *corner* of the child
+// pokes out — the computed slide direction then has nothing to do with the corner that's
+// really escaping, so it can converge on a position that's still outside. Kept only as the
+// fallback for a circle/polygon parent below, where there's no equally simple exact
+// alternative; a rect parent uses the exact clamp in clampRectToStayInsideRect instead.
 function clampToStayInside(node, parentPoly, dx, dy, positions, warnings) {
   const escapes = (tx, ty) => !isContained(childCornersAt(node, tx, ty, positions), parentPoly);
   if (!escapes(dx, dy)) return [dx, dy];
@@ -472,6 +471,20 @@ function clampToStayInside(node, parentPoly, dx, dy, positions, warnings) {
     curDy = boundaryDy + tangent[1] * slide;
   }
   return [curDx, curDy];
+}
+
+// Exact, non-iterative containment for the common case this prototype actually tests: an
+// axis-aligned rect child inside an axis-aligned rect parent. Each axis clamps completely
+// independently against the parent's own bounds — no binary search, no tangent, nothing
+// that can misfire at a corner, unlike the general approach above. A corner is simply
+// "both axes clamped at once," not a special case this needs to detect.
+function clampRectToStayInsideRect(childId, dx, dy, positions, parentAbs, parentSize, childSize) {
+  const [x, y] = positions[childId];
+  const [pw, ph] = parentSize, [cw, ch] = childSize;
+  const targetX = x + dx, targetY = y + dy;
+  const clampedX = Math.min(Math.max(targetX, parentAbs[0]), parentAbs[0] + pw - cw);
+  const clampedY = Math.min(Math.max(targetY, parentAbs[1]), parentAbs[1] + ph - ch);
+  return [clampedX - x, clampedY - y];
 }
 
 function placementFor(node, parent, connections) {
@@ -547,11 +560,21 @@ function applyDrag(dragState, dx, dy) {
   if (placementFor(node, parent, base.connections) === "inside") {
     const positions = {};
     computePositions(base.root, null, [0, 0], positions);
-    const parentPoly = parentPolygonFor(parent, positions);
-    if (parentPoly) {
-      [dx, dy] = clampToStayInside(node, parentPoly, dx, dy, positions, warnings);
+    if (node.props.shape === "rect" && node.props.size && parent.props.shape === "rect" && parent.props.size) {
+      const [newDx, newDy] = clampRectToStayInsideRect(
+        node.id, dx, dy, positions, positions[parent.id],
+        [numOf(parent.props.size[0]), numOf(parent.props.size[1])],
+        [numOf(node.props.size[0]), numOf(node.props.size[1])]
+      );
+      if (newDx !== dx || newDy !== dy) warnings.push(`${node.id}: stays inside '${parent.id}'`);
+      dx = newDx; dy = newDy;
     } else {
-      warnings.push(`${parent.id}: not a rect/polygon, containment not checked (D-032 scope)`);
+      const parentPoly = parentPolygonFor(parent, positions);
+      if (parentPoly) {
+        [dx, dy] = clampToStayInside(node, parentPoly, dx, dy, positions, warnings);
+      } else {
+        warnings.push(`${parent.id}: not a rect/polygon, containment not checked (D-032 scope)`);
+      }
     }
   }
 
