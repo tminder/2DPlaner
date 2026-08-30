@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Prototype 17: module-provided composition (wall-with-door)</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 1.5rem; color: #222; }
+  h1 { font-size: 1.1rem; }
+  p { max-width: 720px; color: #444; font-size: 0.9rem; }
+  .layout { display: flex; gap: 1rem; margin-top: 1rem; }
+  textarea { width: 420px; height: 380px; font-family: ui-monospace, Consolas, monospace; font-size: 13px;
+    padding: 0.75rem; border: 1px solid #ccc; border-radius: 6px; }
+  #plan-root svg { border: 1px solid #ccc; border-radius: 6px; background: #fff; }
+  #error { color: #a11; white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+</style>
+</head>
+<body>
+<h1>Prototype 17: module-provided composition (wall-with-door)</h1>
+<p>
+  Tests D-011/F-002's third, never-attempted module promise: can a module offer a
+  reusable, higher-level building block "composed from Element and Connection" — the
+  exact illustrative example <a href="../../documentation/language.md">language.md</a>
+  itself uses — rather than the plan's author hand-writing every corner (D-018's pattern,
+  as every shipped wall/door currently does)? <code>wall-with-door-module.js</code>
+  registers a new core hook, <code>core.registerBeforeRender(cb)</code>, and uses it to
+  expand any <code>element { compose: "wallWithDoor", from, to, doorAt, doorWidth }</code>
+  into the same three-piece wall_a/door/wall_b structure the apartment example's author
+  currently writes by hand as four corner elements plus three polylines — entirely before
+  core ever renders, so rendering itself needed zero composition-specific code: the
+  synthesized nodes are ordinary polyline Elements, indistinguishable from ones typed
+  directly. Two walls below, sharing a corner, each with its own door position —
+  demonstrating actual reuse, not a one-off.
+</p>
+<p>
+  <strong>Scope:</strong> rendering only, matching how Prototype 12 first tested modules
+  rendering-only before Prototype 14 tried interactivity. Not attempted: dragging a
+  synthesized child, or the composite's own <code>position</code> offsetting its children
+  (assumed <code>[0,0]</code> here) — see this prototype's write-up in
+  <a href="../../planning/decisions.md">decisions.md</a> for why the drag gap is a real,
+  separate problem, not just an oversight. Not testing dynamic module loading via a plan's
+  own <code>module "..."</code> declaration either — already validated in Prototypes
+  12/14; this is purely about the new hook a loaded module would call, so it's just a
+  plain <code>&lt;script&gt;</code> tag below. The composite element itself has no
+  <code>shape</code>, so it also renders its own small anchor dot at its start point
+  (core's existing, unrelated behavior for any shapeless element) — a known cosmetic
+  side-effect, not a bug this test introduces.
+</p>
+<div class="layout">
+  <textarea id="source" spellcheck="false"></textarea>
+  <div>
+    <div id="plan-root"></div>
+    <div id="error"></div>
+  </div>
+</div>
+<script>
+// ---------- Tokenizer / parser — copied verbatim from docs/index.html, the proven
+// current core (same practice as every prior prototype). ----------
+const TOKEN_RE = /\s+|\/\/[^\n]*|"(?:[^"\\]|\\.)*"|\d+(?:\.\d+)?(?:cm|m)?\b|[A-Za-z_][A-Za-z0-9_]*|[{}\[\]():,.+\-*/]/y;
+const KEYWORDS = new Set(["element", "module", "connection", "settings", "true", "false"]);
+const PUNCT = { "{": "LBRACE", "}": "RBRACE", "[": "LBRACKET", "]": "RBRACKET",
+  "(": "LPAREN", ")": "RPAREN", ":": "COLON", ",": "COMMA", ".": "DOT",
+  "+": "PLUS", "-": "MINUS", "*": "STAR", "/": "SLASH" };
+
+function tokenize(src) {
+  const tokens = [];
+  let i = 0;
+  while (i < src.length) {
+    TOKEN_RE.lastIndex = i;
+    const m = TOKEN_RE.exec(src);
+    if (!m || m.index !== i) throw new Error(`Unexpected character ${JSON.stringify(src[i])} at position ${i}`);
+    const text = m[0];
+    const start = i;
+    i += text.length;
+    if (/^\s+$/.test(text) || text.startsWith("//")) continue;
+    if (text.startsWith('"')) {
+      tokens.push({ type: "STRING", value: text.slice(1, -1), start, end: i });
+    } else if (/^\d/.test(text)) {
+      const unitMatch = text.match(/(cm|m)$/);
+      const unit = unitMatch ? unitMatch[0] : "";
+      const num = parseFloat(unit ? text.slice(0, -unit.length) : text);
+      tokens.push({ type: "NUMBER", value: unit === "cm" ? num / 100 : num, unit, start, end: i });
+    } else if (/^[A-Za-z_]/.test(text)) {
+      tokens.push({ type: KEYWORDS.has(text) ? text.toUpperCase() : "IDENT", value: text, start, end: i });
+    } else {
+      tokens.push({ type: PUNCT[text], value: text, start, end: i });
+    }
+  }
+  tokens.push({ type: "EOF", value: null, start: i, end: i });
+  return tokens;
+}
+
+function parse(src) {
+  const tokens = tokenize(src);
+  const nodesById = {};
+  let pos = 0;
+  const peek = () => tokens[pos];
+  const next = () => tokens[pos++];
+  const expect = (type) => {
+    if (peek().type !== type) throw new Error(`Expected ${type} but got ${peek().type} (${JSON.stringify(peek().value)})`);
+    return next();
+  };
+
+  function parseProgram() {
+    const modules = [];
+    while (peek().type === "MODULE") { next(); modules.push(expect("STRING").value); }
+    let settings = {};
+    if (peek().type === "SETTINGS") { next(); settings = parseObjectLiteral(); }
+    const root = parseElementDecl(null);
+    const connections = [];
+    while (peek().type !== "EOF") connections.push(parseConnectionDecl());
+    return { root, nodesById, modules, settings, connections };
+  }
+
+  function parseElementDecl(parentId) {
+    const startTok = expect("ELEMENT");
+    const id = expect("IDENT").value;
+    expect("LBRACE");
+    const props = {};
+    const children = [];
+    while (peek().type !== "RBRACE") {
+      if (peek().type === "ELEMENT") {
+        children.push(parseElementDecl(id));
+      } else {
+        const key = expect("IDENT").value;
+        expect("COLON");
+        props[key] = parseValue();
+      }
+    }
+    const endTok = expect("RBRACE");
+    const node = { id, props, children, parentId, start: startTok.start, end: endTok.end };
+    nodesById[id] = node;
+    return node;
+  }
+
+  function parseConnectionDecl() {
+    const startTok = expect("CONNECTION");
+    const from = expect("IDENT").value;
+    const toTok = expect("IDENT");
+    let props = {};
+    let endPos = toTok.end;
+    if (peek().type === "LBRACE") {
+      props = parseObjectLiteral();
+      endPos = tokens[pos - 1].end;
+    }
+    return { from, to: toTok.value, props, start: startTok.start, end: endPos };
+  }
+
+  function parseValue() {
+    if (peek().type === "LBRACKET") return parseArray();
+    if (peek().type === "LBRACE") return parseObjectLiteral();
+    if (peek().type === "STRING") return next().value;
+    if (peek().type === "TRUE") { next(); return true; }
+    if (peek().type === "FALSE") { next(); return false; }
+    return parseExprValue();
+  }
+
+  function parseArray() {
+    expect("LBRACKET");
+    const items = [];
+    while (peek().type !== "RBRACKET") {
+      items.push(parseValue());
+      if (peek().type === "COMMA") next(); else break;
+    }
+    expect("RBRACKET");
+    return items;
+  }
+
+  function parseObjectLiteral() {
+    expect("LBRACE");
+    const obj = {};
+    while (peek().type !== "RBRACE") {
+      const key = expect("IDENT").value;
+      expect("COLON");
+      obj[key] = parseValue();
+      if (peek().type === "COMMA") next();
+    }
+    expect("RBRACE");
+    return obj;
+  }
+
+  function parseExprValue() {
+    const ast = parseExpr();
+    if (ast.type === "num" && !ast.compound) {
+      return { value: ast.value, unit: ast.unit, start: ast.start, end: ast.end };
+    }
+    if (ast.type === "neg" && ast.value.type === "num" && !ast.value.compound) {
+      return { value: -ast.value.value, unit: ast.value.unit, start: ast.start, end: ast.value.end };
+    }
+    if (containsPath(ast)) {
+      const fn = (ctx) => evalAst(ast, ctx);
+      fn.ast = ast;
+      if (ast.type === "path" && ast.segments.length === 1) fn.cornerRef = ast.segments[0];
+      return fn;
+    }
+    return evalAst(ast, null);
+  }
+
+  function parseExpr() {
+    let node = parseTerm();
+    while (peek().type === "PLUS" || peek().type === "MINUS") {
+      const op = next().type;
+      node = { type: "bin", op, left: node, right: parseTerm(), compound: true };
+    }
+    return node;
+  }
+
+  function parseTerm() {
+    let node = parseFactor();
+    while (peek().type === "STAR" || peek().type === "SLASH") {
+      const op = next().type;
+      node = { type: "bin", op, left: node, right: parseFactor(), compound: true };
+    }
+    return node;
+  }
+
+  function parseFactor() {
+    if (peek().type === "MINUS") {
+      const t = next();
+      return { type: "neg", value: parseFactor(), compound: true, start: t.start };
+    }
+    if (peek().type === "LPAREN") { next(); const e = parseExpr(); expect("RPAREN"); return e; }
+    if (peek().type === "NUMBER") {
+      const t = next();
+      return { type: "num", value: t.value, unit: t.unit, start: t.start, end: t.end };
+    }
+    if (peek().type === "IDENT") return { type: "path", segments: parsePath() };
+    throw new Error(`Expected a value, got ${peek().type}`);
+  }
+
+  function parsePath() {
+    const segments = [expect("IDENT").value];
+    while (peek().type === "DOT") { next(); segments.push(expect("IDENT").value); }
+    return segments;
+  }
+
+  return parseProgram();
+}
+
+function containsPath(ast) {
+  if (ast.type === "path") return true;
+  if (ast.type === "neg") return containsPath(ast.value);
+  if (ast.type === "bin") return containsPath(ast.left) || containsPath(ast.right);
+  return false;
+}
+
+function evalAst(ast, ctx) {
+  if (ast.type === "num") return ast.value;
+  if (ast.type === "neg") return -evalAst(ast.value, ctx);
+  if (ast.type === "bin") {
+    const l = evalAst(ast.left, ctx), r = evalAst(ast.right, ctx);
+    if (ast.op === "PLUS") return l + r;
+    if (ast.op === "MINUS") return l - r;
+    if (ast.op === "STAR") return l * r;
+    if (ast.op === "SLASH") return l / r;
+  }
+  if (ast.type === "path") {
+    let cur = ctx;
+    for (const seg of ast.segments) {
+      if (cur == null) throw new Error(`Cannot resolve '${ast.segments.join(".")}' — no value for '${seg}'`);
+      if ((seg === "x" || seg === "y") && Array.isArray(cur)) cur = cur[seg === "x" ? 0 : 1];
+      else cur = numOf(cur[seg]);
+    }
+    return numOf(cur);
+  }
+}
+
+function numOf(v) {
+  return v && typeof v === "object" && "value" in v && typeof v.value === "number" ? v.value : v;
+}
+function isEditable(v) { return v && typeof v === "object" && "start" in v; }
+
+// ---------- Renderer — copied verbatim from docs/index.html (D-039's core: geometry
+// only, no annotations). ----------
+const M = 60; // meters -> px
+
+function resolvePositionArray(props, parentProps) {
+  const raw = props.position || [0, 0];
+  return raw.map((v) => (typeof v === "function" ? v({ parent: parentProps }) : numOf(v)));
+}
+
+function computePositions(node, parent, offset, positions) {
+  const [px, py] = resolvePositionArray(node.props, parent ? parent.props : null);
+  const abs = [offset[0] + px, offset[1] + py];
+  positions[node.id] = abs;
+  for (const child of node.children) computePositions(child, node, abs, positions);
+}
+
+function resolvePointAbs(pt, ownAbs, positions) {
+  if (Array.isArray(pt)) return [ownAbs[0] + numOf(pt[0]), ownAbs[1] + numOf(pt[1])];
+  if (typeof pt === "function" && pt.cornerRef) {
+    const p = positions[pt.cornerRef];
+    if (!p) throw new Error(`points reference to unknown element '${pt.cornerRef}'`);
+    return p;
+  }
+  throw new Error("a points entry must be a [x,y] pair or a single sibling element id");
+}
+
+function renderShape(node, positions, shapesOut, anchorsOut) {
+  const ownAbs = positions[node.id];
+  const { shape, style } = node.props;
+  const idAttr = `data-id="${node.id}"`;
+
+  if (shape === "rect" && style) {
+    const w = numOf(node.props.size[0]), h = numOf(node.props.size[1]);
+    shapesOut.push(`<rect class="obj" ${idAttr} x="${ownAbs[0]*M}" y="${ownAbs[1]*M}" width="${w*M}" height="${h*M}"
+      fill="${style.fill ?? "none"}" stroke="${style.stroke ?? "none"}" stroke-width="${numOf(style.strokeWidth ?? 0.02)*M}" />`);
+  } else if ((shape === "polyline" || shape === "polygon") && style) {
+    const absPts = node.props.points.map((pt) => resolvePointAbs(pt, ownAbs, positions));
+    const ptsStr = absPts.map(([x, y]) => `${x*M},${y*M}`).join(" ");
+    const tag = shape === "polygon" ? "polygon" : "polyline";
+    shapesOut.push(`<${tag} class="obj" ${idAttr} points="${ptsStr}" fill="${style.fill ?? "none"}" stroke="${style.stroke}" stroke-width="${numOf(style.strokeWidth)*M}" />`);
+  } else if (shape === "circle" && style) {
+    const r = numOf(node.props.radius ?? 0.1);
+    shapesOut.push(`<circle class="obj" ${idAttr} cx="${ownAbs[0]*M}" cy="${ownAbs[1]*M}" r="${r*M}"
+      fill="${style.fill ?? "none"}" stroke="${style.stroke ?? "none"}" stroke-width="${numOf(style.strokeWidth ?? 0.02)*M}" />`);
+  } else {
+    anchorsOut.push(`<circle class="anchor-hit" ${idAttr} cx="${ownAbs[0]*M}" cy="${ownAbs[1]*M}" r="8" fill="#ccc" />`);
+  }
+  for (const child of node.children) renderShape(child, positions, shapesOut, anchorsOut);
+}
+
+// expandBoundsForNode: fixes the real viewBox fit-box bug found in Prototype 16/D-036
+// (walking only reference points undersizes anything whose own size/points extend past
+// them) — walks each shape's actual geometry, including every synthesized child's own
+// polyline points, so a composite's expansion is correctly included in the fit.
+function expandBoundsForNode(node, positions, bounds) {
+  const [x, y] = positions[node.id];
+  const expand = (px, py) => {
+    bounds.minX = Math.min(bounds.minX, px); bounds.maxX = Math.max(bounds.maxX, px);
+    bounds.minY = Math.min(bounds.minY, py); bounds.maxY = Math.max(bounds.maxY, py);
+  };
+  expand(x, y);
+  if (node.props.shape === "rect" && node.props.size) {
+    expand(x + numOf(node.props.size[0]), y + numOf(node.props.size[1]));
+  } else if (node.props.shape === "circle" && node.props.radius) {
+    const r = numOf(node.props.radius);
+    expand(x - r, y - r); expand(x + r, y + r);
+  } else if ((node.props.shape === "polygon" || node.props.shape === "polyline") && node.props.points) {
+    for (const pt of node.props.points) {
+      const [px, py] = resolvePointAbs(pt, [x, y], positions);
+      expand(px, py);
+    }
+  }
+  for (const child of node.children) expandBoundsForNode(child, positions, bounds);
+}
+
+let fixedViewBox = null;
+
+function render(program) {
+  const positions = {};
+  computePositions(program.root, null, [0, 0], positions);
+  const shapes = [], anchors = [];
+  renderShape(program.root, positions, shapes, anchors);
+
+  if (!fixedViewBox) {
+    const bounds = { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity };
+    expandBoundsForNode(program.root, positions, bounds);
+    const pad = 0.7;
+    const minX = bounds.minX - pad, maxX = bounds.maxX + pad, minY = bounds.minY - pad, maxY = bounds.maxY + pad;
+    fixedViewBox = { minX, minY, vw: (maxX - minX) * M, vh: (maxY - minY) * M };
+  }
+  const { minX, minY, vw, vh } = fixedViewBox;
+  return `<svg width="${vw}" height="${vh}" viewBox="${minX*M} ${minY*M} ${vw} ${vh}">${[...shapes, ...anchors].join("\n")}</svg>`;
+}
+
+// ---------- New for this prototype: a pre-render tree-transform hook. Everything above
+// this line is unchanged core; this is the one addition F-002's third promise actually
+// needed — nothing about parse() or render() themselves changed. A module registers a
+// callback here; every callback runs, in registration order, on the freshly-parsed tree
+// before render() ever sees it, so a callback can freely read/mutate node.children (e.g.
+// push newly-synthesized child nodes) and have render() treat the result exactly like
+// hand-authored source — the same "read the result, layer more on top" shape D-039's
+// onRendered already established, just running before render instead of after. ----------
+let beforeRenderCallbacks = [];
+function registerBeforeRender(cb) { beforeRenderCallbacks.push(cb); }
+
+const sourceEl = document.getElementById("source");
+const rootEl = document.getElementById("plan-root");
+const errorEl = document.getElementById("error");
+let program = null;
+
+function rerender() {
+  try {
+    const parsed = parse(sourceEl.value);
+    for (const cb of beforeRenderCallbacks) cb(parsed);
+    program = parsed;
+    rootEl.innerHTML = render(program);
+    errorEl.textContent = "";
+  } catch (e) {
+    errorEl.textContent = "Error: " + e.message;
+  }
+}
+
+window.PlanCore = { parse, numOf, isEditable, registerBeforeRender };
+</script>
+<script src="wall-with-door-module.js"></script>
+<script>
+sourceEl.value = `element plan {
+  element wall_north {
+    compose: "wallWithDoor"
+    from: [0m, 0m]
+    to: [5m, 0m]
+    doorAt: 1.8m
+    doorWidth: 0.9m
+  }
+
+  element wall_west {
+    compose: "wallWithDoor"
+    from: [0m, 0m]
+    to: [0m, 3.5m]
+    doorAt: 2.5m
+    doorWidth: 0.8m
+  }
+}
+`;
+sourceEl.addEventListener("input", () => rerender());
+rerender();
+</script>
+</body>
+</html>

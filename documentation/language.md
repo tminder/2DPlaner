@@ -515,3 +515,15 @@ historical.
   narrowly: only a `rect` child with a literal `position`, no `flush` (D-032's other,
   still-unbuilt half), no corner-refs or other connections. **Since promoted into
   [docs/](../docs/)'s `interactivity-module.js`** — see "Containment" above.
+- [Prototypes/17-module-composition/](../Prototypes/17-module-composition/) — tests D-011's
+  third, previously-untried module promise: a module offering a reusable, higher-level
+  building block "composed from Element and Connection" — literally the wall-with-a-door
+  example this document has used illustratively throughout. `wall-with-door-module.js`
+  expands one compact `compose: "wallWithDoor"` element into the same three-piece
+  wall/door/wall structure the shipped `apartment` example writes by hand as four corner
+  elements. Needed exactly one new core hook, `registerBeforeRender`, letting a module
+  inject synthesized child nodes before `render()` runs — rendering itself needed zero
+  composition-specific code once that existed. Confirms the rendering half of this promise;
+  found, not solved, that a synthesized child isn't drag-editable for free (D-012's
+  backward-solving only rewrites literal source text, and a synthesized point was never
+  typed) — see D-046. Not wired into `docs/`.

@@ -214,10 +214,17 @@ this actively being discovered.
 
 ## Recommendation
 
-Before the next feature: get this running in an actual browser and click through the
-shipped examples once, end to end (risk #1) — everything else on this list is easier to
-reason about once that baseline exists. Alongside or shortly after that, give the external-
-module loading path (#2) an explicit decision rather than letting it stay an open question
-indefinitely on a live, public URL. The rest (constraint-stacking, language versioning, file
-size, documentation volume) are real but not urgent — worth a deliberate look the next time
-work in that area comes up, not a reason to stop and fix them now.
+Superseded by events, kept for the record rather than rewritten: the two most urgent items
+this originally called out — a real-browser pass (risk #1) and an explicit decision on
+external-module trust (risk #2) — are both done (D-045, and the browser test noted above).
+With those closed, F-002's own last untested promise (module-provided compositions) was
+tested too (D-046) — meaning both of `open-questions.md`'s standing top-priority items
+(F-001, F-002) now have concrete answers, not just design intent. That was this project's
+own stated precondition for backend work (D-019's "sequencing note," this file's earlier
+revision): infrastructure decisions were deliberately held until the core product questions
+were settled, not the other way around. A first backend prototype is now a reasonably
+well-informed next step, not a premature one — though D-046 itself found a genuine new gap
+(drag-editability of a module-synthesized composite) worth being aware of, not a blocker.
+The remaining items on this list (constraint-stacking, language versioning, file size,
+documentation volume) are still real but not urgent — worth a deliberate look the next time
+work in that area comes up, independent of whether backend work starts next.
