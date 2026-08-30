@@ -6,11 +6,13 @@ return [
     // string, e.g. generate one with: php -r "echo bin2hex(random_bytes(48));"
     'session_secret' => 'change-me-to-a-long-random-string',
 
-    // STUBBED dev login (see src/auth.php) — stands in for a real WordPress account
-    // (D-019) until a WP instance exists. Remove both once verify_credentials() is
-    // swapped for the real WP REST API call.
-    'dev_username' => 'dev',
-    'dev_password' => 'change-me',
+    // D-019's WordPress instance, used purely as a credential-verification backend via
+    // its REST API — see src/auth.php's verify_credentials(). Requires pretty permalinks
+    // to be enabled on that WP instance (plain/default permalinks route /wp-json/... to
+    // the homepage instead of the REST API — a real issue found by testing, not a
+    // theoretical one; fix there with `wp rewrite structure "/%postname%/"` followed by
+    // `wp rewrite flush --hard`).
+    'wp_url' => 'https://auth.planagonia.com',
 
     // MySQL connection — create the database via the hosting portal's "Datenbanken"
     // feature first, then fill in exactly what it shows you.

@@ -27,8 +27,10 @@ token-efficient generation over hand-typing ergonomics (D-017).
 
 ## What's actually built and live
 
-**Live:** [tminder.github.io/2DPlaner](https://tminder.github.io/2DPlaner/) — frontend-only,
-static files, no backend, no accounts, `localStorage` for persistence.
+**Live:** [tminder.github.io/2DPlaner](https://tminder.github.io/2DPlaner/) — still
+frontend-only in the product itself: static files, `localStorage` for persistence, no
+accounts, not calling any backend. A real backend now exists and is independently live and
+tested (D-047–D-049, see below) but is deliberately not wired to this app yet.
 
 - **Language** (`documentation/language.md`, 517 lines): two primitives, Element and
   Connection (D-013); real-world units (D-005); expressions with backward-solving on drag
@@ -57,24 +59,29 @@ static files, no backend, no accounts, `localStorage` for persistence.
 - **Zero automated tests, zero CI, zero build step** anywhere in the repo — a deliberate
   choice (D-034: "zero dependencies, plain static files") for the build-step/dependency
   part; the absence of any test suite was never a decision, just never come up.
+- **Backend, live and tested, independent of `docs/`** (D-047–D-049): a self-hosted
+  WordPress instance (`auth.planagonia.com`, core only — its two stock plugins deleted,
+  not just deactivated) verifies credentials via WP Application Passwords over its REST
+  API; a PHP/MySQL storage service (`storage-service-php/`, `test.planagonia.com`) issues
+  its own signed session tokens and provides CRUD for plan text scoped per user. Both
+  exercised over real HTTPS, including a direct cross-user isolation check (a second
+  account confirmed unable to see, read, or delete the first account's plan) — not just
+  hand-traced. The originally-written Node.js storage service (`storage-service/`)
+  couldn't run on this specific hosting at all (its SSH shell has no `libc.so.6`) and
+  stays only as a design reference for a future VPS scenario.
 
 ## What's decided but not built
 
-- **D-019** — user auth via a self-hosted, headless WordPress instance. Still fully
-  designed, nothing built — no WP instance exists; `storage-service-php/`'s
-  `verify_credentials()` stubs this (see D-048).
-- **D-021** — a separate, minimal storage service. **Now live and tested**
-  (`storage-service-php/`, D-048: PHP, MySQL, plain PDO) on the actual target hosting —
-  full login/CRUD cycle exercised over real HTTPS, with a valid certificate, against
-  `test.planagonia.com`. The originally-written Node.js version (`storage-service/`,
-  D-047) turned out undeployable on this specific hosting — its SSH shell is missing even
-  `libc.so.6`, so no downloaded Node binary can run there at all — and stays in the repo
-  only as a design reference for a future VPS scenario.
-- **D-025** — deployment topology. Partially answered in practice: shared hosting under a
-  hostfactory.ch-branded Plesk skin, SSH on a non-standard port behind an IP allowlist.
-  Not written up as a formal decision yet.
-- Still no accounts, no cloud sync in the live product — `docs/` remains entirely
-  `localStorage`-only; `storage-service/` isn't wired to it yet, deliberately (see D-047).
+- **D-025** — deployment topology, as originally scoped (WordPress and the storage
+  service "on the same server/domain"). Partially overtaken by what actually happened:
+  WordPress and the storage service ended up on separate subdomains of the same shared
+  hosting account (`auth.planagonia.com`, `test.planagonia.com`) rather than sharing one
+  domain — not written up as a formal decision update yet.
+- **`docs/` itself still isn't wired to the backend at all.** D-019 (auth) and D-021
+  (storage) are both live and tested now (see above), but `docs/index.html` doesn't call
+  either — it remains entirely `localStorage`-only, deliberately, pending its own
+  integration decision (a plan-switcher UI change, CORS on the storage service, a login
+  flow in the app itself — none of this exists yet).
 
 ## Independent risk assessment
 
@@ -223,17 +230,25 @@ this actively being discovered.
 
 ## Recommendation
 
-Superseded by events, kept for the record rather than rewritten: the two most urgent items
-this originally called out — a real-browser pass (risk #1) and an explicit decision on
-external-module trust (risk #2) — are both done (D-045, and the browser test noted above).
-With those closed, F-002's own last untested promise (module-provided compositions) was
-tested too (D-046) — meaning both of `open-questions.md`'s standing top-priority items
-(F-001, F-002) now have concrete answers, not just design intent. That was this project's
-own stated precondition for backend work (D-019's "sequencing note," this file's earlier
-revision): infrastructure decisions were deliberately held until the core product questions
-were settled, not the other way around. A first backend prototype is now a reasonably
-well-informed next step, not a premature one — though D-046 itself found a genuine new gap
-(drag-editability of a module-synthesized composite) worth being aware of, not a blocker.
-The remaining items on this list (constraint-stacking, language versioning, file size,
-documentation volume) are still real but not urgent — worth a deliberate look the next time
-work in that area comes up, independent of whether backend work starts next.
+Superseded by events twice over, kept for the record rather than rewritten each time: the
+two most urgent items this originally called out (a real-browser pass, an explicit
+decision on external-module trust) were closed (D-045), which cleared the way to test
+F-002's own last untested promise (D-046) — meaning both of `open-questions.md`'s standing
+top-priority items (F-001, F-002) had concrete answers, not just design intent. That was
+this project's own stated precondition for backend work (D-019's original "sequencing
+note"), and it held: a first backend prototype followed (D-047), and — after a real,
+substantive detour when the planned Node.js stack turned out undeployable on the actual
+target hosting — both halves of the originally-designed backend (D-019 auth, D-021
+storage) are now genuinely live and tested (D-048, D-049), not just prototyped.
+
+**What's actually next, now that both the core product questions and the backend exist
+and work:** `docs/` itself still has no path to using any of this — no login UI, no
+account concept in the app, no call from the frontend to the storage service at all. That
+gap (not any further backend work) is what stands between where things are now and an
+actual "save your plan across devices" feature a person could use. Whether that's worth
+building yet is the same question this file already asked once (project-overview.md's own
+D-048 entry): nobody has concretely needed cross-device sync so far, so this is worth
+raising explicitly rather than assumed as the obvious next step just because the
+infrastructure now exists to support it. The remaining lower-priority items on this list
+(constraint-stacking, language versioning, file size, documentation volume) are still real
+but not urgent, independent of whichever direction is chosen next.

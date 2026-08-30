@@ -37,30 +37,39 @@ function verify_session_token(array $config, string $token): ?array {
     return $payload;
 }
 
-// STUBBED — D-019's real WordPress instance doesn't exist yet, so this checks a single
-// dev account from config instead of WP's REST API. Everything downstream only depends
-// on this returning a stable ['id' => ..., 'username' => ...] or null — nothing else
-// needs to change once it's swapped. The real implementation, for when a WP instance
-// exists:
+// D-019: verifies against WordPress's own REST API using HTTP Basic Auth — $password is
+// expected to be a WP Application Password (core since WP 5.6), not the account's real
+// login password. WP core does all of the actual credential checking; this only ever
+// forwards what it's given and trusts a 200 response. No WP plugins are involved (D-019's
+// "core only" requirement) — confirmed on the live instance by deleting the two stock
+// plugins (akismet, hello) that ship with every fresh WP install, leaving zero active or
+// even installed plugins.
 //
-//   function verify_credentials(array $config, PDO $db, string $username, string $password): ?array {
-//       $ch = curl_init(rtrim($config['wp_url'], '/') . '/wp-json/wp/v2/users/me');
-//       curl_setopt_array($ch, [
-//           CURLOPT_RETURNTRANSFER => true,
-//           CURLOPT_USERPWD => "$username:$password", // a WP Application Password, not the account's real login password
-//       ]);
-//       $body = curl_exec($ch);
-//       $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-//       curl_close($ch);
-//       if ($status !== 200) return null;
-//       $wpUser = json_decode($body, true);
-//       return ensure_user($db, (string) $wpUser['id'], $wpUser['slug']); // WP's own id becomes this service's user id
-//   }
+// Requires WP's REST API to actually be reachable at the pretty-permalink /wp-json/ path
+// — plain/default permalinks (WP's own out-of-the-box setting) redirect /wp-json/... to
+// the site's homepage instead of routing to the REST API at all, found by testing this
+// against the real instance, not assumed. Fixed there via `wp rewrite structure
+// "/%postname%/"` + `wp rewrite flush --hard`.
 function verify_credentials(array $config, PDO $db, string $username, string $password): ?array {
-    if ($username === $config['dev_username'] && $password === $config['dev_password']) {
-        return ensure_user($db, $username, $username);
+    $ch = curl_init(rtrim($config['wp_url'], '/') . '/wp-json/wp/v2/users/me');
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_USERPWD => "$username:$password",
+        CURLOPT_TIMEOUT => 10,
+    ]);
+    $body = curl_exec($ch);
+    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    if (curl_errno($ch)) {
+        error_log('verify_credentials: WP request failed: ' . curl_error($ch));
+        curl_close($ch);
+        return null;
     }
-    return null;
+    curl_close($ch);
+    if ($status !== 200) return null;
+
+    $wpUser = json_decode($body, true);
+    if (!is_array($wpUser) || !isset($wpUser['id'], $wpUser['slug'])) return null;
+    return ensure_user($db, (string) $wpUser['id'], $wpUser['slug']); // WP's own id becomes this service's user id
 }
 
 // A user row is created lazily on first successful login rather than via a separate

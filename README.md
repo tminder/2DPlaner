@@ -9,17 +9,17 @@ A browser-based 2D plan generator where the plan is defined by code: editing the
 The language, renderer, drag-and-drop sync, connections, and module loading were each
 validated in throwaway prototypes (see [Prototypes/](Prototypes/)) before [docs/](docs/)
 turned that into the first real, hosted app (D-034) — still frontend-only and
-`localStorage`-only in production. A first backend piece,
-[storage-service-php/](storage-service-php/) (D-021, D-048), is live and tested on real
-hosting (`test.planagonia.com`) but not yet wired to `docs/`. Auth (D-019) is still
-decisions-only, stubbed in the storage service pending a real WordPress instance.
+`localStorage`-only in production. A real backend now exists separately and is fully live
+and tested — auth (D-019, a self-hosted WordPress instance at `auth.planagonia.com`) and
+storage (D-021, [storage-service-php/](storage-service-php/) at `test.planagonia.com`) —
+but neither is wired to `docs/` yet.
 
 - **[docs/](docs/)** — the app itself, meant to be used, not thrown away. Hosted via GitHub
   Pages (Settings → Pages → Deploy from a branch → `master` / `/docs`), live at the link
   above.
 - **[storage-service-php/](storage-service-php/)** — D-021's storage backend, live and
-  tested: CRUD for plan text per user, PHP/MySQL. Not yet connected to `docs/`; see its
-  own README for status and what's stubbed.
+  tested: CRUD for plan text per user, PHP/MySQL, authenticating real users against the
+  WordPress instance below. Not yet connected to `docs/`; see its own README for status.
 - [storage-service/](storage-service/) — the original Node.js version of the same design.
   Kept as a reference for a future VPS-hosted scenario — the actual deployment target
   turned out to have no Node.js runtime support at all (D-048), so this isn't what's live.

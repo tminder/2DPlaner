@@ -8,27 +8,23 @@ it's what this would look like on infrastructure with real Node.js support (e.g.
 but this PHP version is what's actually being deployed, since that's what the target
 hosting (shared, under Plesk, PHP-only) can run.
 
-**Status: live and tested end to end**, on the real target server
-(`test.planagonia.com`), over real HTTPS with a valid certificate: login, create, list,
-get, update, delete, and the 401/400 error paths were all exercised directly via `curl`
-against the deployed app, not just hand-traced. Two real deployment bugs were found and
-fixed this way — see "Deploying" and "Troubleshooting" below — neither would have been
-caught by code review alone. A real certificate has since been issued for the subdomain
-(confirmed: `curl` without `-k` now succeeds) — the examples below no longer need it,
-kept only as a note in case a future redeploy to a different subdomain hits the same
-"HTTPS Optionen: Unverschlüsselt" state again.
+**Status: live and fully tested end to end, auth included** — no stub remains. Real
+WordPress-issued Application Password → storage-service session token → full CRUD, over
+real HTTPS with a valid certificate, all exercised directly via `curl` against the
+deployed app, not just hand-traced. Multi-user isolation was verified directly too (a
+second WP account confirmed unable to see, read, or delete the first account's plan) —
+see [decisions.md D-049](../planning/decisions.md) for the full writeup. Several real
+deployment bugs were found and fixed this way — see "Deploying" and "Troubleshooting"
+below — none of which would have been caught by code review alone.
 
-## What's real vs. stubbed
+## What's real — nothing stubbed anymore
 
-Identical split to the Node version:
-
-- **The storage CRUD itself (`app/src/plans_repo.php`, `httpdocs/plans.php`) is the real,
-  intended design** — MySQL via PDO, plain SQL, no ORM.
-- **Auth (`app/src/auth.php`) is stubbed.** `verify_credentials()` checks a single dev
-  account from config instead of D-019's real WordPress instance. The real WP REST API
-  call is written out as a comment right above it — nothing else needs to change once
-  it's swapped in, since everything downstream only depends on `verify_credentials`
-  returning a stable `['id' => ..., 'username' => ...]` or `null`.
+- **The storage CRUD (`app/src/plans_repo.php`, `httpdocs/plans.php`)** — MySQL via PDO,
+  plain SQL, no ORM.
+- **Auth (`app/src/auth.php`) is real, not a stub.** `verify_credentials()` calls a live
+  WordPress instance's REST API (`auth.planagonia.com`, D-019) via HTTP Basic Auth with a
+  WordPress Application Password, trusting a `200` response from `/wp-json/wp/v2/users/me`
+  and mapping WP's own user id/slug onto this service's local `users` table.
 - **Session tokens are real** — HMAC-SHA256 signed, hand-rolled rather than a JWT
   library (no Composer dependency needed for something this small, and it deliberately
   supports exactly one algorithm with no "alg" field to negotiate — sidesteps a whole
@@ -46,7 +42,19 @@ file talks to PDO through plain prepared statements and didn't need to change.
 
 ## Deploying
 
-**1. Create the database** via the hosting portal's "Datenbanken" feature. Note the
+**1. Set up the WordPress side (D-019) first**, since `verify_credentials()` needs a live
+instance to call: install WordPress via the hosting portal's one-click installer on its
+own subdomain (`auth.planagonia.com` in this project). Delete the stock `akismet`/`hello`
+plugins outright (`wp plugin delete akismet hello --allow-root`) — D-019 requires zero
+installed plugins, not just zero active ones. Switch to pretty permalinks
+(`wp rewrite structure "/%postname%/"` then `wp rewrite flush --hard`) — WordPress's
+default *plain* permalinks redirect `/wp-json/...` to the homepage instead of routing to
+the REST API at all, confirmed by testing, not assumed. Create a dedicated low-privilege
+account for the app to authenticate as — **not** the account holder's own admin login —
+e.g. `wp user create dev-test dev-test@example.com --role=subscriber`, then generate its
+Application Password: `wp user application-password create dev-test "storage-service"`.
+
+**2. Create the database** via the hosting portal's "Datenbanken" feature. Note the
 database name, username, and password it gives you — for the host, use `127.0.0.1`
 regardless of what the portal displays (see the `db_host` comment in
 `config.example.php`: the literal string `"localhost"` makes PDO/mysqli attempt a Unix
@@ -54,7 +62,7 @@ socket connection, which failed against this hosting's actual socket path when t
 confirmed via `SQLSTATE[HY000] [2002] No such file or directory` — `127.0.0.1` forces TCP
 and works).
 
-**2. Upload files** via FTP/SFTP, preserving structure:
+**3. Upload files** via FTP/SFTP, preserving structure:
 - `httpdocs/*` (including `.htaccess` — see "Authorization header" below, confirmed
   needed on this hosting, not just a theoretical fallback) → the subdomain's web root
   (e.g. `subdomains/test/httpdocs/`)
@@ -62,15 +70,16 @@ and works).
   NOT be inside the web root, since `app/config.local.php` will hold real database
   credentials and must never be reachable over HTTP.
 
-**3. Create `app/config.local.php` directly on the server** (never through git — it's
+**4. Create `app/config.local.php` directly on the server** (never through git — it's
 gitignored) by copying `app/config.example.php` and filling in real values: a random
-`session_secret`, the dev login, and the MySQL details from step 1.
+`session_secret`, the WordPress instance's URL from step 1, and the MySQL details from
+step 2.
 
-**4. Test:**
+**5. Test**, using the WordPress account and Application Password from step 1:
 ```
 curl -X POST https://test.planagonia.com/session.php \
   -H "Content-Type: application/json" \
-  -d '{"username":"<dev_username>","password":"<dev_password>"}'
+  -d '{"username":"<wp_username>","password":"<wp_application_password>"}'
 ```
 Should return `{"token":"...","expiresIn":3600}`. Then:
 ```
@@ -121,7 +130,6 @@ request can't be used to probe whether some other user's plan id exists.
 
 ## Not built yet
 
-- Real WordPress auth (D-019) — see "What's real vs. stubbed" above.
 - Rate limiting (still an open gap, see
   [decisions.md D-022](../planning/decisions.md#d-022-scraping-protection-content-not-the-language)).
 - CORS headers — not needed yet since `docs/index.html` doesn't call this service at all;
