@@ -1090,8 +1090,16 @@ async function rerender(opts = {}) {
   if (active) { active.text = sourceEl.value; active.updatedAt = Date.now(); savePlansList(); }
   try {
     const parsed = parse(sourceEl.value);
-    deactivateRemovedModules(parsed.modules);
-    await ensureModulesLoaded(parsed.modules);
+    // D-034: every plan gets interactivity (and the other two shipped modules) by default,
+    // regardless of whether its own text declares them — withAutoModules() only bakes that
+    // guarantee into the text at specific entry points (new plan, load example/cloud plan),
+    // so a plan that reached the editor any other way (typed or pasted directly, replacing
+    // the whole source — the actual D-003 AI-copy-paste workflow) still needs it honored
+    // here, on every render, not just at creation. Never rewrites the visible source text —
+    // just what's kept active — so a deliberate edit to sourceEl.value is never second-guessed.
+    const requiredModules = [...new Set([...AUTO_MODULES, ...parsed.modules])];
+    deactivateRemovedModules(requiredModules);
+    await ensureModulesLoaded(requiredModules);
     program = parsed;
     if (!opts.preserveViewBox) fixedViewBox = null;
     const result = render(program);
