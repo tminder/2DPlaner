@@ -320,9 +320,12 @@ Collision-avoidance and polygon-realism checks are real default behaviors, not j
 illustrative examples — these settings opt out of them per plan.
 
 **Collision checking (D-041):** `rect`/`circle`/`polygon` elements sharing the same direct
-parent may not overlap by default — dragging one into another is rejected (with a message),
-the same "stop the drag before it happens" treatment as the self-intersection check below,
-not D-015's warn-and-flag pattern. Scoped to siblings only: a chair positioned inside a room
+parent may not overlap by default. Dragging one into another doesn't just freeze the drag
+outright (a hard reject felt "stuck" in every direction, since drag deltas are cumulative
+from the gesture's own start — see D-041's correction) — it clamps to the furthest point
+along the attempted move that doesn't overlap, so the shape slides up to the obstacle and
+stays responsive to being pulled away again, rather than D-015's warn-and-flag pattern
+either. Scoped to siblings only: a chair positioned inside a room
 isn't a collision with the room itself, that's containment, a different relationship
 (D-032) this doesn't check. `polyline` and shapeless elements don't participate — they're
 meant to touch/connect by design (D-014/D-018), not something to police for overlap. Two

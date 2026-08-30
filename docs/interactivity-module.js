@@ -361,20 +361,38 @@
   // Checked against siblings only (see the section note above) — not elements dragged
   // along via a connection (F-004 scope note: a first, common-case implementation, not
   // exhaustive over every way a drag can move more than one element at once).
-  function wouldCollide(node, parent, proposedGeometry, base, positions, warnings) {
-    if (!proposedGeometry || !parent) return false;
-    if (collisionsAllowedFor(node, base.settings)) return false;
+  function collidesWithAnySibling(node, parent, geometry, base, positions) {
+    if (!geometry || !parent) return false;
     for (const sibling of parent.children) {
       if (sibling.id === node.id) continue;
       if (collisionsAllowedFor(sibling, base.settings)) continue;
       const siblingGeometry = solidGeometryFor(sibling, positions);
-      if (!siblingGeometry) continue;
-      if (shapesOverlap(proposedGeometry, siblingGeometry)) {
-        warnings.push(`${node.id}: would overlap '${sibling.id}'. Set allowCollisions: true to allow this.`);
-        return true;
-      }
+      if (siblingGeometry && shapesOverlap(geometry, siblingGeometry)) return true;
     }
     return false;
+  }
+
+  // A hard accept/reject on the full attempted (dx, dy) sounds right but isn't: dx/dy are
+  // cumulative from the drag's original mousedown point (not incremental), so rejecting the
+  // whole move freezes the shape wherever it last fit while the cursor keeps drifting —
+  // every direction then feels "blocked" until the user retraces the entire drifted
+  // distance back to a delta that fits again. Binary-searching the largest fraction of the
+  // *current* attempted delta that doesn't collide keeps the shape sitting right at the
+  // boundary instead, re-solved fresh from the original start on every tick — so moving
+  // away or sideways produces an immediately different, usually non-colliding target next
+  // frame, rather than needing to undo the drift first.
+  function clampToNoCollision(node, parent, dx, dy, base, positions, warnings) {
+    if (collisionsAllowedFor(node, base.settings)) return [dx, dy];
+    const collidesAt = (t) => collidesWithAnySibling(node, parent, proposedGeometryFor(node, dx * t, dy * t, positions), base, positions);
+    if (!collidesAt(1)) return [dx, dy];
+    if (collidesAt(0)) return [0, 0]; // already overlapping even at the drag's own start
+    let lo = 0, hi = 1;
+    for (let i = 0; i < 14; i++) {
+      const mid = (lo + hi) / 2;
+      if (collidesAt(mid)) hi = mid; else lo = mid;
+    }
+    warnings.push(`${node.id}: stopped by a collision. Set allowCollisions: true to allow this.`);
+    return [dx * lo, dy * lo];
   }
 
   // ---------- Text-splice helpers ----------
@@ -499,13 +517,12 @@
     // Checked first, against siblings only, before any edits are computed — a bare point
     // (the only thing trySlideAlongConnectedRect below handles) never has a shape, so this
     // never conflicts with the wall-slide mechanic; the two are mutually exclusive by what
-    // kind of node they apply to.
-    const positionsForCollision = {};
-    core.computePositions(base.root, null, [0, 0], positionsForCollision);
-    const proposedGeometry = proposedGeometryFor(node, dx, dy, positionsForCollision);
-    if (wouldCollide(node, parent, proposedGeometry, base, positionsForCollision, warnings)) {
-      core.dragmsgEl.textContent = warnings.join("\n");
-      return;
+    // kind of node they apply to. Clamps dx/dy in place (see clampToNoCollision) rather
+    // than rejecting outright, so everything below sees an already-safe delta.
+    if (parent) {
+      const positionsForCollision = {};
+      core.computePositions(base.root, null, [0, 0], positionsForCollision);
+      [dx, dy] = clampToNoCollision(node, parent, dx, dy, base, positionsForCollision, warnings);
     }
 
     // A connected point resting on a rect's edge slides along that edge instead of
