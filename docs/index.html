@@ -248,11 +248,13 @@ connection haus_anschluss haus
 `,
 };
 
-// The apartment and blank examples don't declare the interactivity module themselves, so
-// it's added automatically if missing (see loadPlan below) — every plan gets drag/select/
-// connect for free, the same way core aim #1 intends, without every example having to
-// remember to ask for it.
-const DEFAULT_MODULE_DECLARATION = `module "interactivity-module.js"\n\n`;
+// Neither example declares these itself, so both are added automatically if missing (see
+// loadPlan below) — every plan gets display (label/dimensions/edgeLengths) and interaction
+// (drag/select/connect) for free, the same way core aim #1 intends, without every plan
+// having to remember two module declarations. Order matters: annotations-module.js has to
+// run first so its labels render like part of the base shapes, with interactivity's own
+// icons/scale-bar/fit-button still ending up on top of them (D-039).
+const AUTO_MODULES = ["annotations-module.js", "interactivity-module.js"];
 
 // ---------- Built-in ("internal") module registry — none shipped by default; a plan can
 // still load its own via module "name.js" (external) or a bare internal name if one is
@@ -602,124 +604,38 @@ function resolvePointAbs(pt, ownAbs, positions) {
   throw new Error("a points entry must be a [x,y] pair or a single sibling element id");
 }
 
-function escapeXml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" }[c]));
-}
-function fmtMeters(n) { return (Math.round(n * 100) / 100).toString(); }
-
-function dimensionText(node) {
-  if (node.props.shape === "rect") {
-    const w = numOf(node.props.size[0]), h = numOf(node.props.size[1]);
-    return `${fmtMeters(w)} × ${fmtMeters(h)} m`;
-  }
-  if (node.props.shape === "circle") {
-    const r = numOf(node.props.radius ?? 0);
-    return `⌀ ${fmtMeters(r * 2)} m`;
-  }
-  return null;
-}
-
-// Per-element edgeLengths (D-038) overrides the plan-wide settings.edgeLengths default —
-// unset on the element means "inherit the plan default", not "off"; an explicit true/false
-// on the element always wins over whatever the plan default is.
-function edgeLengthsEnabled(node, settings) {
-  if (typeof node.props.edgeLengths === "boolean") return node.props.edgeLengths;
-  return !!settings.edgeLengths;
-}
-
-// One label per edge of an already-resolved absolute point list — `closed` adds the
-// wraparound edge (last point back to the first) for rect/polygon, omits it for polyline's
-// open path (which has no enclosed area to be outside of in the first place). Each label
-// sits a short distance off its own edge, on the outward side — for a closed shape that
-// means away from `centroid` (the two normal candidates are checked against it directly,
-// so this is correct regardless of the point list's own winding direction) — and reads in
-// the same direction as the edge itself via an SVG rotation, flipped 180° when that would
-// otherwise render the text upside down.
-function edgeLengthLines(pts, closed, centroid) {
-  const n = pts.length;
-  const count = closed ? n : n - 1;
-  const OFFSET = 0.15;
-  const lines = [];
-  for (let i = 0; i < count; i++) {
-    const a = pts[i], b = pts[(i + 1) % n];
-    const dx = b[0] - a[0], dy = b[1] - a[1];
-    const len = Math.hypot(dx, dy);
-    if (len === 0) continue;
-    let nx = -dy / len, ny = dx / len;
-    const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-    if (closed && centroid) {
-      const towardMid = [mid[0] - centroid[0], mid[1] - centroid[1]];
-      if (nx * towardMid[0] + ny * towardMid[1] < 0) { nx = -nx; ny = -ny; }
-    }
-    const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
-    const readableAngle = angleDeg > 90 || angleDeg < -90 ? angleDeg + 180 : angleDeg;
-    lines.push({
-      pos: [mid[0] + nx * OFFSET, mid[1] + ny * OFFSET],
-      angle: readableAngle,
-      text: `${fmtMeters(len)} m`,
-    });
-  }
-  return lines;
-}
-
-function renderAnnotation(node, anchor, shapesOut, edgeLines = []) {
-  const label = node.props.label;
-  const dims = node.props.dimensions ? dimensionText(node) : null;
-  if (!label && !dims && !edgeLines.length) return;
-  const showMode = node.props.show === "always" ? "always" : "hover";
-  const lines = [label, dims].filter(Boolean);
-  const lineHeight = 12;
-  const startY = anchor[1] * M - ((lines.length - 1) * lineHeight) / 2;
-  const textEls = lines.map((line, i) =>
-    `<text x="${anchor[0]*M}" y="${startY + i*lineHeight}" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#222">${escapeXml(line)}</text>`
-  ).join("");
-  const edgeTextEls = edgeLines.map(({ pos, angle, text }) =>
-    `<text x="${pos[0]*M}" y="${pos[1]*M}" transform="rotate(${angle} ${pos[0]*M} ${pos[1]*M})" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#555">${escapeXml(text)}</text>`
-  ).join("");
-  // Same group, same data-show, as label/dimensions above — one show mode per element
-  // governs everything drawn about it (D-026), edge lengths included, rather than adding a
-  // second independent visibility axis nothing asked for.
-  shapesOut.push(`<g class="annotation" data-show="${showMode}">${textEls}${edgeTextEls}</g>`);
-}
-
-function renderShape(node, positions, cornerUsers, shapesOut, anchorsOut, bboxes, settings) {
+// Core renders geometry only — no label, dimensions, or edgeLengths text. Those are
+// computed, read-only display facts about an element's own geometry, not required for the
+// two core primitives themselves (D-038/D-039); annotations-module.js renders them by
+// reading this same parsed/positioned tree back via window.PlanCore after core is done.
+function renderShape(node, positions, cornerUsers, shapesOut, anchorsOut, bboxes) {
   const ownAbs = positions[node.id];
   const { shape, style } = node.props;
   const idAttr = `data-id="${node.id}"`;
-  let anchor = ownAbs;
 
   if (shape === "rect" && style) {
     const w = numOf(node.props.size[0]), h = numOf(node.props.size[1]);
-    anchor = [ownAbs[0] + w / 2, ownAbs[1] + h / 2];
     bboxes[node.id] = { left: ownAbs[0], top: ownAbs[1], right: ownAbs[0] + w, bottom: ownAbs[1] + h };
     shapesOut.push(`<rect class="obj" ${idAttr} pointer-events="all" x="${ownAbs[0]*M}" y="${ownAbs[1]*M}" width="${w*M}" height="${h*M}"
       fill="${style.fill ?? "none"}" stroke="${style.stroke ?? "none"}" stroke-width="${numOf(style.strokeWidth ?? 0.02)*M}" />`);
-    const corners = [[ownAbs[0], ownAbs[1]], [ownAbs[0] + w, ownAbs[1]], [ownAbs[0] + w, ownAbs[1] + h], [ownAbs[0], ownAbs[1] + h]];
-    const edgeLines = edgeLengthsEnabled(node, settings) ? edgeLengthLines(corners, true, anchor) : [];
-    renderAnnotation(node, anchor, shapesOut, edgeLines);
   } else if ((shape === "polyline" || shape === "polygon") && style) {
     const absPts = node.props.points.map((pt) => resolvePointAbs(pt, ownAbs, positions));
-    anchor = [absPts.reduce((s, p) => s + p[0], 0) / absPts.length, absPts.reduce((s, p) => s + p[1], 0) / absPts.length];
     const ptsStr = absPts.map(([x, y]) => `${x*M},${y*M}`).join(" ");
     const dashAttr = style.strokeDash ? `stroke-dasharray="${style.strokeDash.split(",").map(v => v*M).join(",")}"` : "";
     const tag = shape === "polygon" ? "polygon" : "polyline";
     shapesOut.push(`<${tag} class="obj" ${idAttr} pointer-events="all" points="${ptsStr}" fill="${style.fill ?? "none"}" stroke="${style.stroke}" stroke-width="${numOf(style.strokeWidth)*M}" ${dashAttr} />`);
-    const edgeLines = edgeLengthsEnabled(node, settings) ? edgeLengthLines(absPts, shape === "polygon", anchor) : [];
-    renderAnnotation(node, anchor, shapesOut, edgeLines);
   } else if (shape === "circle" && style) {
     const r = numOf(node.props.radius ?? 0.1);
     shapesOut.push(`<circle class="obj" ${idAttr} pointer-events="all" cx="${ownAbs[0]*M}" cy="${ownAbs[1]*M}" r="${r*M}"
       fill="${style.fill ?? "none"}" stroke="${style.stroke ?? "none"}" stroke-width="${numOf(style.strokeWidth ?? 0.02)*M}" />`);
-    renderAnnotation(node, anchor, shapesOut);
   } else if (window.PlanModules && window.PlanModules[shape]) {
     shapesOut.push(window.PlanModules[shape](node, ownAbs, M, { numOf, idAttr }));
-    renderAnnotation(node, anchor, shapesOut);
   } else {
     const users = (cornerUsers[node.id] || []).join(",");
     anchorsOut.push(`<circle class="anchor-hit" ${idAttr} data-corner-users="${users}" pointer-events="all" cx="${ownAbs[0]*M}" cy="${ownAbs[1]*M}" r="10" />`);
   }
 
-  for (const child of node.children) renderShape(child, positions, cornerUsers, shapesOut, anchorsOut, bboxes, settings);
+  for (const child of node.children) renderShape(child, positions, cornerUsers, shapesOut, anchorsOut, bboxes);
 }
 
 // Cached across renders, cleared unless the caller asks to preserve it (an in-progress drag
@@ -732,7 +648,7 @@ function render(program) {
   const cornerUsers = {};
   computeCornerUsers(program.root, cornerUsers);
   const shapes = [], anchors = [], bboxes = {};
-  renderShape(program.root, positions, cornerUsers, shapes, anchors, bboxes, program.settings);
+  renderShape(program.root, positions, cornerUsers, shapes, anchors, bboxes);
 
   if (!fixedViewBox) {
     const pts = Object.values(positions);
@@ -914,9 +830,15 @@ window.PlanCore = {
 };
 
 // ---------- Toolbar: examples, open/save, local persistence ----------
+function hasModuleDeclared(text, filename) {
+  const escaped = filename.replace(/\./g, "\\.");
+  return new RegExp(`^\\s*module\\s+"[^"]*${escaped}"`, "m").test(text);
+}
+
 function loadPlan(text, { resetViewBox = true } = {}) {
-  const hasModule = /^\s*module\s+"[^"]*interactivity-module\.js"/m.test(text);
-  sourceEl.value = hasModule ? text : DEFAULT_MODULE_DECLARATION + text;
+  const missing = AUTO_MODULES.filter((name) => !hasModuleDeclared(text, name));
+  const prefix = missing.map((name) => `module "${name}"\n`).join("") + (missing.length ? "\n" : "");
+  sourceEl.value = prefix + text;
   if (resetViewBox) fixedViewBox = null;
   rerender();
 }

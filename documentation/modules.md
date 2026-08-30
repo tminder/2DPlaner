@@ -15,7 +15,8 @@ external resolution, load-once caching) was validated in
 [Prototypes/14-interactivity-module/](../Prototypes/14-interactivity-module/)'s
 interactivity module (D-031) and is unchanged since. [docs/](../docs/) — the actual hosted
 app — reuses that architecture verbatim: `docs/index.html` is core (parse/render only),
-`docs/interactivity-module.js` is the one module it ships, loaded exactly like any other.
+and now ships **two** modules — `docs/interactivity-module.js` (D-031) and
+`docs/annotations-module.js` (D-039) — loaded exactly like any other.
 
 ## What a module can do
 
@@ -25,12 +26,15 @@ fixed and minimal:
 
 1. **New interactivity** — drag, selection, connect/disconnect, hover, context menus, and
    so on. This is what `docs/interactivity-module.js` does; see below.
-2. **New rendering** — teaching the renderer a new `shape` kind. See "Adding a shape kind"
-   below.
+2. **New rendering** — either teaching the renderer a whole new `shape` kind (see "Adding a
+   shape kind" below), or, as of D-039, layering additional content onto shapes core already
+   knows how to render — `docs/annotations-module.js`'s label/dimensions/edgeLengths text is
+   the first case of this second kind: nothing new to draw the *shape* itself, only to
+   annotate it after the fact.
 3. **New reusable, higher-level compositions** built from Element and Connection (e.g. a
    "wall with a door" building block a plan could drop in as one thing) — not a new
    fundamental primitive. **Nothing has actually exercised this yet.** Every module built so
-   far (12/13's `star-tool`, 14/15's and `docs/`'s interactivity module) does #1 or #2; F-002
+   far (12/13's `star-tool`, the interactivity and annotations modules) does #1 or #2; F-002
    is still open on what an API for #3 would even need to expose.
 
 ## Declaring a module
@@ -49,11 +53,15 @@ contains `://` — anything else is looked up in a small built-in registry
 built-in module; every module a plan uses today is external, fetched via a dynamically
 created `<script src>` tag.
 
-**Every plan in the hosted app gets the interactivity module whether it declares one or
-not.** `docs/`'s `loadPlan()` checks the source text for an existing
-`module "…interactivity-module.js"` declaration and prepends one if it's missing (D-034) —
-D-020's own loading mechanism stays opt-in per plan; this is `docs/`'s own convenience on
-top of it, not a change to how modules work.
+**Every plan in the hosted app gets both shipped modules whether it declares them or not.**
+`docs/`'s `loadPlan()` checks the source text for each of `AUTO_MODULES` (currently
+`["annotations-module.js", "interactivity-module.js"]`) and prepends a declaration for
+whichever is missing, in that order (D-034, extended by D-039) — D-020's own loading
+mechanism stays opt-in per plan; this is `docs/`'s own convenience on top of it, not a
+change to how modules work. The order is deliberate, not alphabetical: annotations has to
+finish registering its `onRendered` callback before interactivity does, so its labels land
+in the SVG *before* interactivity's own icons/scale-bar/fit-button — see "The annotations
+module" below for why that matters.
 
 ## Trust model
 
@@ -143,6 +151,36 @@ D-034) the one every plan gets by default. It adds, entirely on top of the API a
   click-drag pan on empty canvas, a bottom-right scale bar recomputed on every render/zoom/
   pan/resize, and a button to reset back to core's own auto-fit view.
 
+## The annotations module
+
+`docs/annotations-module.js` (D-039) renders `label`/`dimensions`/`edgeLengths` (D-026,
+D-038) — computed, read-only display facts about an element's own geometry. It was split
+out of core (which used to render these directly) specifically because none of them are
+required for the two core primitives to function, and because a read-only embed (D-024)
+might reasonably want dimension labels with **no** drag/select/connect at all — a second,
+independently loadable module makes that combination possible; folding this into the
+interactivity module wouldn't have.
+
+**Uses no core API beyond what D-031 already exposed.** `onRendered` to run after core's
+own render, `computePositions`/`resolvePointAbs` to re-derive each element's absolute
+geometry, `numOf`/`M` to read and scale values the same way core does. Nothing about this
+module required a new core hook — it's the same "read the rendered result, layer more SVG
+on top" pattern the interactivity module already used for its icons and scale bar, just
+applied to a different kind of overlay. Since core's own parser never special-cased these
+property names to begin with (`props[key] = parseValue()` accepts any key), moving their
+*rendering* into a module needed no parser changes either — only moving the interpretation
+of properties that were already there.
+
+**Has to insert each label immediately after its own shape element, not append them all at
+the end.** Core's CSS hover-reveal (`svg .obj:hover + .annotation[data-show="hover"]`)
+depends on an annotation being its shape's *immediate* next DOM sibling — every shape is a
+flat sibling directly under `<svg>`, not nested per element, so a single `insertAdjacentHTML`
+at the end of the SVG would put every annotation after every shape instead of each one
+after its own. The module walks the same tree core rendered and inserts each element's
+annotation via `querySelector('[data-id="…"]')` + `insertAdjacentHTML("afterend", …)`,
+recreating the exact interleaving core used to produce directly by rendering shape and
+annotation together in one pass.
+
 ## Known seams
 
 Real integration friction found while actually building this split (D-031), not smoothed
@@ -160,6 +198,13 @@ over by treating "core vs. module" as cleaner than it is:
   the reason for a re-render itself** — with one shared entry point for every caller, core
   has no way to tell "a drag's own repeated re-render" from "a real content edit" unless the
   caller says so.
+- **A module that injects markup tied to CSS adjacent-sibling selectors has to insert it in
+  the right place, not just anywhere in the SVG** (found building the annotations module,
+  D-039). Core's own `.obj:hover + .annotation` hover-reveal rule only works if the injected
+  element is literally the next DOM sibling of the shape it's about — appending everything
+  in one batch at the end of the SVG (simpler to write) silently breaks that rule for every
+  element but the last. There's no core hook that would make this automatic; a module doing
+  this has to walk the tree and place each insertion itself.
 
 None of these block anything currently built; they're constraints a future module author
 needs to know about, not open bugs.

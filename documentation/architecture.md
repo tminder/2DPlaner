@@ -67,11 +67,12 @@ A single-page app, no server-side rendering for the editing experience itself.
   Element/Connection tree, and renderer all run in the browser (D-004: SVG; D-013: the two
   core primitives) — this is required for instant feedback while typing and dragging
   (D-009), not a preference.
-- **Core + module split** (D-031): `docs/index.html` only parses and renders — every
-  interactive behavior (drag, selection, connect/disconnect, hover, zoom/pan) lives in a
-  separately loaded module, `docs/interactivity-module.js`, built against the
-  `window.PlanCore` API. See [modules.md](modules.md) for the full API surface and how
-  modules load.
+- **Core + module split** (D-031): `docs/index.html` only parses and renders geometry —
+  every interactive behavior (drag, selection, connect/disconnect, hover, zoom/pan) lives in
+  `docs/interactivity-module.js`, and every computed display annotation (label, dimensions,
+  edge lengths) lives in a second, independently loadable module, `docs/annotations-module.js`
+  (D-039) — both built against the `window.PlanCore` API. See [modules.md](modules.md) for
+  the full API surface and how modules load.
 - **Drag-and-drop** rewrites the source text directly via span-splicing (D-012, D-014,
   D-018), not a full re-serialization — implemented in the interactivity module above.
 - **Local persistence** (D-007): `localStorage` (autosaved on every change, D-034) and file
