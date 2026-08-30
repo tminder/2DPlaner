@@ -76,6 +76,10 @@
   <button id="open-btn">Open…</button>
   <button id="save-btn">Save as…</button>
   <input type="file" id="file-input" accept=".planagon,.2dplan,.txt,text/plain">
+  <button id="cloud-signin-btn" title="Sign in to save/load plans in the cloud">Sign in…</button>
+  <span id="cloud-status" style="font-size: 0.8rem; color: #888;"></span>
+  <button id="cloud-save-btn" title="Save the current plan to the cloud" hidden>Save to Cloud</button>
+  <button id="cloud-signout-btn" title="Sign out" hidden>Sign out</button>
   <div class="spacer"></div>
   <span style="font-size: 0.8rem; color: #888;">Saved automatically in this browser</span>
 </header>
@@ -917,6 +921,158 @@ function refreshPlanSwitcher() {
     exampleGroup.appendChild(opt);
   }
   select.appendChild(exampleGroup);
+
+  if (cloudToken()) refreshCloudGroup();
+}
+
+// ---------- Cloud sync (D-021/D-019), deliberately minimal: explicit save/load only, no
+// automatic multi-device sync — localStorage stays the default, unaffected, source of
+// truth. A signed-in session lets the active plan be explicitly pushed to the storage
+// service (docs/'s own D-021), and a plan already saved there can be pulled into a new
+// local plan via a third "Cloud" group in the existing plan-switcher, alongside "My
+// plans" and "New from example" — reusing that UI rather than building a separate picker.
+// The session token lives in sessionStorage (cleared when the tab closes), not
+// localStorage — its own 1-hour server-side TTL means persisting it indefinitely would
+// just mean "silently stale" more often, not meaningfully more convenient. ----------
+const CLOUD_API_BASE = "https://test.planagonia.com";
+const CLOUD_TOKEN_KEY = "planagonia:cloudToken";
+const CLOUD_USERNAME_KEY = "planagonia:cloudUsername";
+
+function cloudToken() {
+  try { return sessionStorage.getItem(CLOUD_TOKEN_KEY); } catch (e) { return null; }
+}
+function setCloudSession(token, username) {
+  try {
+    if (token) {
+      sessionStorage.setItem(CLOUD_TOKEN_KEY, token);
+      sessionStorage.setItem(CLOUD_USERNAME_KEY, username);
+    } else {
+      sessionStorage.removeItem(CLOUD_TOKEN_KEY);
+      sessionStorage.removeItem(CLOUD_USERNAME_KEY);
+    }
+  } catch (e) { /* private mode — cloud sign-in just won't persist across a reload */ }
+}
+function cloudUsername() {
+  try { return sessionStorage.getItem(CLOUD_USERNAME_KEY); } catch (e) { return null; }
+}
+
+function updateCloudUi() {
+  const signedIn = !!cloudToken();
+  document.getElementById("cloud-signin-btn").hidden = signedIn;
+  document.getElementById("cloud-save-btn").hidden = !signedIn;
+  document.getElementById("cloud-signout-btn").hidden = !signedIn;
+  document.getElementById("cloud-status").textContent = signedIn ? `Signed in as ${cloudUsername()}` : "";
+}
+
+async function cloudSignIn(username, password) {
+  const res = await fetch(`${CLOUD_API_BASE}/session.php`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `Sign-in failed (${res.status})`);
+  setCloudSession(body.token, username);
+}
+
+// Wraps fetch with the bearer token and a uniform "session expired" reaction — every
+// cloud-authenticated call in this file goes through this, so that reaction only has to
+// be written once.
+async function cloudFetch(path, opts = {}) {
+  const token = cloudToken();
+  if (!token) throw new Error("Not signed in");
+  const res = await fetch(`${CLOUD_API_BASE}${path}`, {
+    ...opts,
+    headers: { ...(opts.headers || {}), Authorization: `Bearer ${token}` },
+  });
+  if (res.status === 401) {
+    setCloudSession(null, null);
+    updateCloudUi();
+    throw new Error("Cloud session expired — sign in again");
+  }
+  return res;
+}
+
+function showCloudMessage(msg) {
+  dragmsgEl.textContent = `Cloud: ${msg}`;
+}
+
+// Creates a new cloud plan on first save; every save after that updates the same one,
+// tracked via the local plan's own cloudId (an extra field alongside D-043's
+// {id, name, text, updatedAt} — harmless to any code that doesn't know about it, since
+// it's just carried along through JSON.stringify in savePlansList()).
+async function saveActivePlanToCloud() {
+  const p = activePlan();
+  if (!p) return;
+  try {
+    const res = p.cloudId
+      ? await cloudFetch(`/plans.php?id=${encodeURIComponent(p.cloudId)}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: p.name, text: p.text }),
+        })
+      : await cloudFetch(`/plans.php`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: p.name, text: p.text }),
+        });
+    if (!res.ok) throw new Error(`save failed (${res.status})`);
+    const saved = await res.json();
+    p.cloudId = saved.id;
+    savePlansList();
+    showCloudMessage(`saved "${p.name}".`);
+    refreshCloudGroup();
+  } catch (e) {
+    showCloudMessage(`save failed — ${e.message}`);
+  }
+}
+
+// Populates the plan-switcher's third optgroup from the cloud plan list. Separate from
+// refreshPlanSwitcher() itself (which stays synchronous, matching the DOM's own
+// synchronous rebuild of the other two groups) since this one needs a network round trip
+// — called after sign-in, after a cloud save, and opportunistically whenever
+// refreshPlanSwitcher() runs while already signed in.
+async function refreshCloudGroup() {
+  const select = document.getElementById("plan-switcher");
+  select.querySelector('optgroup[label="Cloud"]')?.remove();
+  let list;
+  try {
+    const res = await cloudFetch("/plans.php");
+    if (!res.ok) throw new Error(`list failed (${res.status})`);
+    list = (await res.json()).plans;
+  } catch (e) {
+    showCloudMessage(`couldn't load your cloud plans — ${e.message}`);
+    return;
+  }
+  if (!list.length) return;
+  const cloudGroup = document.createElement("optgroup");
+  cloudGroup.label = "Cloud";
+  for (const cp of list.sort((a, b) => b.updatedAt - a.updatedAt)) {
+    const opt = document.createElement("option");
+    opt.value = `cloud:${cp.id}`;
+    opt.textContent = cp.name;
+    cloudGroup.appendChild(opt);
+  }
+  select.appendChild(cloudGroup);
+}
+
+// Opening a cloud plan that's already linked to a local one (via cloudId, e.g. this
+// browser was the one that saved it) switches to that local copy rather than importing a
+// second, disconnected duplicate of the same plan.
+async function openCloudPlan(cloudId) {
+  const existing = plans.find((p) => p.cloudId === cloudId);
+  if (existing) { switchToPlan(existing.id); return; }
+  try {
+    const res = await cloudFetch(`/plans.php?id=${encodeURIComponent(cloudId)}`);
+    if (!res.ok) throw new Error(`load failed (${res.status})`);
+    const cp = await res.json();
+    const plan = createPlan(cp.name, withAutoModules(cp.text));
+    plan.cloudId = cp.id;
+    savePlansList();
+    switchToPlan(plan.id);
+  } catch (e) {
+    showCloudMessage(`couldn't load that plan — ${e.message}`);
+  }
 }
 
 // The error banner now overlays the viewer instead of living in a reserved status row (see
@@ -992,8 +1148,34 @@ document.getElementById("plan-switcher").addEventListener("change", (e) => {
     const key = value.slice(8);
     if (!EXAMPLES[key]) return;
     newPlanFromExample(key);
+  } else if (value.startsWith("cloud:")) {
+    openCloudPlan(value.slice(6));
   }
 });
+
+document.getElementById("cloud-signin-btn").addEventListener("click", async () => {
+  const username = prompt("WordPress username:");
+  if (!username) return;
+  const password = prompt("WordPress Application Password (not your regular login password):");
+  if (!password) return;
+  try {
+    await cloudSignIn(username.trim(), password.trim());
+    updateCloudUi();
+    showCloudMessage(`signed in as ${username.trim()}.`);
+    refreshCloudGroup();
+  } catch (e) {
+    showCloudMessage(`sign-in failed — ${e.message}`);
+  }
+});
+
+document.getElementById("cloud-signout-btn").addEventListener("click", () => {
+  setCloudSession(null, null);
+  updateCloudUi();
+  refreshPlanSwitcher();
+  showCloudMessage("signed out.");
+});
+
+document.getElementById("cloud-save-btn").addEventListener("click", () => saveActivePlanToCloud());
 
 document.getElementById("rename-btn").addEventListener("click", () => {
   const p = activePlan();
@@ -1058,6 +1240,7 @@ if (!plans.length) {
 setActivePlan(activePlanId);
 sourceEl.value = activePlan().text;
 fixedViewBox = null;
+updateCloudUi();
 refreshPlanSwitcher();
 rerender();
 sourceEl.addEventListener("input", () => rerender());

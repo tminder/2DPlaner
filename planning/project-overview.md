@@ -28,9 +28,11 @@ token-efficient generation over hand-typing ergonomics (D-017).
 ## What's actually built and live
 
 **Live:** [tminder.github.io/2DPlaner](https://tminder.github.io/2DPlaner/) — still
-frontend-only in the product itself: static files, `localStorage` for persistence, no
-accounts, not calling any backend. A real backend now exists and is independently live and
-tested (D-047–D-049, see below) but is deliberately not wired to this app yet.
+static files, `localStorage` as the default, no forced accounts. `docs/` now has a
+minimal, optional connection to the backend (D-050): sign in, explicitly save/load the
+active plan to the cloud via a third group in the existing plan-switcher — not automatic
+cross-device sync, not a replacement for `localStorage`. Written and hand-traced, **not
+yet confirmed working in a real browser.**
 
 - **Language** (`documentation/language.md`, 517 lines): two primitives, Element and
   Connection (D-013); real-world units (D-005); expressions with backward-solving on drag
@@ -77,11 +79,11 @@ tested (D-047–D-049, see below) but is deliberately not wired to this app yet.
   WordPress and the storage service ended up on separate subdomains of the same shared
   hosting account (`auth.planagonia.com`, `test.planagonia.com`) rather than sharing one
   domain — not written up as a formal decision update yet.
-- **`docs/` itself still isn't wired to the backend at all.** D-019 (auth) and D-021
-  (storage) are both live and tested now (see above), but `docs/index.html` doesn't call
-  either — it remains entirely `localStorage`-only, deliberately, pending its own
-  integration decision (a plan-switcher UI change, CORS on the storage service, a login
-  flow in the app itself — none of this exists yet).
+- **`docs/` is now wired to the backend, minimally (D-050)** — Sign in/Save to Cloud/Sign
+  out controls, a third "Cloud" group in the plan-switcher. **Not yet confirmed working
+  in a real browser** — written and hand-traced only, the one piece of this entire
+  backend arc that hasn't been exercised for real yet (every backend piece before it was
+  tested directly via `curl` against the live server).
 
 ## Independent risk assessment
 
