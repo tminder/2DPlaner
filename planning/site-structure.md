@@ -21,11 +21,12 @@ final production name — worth resolving as part of this plan, not left as-is b
 
 ## Sections the user named: Homepage, App, Documentation, Profile
 
-**Homepage** — doesn't exist yet, anywhere. What it needs is genuinely open: at minimum,
-explain what Planagonia is and link to the App; whether it needs more (a live embedded
-demo, screenshots, anything beyond a single simple page) is unresolved. No indication
-anywhere in `core-aims.md`/`decisions.md` that this project has ever intended monetization,
-so no pricing/checkout section is assumed here — flag if that's wrong.
+**Homepage** — built and live (D-054): `homepage/index.html`, a single page at
+`planagonia.com/`. Scoped deliberately to the "at minimum" reading of the open question
+below — explains the three core aims, links to the App and the GitHub repo, no live
+embedded demo (real added engineering — sandboxing, a demo-specific mode — for a first
+version, not attempted). No pricing/checkout section, matching that nothing in
+`core-aims.md`/`decisions.md` has ever indicated monetization.
 
 **App** — exists and is live (`docs/`, D-034 onward). The only section of this list
 that's actually built.
@@ -137,7 +138,7 @@ rejected path, not delete it once superseded.
 
 | Section | Target | Status |
 |---|---|---|
-| Homepage | `planagonia.com/` | Not started — content and scope both open |
+| Homepage | `planagonia.com/` | **Done** — live at `www.planagonia.com/` (D-054), root `planagonia.com` pending its certificate like the App |
 | App | `planagonia.com/app` | **Done** — live at `www.planagonia.com/app/` (root `planagonia.com` still needs its own certificate, see D-053), also still mirrored at `test.planagonia.com` and GitHub Pages |
 | Documentation | `planagonia.com/docs` | Exists for an AI/technical audience at `documentation/`; a human-facing version is an open question, not started; not yet at its target path either way |
 | Profile | `planagonia.com/profile` | Not started |
@@ -148,6 +149,6 @@ rejected path, not delete it once superseded.
 
 1. ~~Domain mapping~~ — **decided: B**, see above.
 2. Does Documentation need a second, human-facing surface, or does one documentation set serve both an AI author and a human visitor?
-3. What does Homepage actually need beyond "explain the tool, link to the App" — a live demo embed, screenshots, something else?
+3. ~~What does Homepage need~~ — **built at the "explain + link" scope (D-054)**; a live embedded demo remains a possible later addition, not attempted.
 4. What does Profile need beyond "who's signed in + their cloud plans" (already covered by D-050's plan-switcher)?
 5. **Now concrete, not just naming:** getting to the target layout means (a) moving the App's own files under a `/app` path on the main domain rather than a host root, (b) splitting the storage-service API out to `api.planagonia.com`, separate from the App's files, and (c) deciding whether `test.planagonia.com` then still exists as a real staging copy of this same layout, or is retired once the main domain carries it for real. None of this is done yet — it's the concrete next chunk of work implied by the decision above, not a new open question.

@@ -2,7 +2,11 @@
 
 A browser-based 2D plan generator where the plan is defined by code: editing the code changes the plan, and (later) editing the plan visually via drag-and-drop changes the code back. See [planning/core-aims.md](planning/core-aims.md) for the full vision and core aims.
 
-**Live:** [tminder.github.io/2DPlaner](https://tminder.github.io/2DPlaner/) — still under the repo's old name; renaming the GitHub repo itself (and its URL) is a separate, more disruptive step not done as part of this working-title change. Also mirrored to [test.planagonia.com](https://test.planagonia.com/) — a manually-deployed copy on the same domain as the backend (D-021), so cloud save/load there works same-origin, no CORS needed.
+**Live:** [www.planagonia.com](https://www.planagonia.com/) — homepage, with the app at
+[/app](https://www.planagonia.com/app/). Also still at
+[tminder.github.io/2DPlaner](https://tminder.github.io/2DPlaner/) (the repo's old name)
+and mirrored to [test.planagonia.com](https://test.planagonia.com/), a staging copy.
+The bare `planagonia.com` (no `www.`) is pending its own SSL certificate.
 
 ## Status
 
@@ -13,15 +17,21 @@ but `docs/` now has an optional, minimal connection to a real backend (D-050, co
 working end to end in a real browser): sign in with a WordPress account, explicitly
 save/load the active plan to the cloud. Auth (D-019, a self-hosted WordPress instance at
 `auth.planagonia.com`) and storage (D-021, [storage-service-php/](storage-service-php/)
-at `test.planagonia.com`) are both live and tested too — the full backend arc (D-047
-through D-050) is built and genuinely exercised, not just designed.
+at `api.planagonia.com`) are both live and tested too — the full backend arc (D-047
+through D-050) is built and genuinely exercised, not just designed. The main domain now
+carries the real site structure (D-051, D-053, D-054): a homepage at the root, the app
+under `/app`, the storage API on its own subdomain — decided in
+[site-structure.md](planning/site-structure.md).
 
-- **[docs/](docs/)** — the app itself, meant to be used, not thrown away. Hosted via GitHub
-  Pages (Settings → Pages → Deploy from a branch → `master` / `/docs`), live at the link
-  above.
+- **[homepage/](homepage/)** — the public landing page, live at
+  [www.planagonia.com](https://www.planagonia.com/) (D-054).
+- **[docs/](docs/)** — the app itself, meant to be used, not thrown away. Auto-deployed to
+  GitHub Pages on push (Settings → Pages → Deploy from a branch → `master` / `/docs`);
+  manually mirrored to `www.planagonia.com/app/` and `test.planagonia.com`.
 - **[storage-service-php/](storage-service-php/)** — D-021's storage backend, live and
-  tested: CRUD for plan text per user, PHP/MySQL, authenticating real users against the
-  WordPress instance below, CORS-enabled for `docs/` to call it. See its own README.
+  tested at `api.planagonia.com`: CRUD for plan text per user, PHP/MySQL, authenticating
+  real users against the WordPress instance below, CORS-enabled for the app to call it
+  from any of its hosts. See its own README.
 - [storage-service/](storage-service/) — the original Node.js version of the same design.
   Kept as a reference for a future VPS-hosted scenario — the actual deployment target
   turned out to have no Node.js runtime support at all (D-048), so this isn't what's live.
@@ -30,7 +40,7 @@ through D-050) is built and genuinely exercised, not just designed.
 - [planning/open-questions.md](planning/open-questions.md) — numbered open questions (F-001...)
 - [planning/project-overview.md](planning/project-overview.md) — point-in-time project
   overview and independent risk assessment
-- [planning/site-structure.md](planning/site-structure.md) — working plan for the whole
-  `planagonia.com` site (homepage, app, documentation, profile), not yet decided
+- [planning/site-structure.md](planning/site-structure.md) — the `planagonia.com` site
+  plan; domain mapping is decided, Documentation/Profile scope still open
 - [documentation/](documentation/) — reference docs: [language.md](documentation/language.md) (the plan language), [architecture.md](documentation/architecture.md) (system components)
 - [Prototypes/](Prototypes/) — throwaway experiments/sketches, not a staged build plan; superseded by [docs/](docs/) as the thing to actually run

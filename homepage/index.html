@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Planagonia — a floor plan is code</title>
+<meta name="description" content="Planagonia is a 2D plan generator where the layout and its source code are the same thing. Drag a wall, the code updates. Edit the code, the drawing follows.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: light;
+    --paper: #f7f4ee;
+    --paper-raised: #ffffff;
+    --ink: #221f1c;
+    --ink-soft: #5b5650;
+    --line: #d8d2c6;
+    --blue: #2c5f7c;
+    --blue-deep: #1e4457;
+    --amber: #b9791f;
+    --amber-soft: #f2dfb8;
+    --rug: #e0d5c0;
+    --bed: #cfe0f5;
+    --bed-line: #4a76a8;
+    --desk: #fbe3b0;
+    --desk-line: #a87a2b;
+    --stove: #d9534f;
+    --stove-line: #8a2f2a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --paper: #191715;
+      --paper-raised: #221f1c;
+      --ink: #f1ece2;
+      --ink-soft: #b5ada0;
+      --line: #3a352c;
+      --blue: #6fa6c4;
+      --blue-deep: #8fbfda;
+      --amber: #e0ab53;
+      --amber-soft: #4a3c22;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --paper: #191715;
+    --paper-raised: #221f1c;
+    --ink: #f1ece2;
+    --ink-soft: #b5ada0;
+    --line: #3a352c;
+    --blue: #6fa6c4;
+    --blue-deep: #8fbfda;
+    --amber: #e0ab53;
+    --amber-soft: #4a3c22;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    line-height: 1.55;
+  }
+  h1, h2, h3, .wordmark { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+  h1, h2, h3 { text-wrap: balance; letter-spacing: -0.01em; }
+  a { color: var(--blue-deep); }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 1.5rem; }
+
+  header.site {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 1.4rem 0;
+  }
+  .wordmark {
+    font-size: 1.05rem; font-weight: 600; color: var(--ink); text-decoration: none;
+    display: flex; align-items: center; gap: 0.5rem;
+  }
+  .wordmark .dot { color: var(--amber); }
+  nav.site a {
+    color: var(--ink-soft); text-decoration: none; font-size: 0.92rem; margin-left: 1.75rem;
+  }
+  nav.site a:hover { color: var(--ink); }
+  .btn {
+    display: inline-flex; align-items: center; gap: 0.5rem;
+    padding: 0.7rem 1.3rem; border-radius: 7px; font-size: 0.95rem; font-weight: 600;
+    text-decoration: none; border: 1px solid transparent; transition: transform 0.12s ease;
+  }
+  .btn:hover { transform: translateY(-1px); }
+  .btn-primary { background: var(--blue); color: #fff; }
+  .btn-primary:hover { background: var(--blue-deep); }
+  .btn-ghost { border-color: var(--line); color: var(--ink); }
+  .btn-ghost:hover { border-color: var(--ink-soft); }
+
+  .hero {
+    display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 3rem;
+    align-items: center; padding: 3.5rem 0 4.5rem;
+  }
+  .hero h1 { font-size: clamp(1.9rem, 3.4vw, 2.7rem); margin: 0 0 1.1rem; line-height: 1.18; }
+  .hero h1 .accent { color: var(--blue-deep); }
+  .hero p.lede { font-size: 1.1rem; color: var(--ink-soft); max-width: 46ch; margin: 0 0 1.9rem; }
+  .hero .ctas { display: flex; gap: 0.9rem; flex-wrap: wrap; }
+  .eyebrow {
+    font-family: "IBM Plex Mono", monospace; font-size: 0.78rem; letter-spacing: 0.09em;
+    text-transform: uppercase; color: var(--amber); margin: 0 0 0.9rem;
+  }
+
+  /* ---- Hand-built illustration: the app's own rendering, not a stock graphic ----
+     Same colors docs/index.html's studio-apartment example actually uses (bed/desk/
+     rug/side-table), so a visitor who later opens the app recognizes the palette. */
+  .illustration {
+    background: var(--paper-raised); border: 1px solid var(--line); border-radius: 14px;
+    padding: 1.2rem; box-shadow: 0 1px 0 var(--line);
+  }
+  .illustration .code-line {
+    font-family: "IBM Plex Mono", monospace; font-size: 0.72rem; color: var(--ink-soft);
+    white-space: pre; overflow-x: auto; margin-bottom: 0.9rem; padding-bottom: 0.9rem;
+    border-bottom: 1px dashed var(--line);
+  }
+  .illustration .code-line .k { color: var(--blue-deep); }
+  .illustration .code-line .s { color: var(--amber); }
+  .illustration svg { display: block; width: 100%; height: auto; }
+
+  section.principles { padding: 2.5rem 0 4rem; }
+  section.principles h2 { font-size: 1.5rem; margin: 0 0 0.5rem; }
+  section.principles > p { color: var(--ink-soft); max-width: 60ch; margin: 0 0 2.4rem; }
+  .principle-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem;
+  }
+  .principle {
+    background: var(--paper-raised); border: 1px solid var(--line); border-radius: 12px;
+    padding: 1.5rem;
+  }
+  .principle .num {
+    font-family: "IBM Plex Mono", monospace; font-size: 0.78rem; color: var(--amber);
+    margin: 0 0 0.7rem;
+  }
+  .principle h3 { font-size: 1.05rem; margin: 0 0 0.5rem; }
+  .principle p { color: var(--ink-soft); font-size: 0.94rem; margin: 0; }
+
+  section.author {
+    padding: 3rem 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  }
+  section.author .row { display: grid; grid-template-columns: 1fr 1fr; gap: 2.5rem; align-items: center; }
+  section.author h2 { font-size: 1.4rem; margin: 0 0 0.8rem; }
+  section.author p { color: var(--ink-soft); margin: 0 0 0.7rem; }
+  .author-diagram {
+    display: flex; align-items: center; justify-content: center; gap: 1rem;
+    font-family: "IBM Plex Mono", monospace; font-size: 0.85rem;
+  }
+  .author-diagram .box {
+    border: 1px solid var(--line); background: var(--paper-raised); border-radius: 10px;
+    padding: 0.9rem 1.1rem; text-align: center; min-width: 8.5rem;
+  }
+  .author-diagram .box .label { display: block; color: var(--ink-soft); font-size: 0.72rem; margin-top: 0.3rem; }
+  .author-diagram .arrow { color: var(--amber); font-size: 1.3rem; }
+
+  footer.site {
+    padding: 2.5rem 0 3rem; color: var(--ink-soft); font-size: 0.86rem;
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.7rem;
+  }
+  footer.site a { color: var(--ink-soft); }
+  footer.site a:hover { color: var(--ink); }
+
+  @media (max-width: 760px) {
+    .hero { grid-template-columns: 1fr; padding-top: 2rem; }
+    .principle-grid { grid-template-columns: 1fr; }
+    section.author .row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="site">
+    <a class="wordmark" href="/"><span class="dot">▦</span> Planagonia</a>
+    <nav class="site">
+      <a href="/app/">Open the app</a>
+      <a href="https://github.com/tminder/2DPlaner">GitHub</a>
+    </nav>
+  </header>
+</div>
+
+<div class="wrap">
+  <section class="hero">
+    <div>
+      <p class="eyebrow">2D plan generator</p>
+      <h1>A floor plan is code.<br>Edit either, and <span class="accent">both stay true.</span></h1>
+      <p class="lede">Planagonia renders a room, a campervan interior, or a property layout straight from a small, purpose-built language — and keeps it that way. Drag a wall in the viewer and the code updates. Change a measurement in the code and the drawing follows. Neither view ever drifts from the other.</p>
+      <div class="ctas">
+        <a class="btn btn-primary" href="/app/">Open the app →</a>
+        <a class="btn btn-ghost" href="https://github.com/tminder/2DPlaner">View the source</a>
+      </div>
+    </div>
+    <div class="illustration">
+      <div class="code-line"><span class="k">element</span> bed {
+  shape: <span class="s">"rect"</span>
+  size: [1.6m, 2m]
+  position: [0.3m, 0.4m]
+}</div>
+      <svg viewBox="0 0 300 240" role="img" aria-label="Rendered floor plan matching the code above: a room with a bed, desk, side table, and rug.">
+        <rect x="6" y="6" width="288" height="228" rx="4" fill="none" style="stroke:var(--ink-soft)" stroke-width="1.2" opacity="0.5"/>
+        <rect x="24" y="30" width="96" height="120" style="fill:var(--bed);stroke:var(--bed-line)" stroke-width="2"/>
+        <rect x="200" y="14" width="70" height="36" style="fill:var(--desk);stroke:var(--desk-line)" stroke-width="2"/>
+        <rect x="232" y="150" width="34" height="34" style="fill:var(--stove);stroke:var(--stove-line)" stroke-width="2"/>
+        <polygon points="80,168 118,175 125,210 90,232 55,215" style="fill:var(--rug)" stroke="#b0a080" stroke-width="1.6"/>
+        <circle cx="160" cy="200" r="20" fill="#bfe3f5" stroke="#3a7a9a" stroke-width="1.8"/>
+      </svg>
+    </div>
+  </section>
+</div>
+
+<div class="wrap">
+  <section class="principles">
+    <h2>Three ideas the whole language is built around</h2>
+    <p>Not a general drawing tool with a scripting layer bolted on — the language and the renderer were designed together, for exactly this job.</p>
+    <div class="principle-grid">
+      <div class="principle">
+        <p class="num">01</p>
+        <h3>Code and plan never drift apart</h3>
+        <p>There's no view that can silently fall out of sync with the code defining it. Editing the drawing rewrites the source; editing the source redraws the plan — the same underlying model, always.</p>
+      </div>
+      <div class="principle">
+        <p class="num">02</p>
+        <h3>A language built for this, not for everything</h3>
+        <p>Real-world units, positions that solve themselves when you drag something, shapes and connections as the only two building blocks. No general-purpose programming required to describe a room.</p>
+      </div>
+      <div class="principle">
+        <p class="num">03</p>
+        <h3>Extensible from inside the plan</h3>
+        <p>New shapes, new interactions, new behaviors load as modules declared right in the plan's own source — the core language stays small on purpose.</p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="wrap">
+  <section class="author">
+    <div class="row">
+      <div>
+        <h2>Written to be authored by AI, reviewed by you</h2>
+        <p>Planagonia's language favors precision an AI can generate unambiguously over convenience for hand-typing — describe what you want built, let the assistant write the plan, and check the result against the live drawing.</p>
+        <p>It's still plain, readable source either way — open the app and edit it directly whenever you'd rather.</p>
+      </div>
+      <div class="author-diagram">
+        <div class="box">you describe it<span class="label">a room, a layout</span></div>
+        <div class="arrow">→</div>
+        <div class="box">AI writes the plan<span class="label">Planagonia's language</span></div>
+        <div class="arrow">→</div>
+        <div class="box">you review &amp; adjust<span class="label">code or drag-and-drop</span></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="wrap">
+  <footer class="site">
+    <span>Planagonia — a 2D plan generator.</span>
+    <span><a href="/app/">Open the app</a> · <a href="https://github.com/tminder/2DPlaner">GitHub</a></span>
+  </footer>
+</div>
+
+</body>
+</html>
