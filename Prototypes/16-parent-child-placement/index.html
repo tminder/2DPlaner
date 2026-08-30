@@ -20,17 +20,23 @@
 <body>
 <h1>Prototype 16: parent-child placement (containment)</h1>
 <p>
-  Tests D-032's "inside" placement mode: <code>connection child parent { placement: "inside" }</code>
-  constrains a child to stay within its own parent's boundary when dragged, sliding along the
-  boundary (via the parent's nearest edge, reusing D-041's contact-normal/tangent-slide approach)
-  rather than freezing outright. Drag "sofa" around inside "room" — it should never be draggable
-  outside the room rect, and should slide along a wall if you keep pushing past it.
+  Tests D-032's "inside" placement mode. Revised after the first round of testing: instead
+  of <code>connection child parent { placement: "inside" }</code> — restating the parent's
+  own id on every child, when nesting already makes that unambiguous — a child's own
+  <code>placement</code> property (defaulting from the parent's <code>childPlacement</code>,
+  if set) constrains it to stay within its parent's boundary when dragged, sliding along the
+  boundary it hits rather than freezing outright. "sofa" here has no <code>placement</code>
+  of its own and inherits "inside" from room's <code>childPlacement</code>; "lamp" overrides
+  it back to <code>"free"</code> and can be dragged anywhere. Drag "sofa" around — it should
+  never leave the room rect, and should slide along a wall if you keep pushing past it; drag
+  "lamp" to confirm it isn't constrained at all.
 </p>
 <p>
   <strong>Scope of this test:</strong> containment only, no <code>flush</code> combinable
   addition (D-032's door-in-wall half) — that's a separate, not-yet-built piece. Only a
-  <code>rect</code> child with a plain literal <code>position</code> is supported, dragged
-  against a <code>rect</code>/<code>polygon</code> parent; no corner-refs, no other
+  <code>rect</code> child with a plain literal <code>position</code> is supported; a
+  <code>rect</code> parent gets an exact, non-iterative clamp, a <code>polygon</code> parent
+  falls back to the general (still not fully validated) slide approach. No corner-refs, no
   connections, no self-intersection checking. A standalone local test, not wired into
   <a href="../../docs/">docs/</a>.
 </p>
@@ -487,13 +493,16 @@ function clampRectToStayInsideRect(childId, dx, dy, positions, parentAbs, parent
   return [clampedX - x, clampedY - y];
 }
 
-function placementFor(node, parent, connections) {
-  if (!parent) return null;
-  for (const c of connections) {
-    if ((c.from === node.id && c.to === parent.id) || (c.from === parent.id && c.to === node.id)) {
-      if (c.props && c.props.placement) return c.props.placement;
-    }
-  }
+// Revised from the original connection-based syntax (connection child parent
+// { placement: "inside" }) after actually using it: a child's parent is already
+// unambiguous via nesting (F-011), so routing this through Connection just restated the
+// parent's own id on every child for no reason — the actual source of the repetition a
+// room with several children hit immediately. placement on the child overrides
+// childPlacement on the parent (a default for every child that doesn't say otherwise),
+// same override shape as D-038/D-041's own settings-vs-element pattern.
+function placementFor(node, parent) {
+  if (typeof node.props.placement === "string") return node.props.placement;
+  if (parent && typeof parent.props.childPlacement === "string") return parent.props.childPlacement;
   return null;
 }
 
@@ -557,7 +566,7 @@ function applyDrag(dragState, dx, dy) {
   const parent = node.parentId ? base.nodesById[node.parentId] : null;
   const warnings = [];
 
-  if (placementFor(node, parent, base.connections) === "inside") {
+  if (parent && placementFor(node, parent) === "inside") {
     const positions = {};
     computePositions(base.root, null, [0, 0], positions);
     if (node.props.shape === "rect" && node.props.size && parent.props.shape === "rect" && parent.props.size) {
@@ -600,6 +609,7 @@ sourceEl.value = `element room {
   size: [6m, 4m]
   position: [0m, 0m]
   style: { fill: "#f7f5f0", stroke: "#333", strokeWidth: 0.04 }
+  childPlacement: "inside"
 
   element sofa {
     shape: "rect"
@@ -607,9 +617,15 @@ sourceEl.value = `element room {
     position: [1m, 1m]
     style: { fill: "#cfe0f5", stroke: "#4a76a8", strokeWidth: 0.02 }
   }
-}
 
-connection sofa room { placement: "inside" }
+  element lamp {
+    shape: "rect"
+    size: [0.4m, 0.4m]
+    position: [4m, 3m]
+    style: { fill: "#fbe3b0", stroke: "#a87a2b", strokeWidth: 0.02 }
+    placement: "free"
+  }
+}
 `;
 sourceEl.addEventListener("input", () => rerender());
 rerender();

@@ -418,11 +418,15 @@ historical.
   instead of dragging the whole
   house when moved directly.
 - [Prototypes/16-parent-child-placement/](../Prototypes/16-parent-child-placement/) — a
-  standalone local test of D-032's `placement: "inside"` mode (declared via
-  `connection child parent { placement: "inside" }`): a rect child dragged against its rect
-  parent is clamped to stay within the parent's boundary, sliding along the wall it hits
-  rather than freezing, reusing D-041's contact-normal/tangent-slide approach retargeted
-  from "stay outside a sibling" to "stay inside a parent." Not wired into
-  [docs/](../docs/) — a first validation, not a finished feature. Scoped narrowly: only a
-  `rect` child with a literal `position`, no `flush` (D-032's other, still-unbuilt half),
+  standalone local test of D-032's "inside" placement mode. Started with
+  `connection child parent { placement: "inside" }`; revised after actually using it to
+  `placement: "inside"` directly on the child (a parent's already unambiguous via nesting,
+  so the connection just restated its id on every child) with `childPlacement` settable
+  once on the parent as the default for every child that doesn't override it. A rect child
+  is clamped to stay within its rect parent's boundary when dragged — exactly, via a
+  closed-form per-axis clamp for the rect/rect case (found necessary after a first
+  tangent-slide attempt, reusing D-041's approach, let a child escape right at a corner);
+  a polygon parent still falls back to that general, less-validated approach. Not wired
+  into [docs/](../docs/) — a first validation, not a finished feature. Scoped narrowly: only
+  a `rect` child with a literal `position`, no `flush` (D-032's other, still-unbuilt half),
   no corner-refs or other connections.
