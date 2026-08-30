@@ -144,7 +144,8 @@ rejected path, not delete it once superseded.
 | Profile | `planagonia.com/profile` | **Done** — live at `www.planagonia.com/profile/` (D-055): sign-in, cloud plan list. No account management (rename/delete/rotate password) — flagged on the page itself as out of scope |
 | Storage-service API | `api.planagonia.com` | **Done** — migrated off `test.planagonia.com` (D-053), confirmed working end to end (login, CRUD, CORS for the main domain) |
 | SEO exclusion for `auth.`/`test.`(`api.`) | — | **Done** — `auth.planagonia.com` set to WordPress's own "discourage search engines" (confirmed: `noindex, nofollow` meta tag live); `test.planagonia.com` given a `Disallow: /` `robots.txt` |
-| Sitemap + main-domain `robots.txt` | `planagonia.com/sitemap.xml` | **Done** (D-057) — dynamically generated from Homepage/Documentation's real file mtimes; main-domain `robots.txt` also excludes `/app/`. GitHub Pages' own copy of the App still has no `robots.txt` — a separate, unaddressed host |
+| Sitemap + main-domain `robots.txt` | `planagonia.com/sitemap.xml` | **Done** (D-057, revised by D-062) — dynamically generated from Homepage/Documentation/App's real file mtimes. The App was originally excluded (nobody searches their way into a signed-in tool) but is now included in both the sitemap and `robots.txt`'s allow, at the user's direct request (D-062) — Profile stays excluded. GitHub Pages' own copy of the App still has no `robots.txt` — a separate, unaddressed host |
+| Impressum | `planagonia.com/impressum` | **Done** (D-063) — name/address/contact as a small standalone page, `noindex`, linked from Homepage/Docs/Profile's shared footer |
 
 ## Open questions, collected here rather than scattered across the conversation
 

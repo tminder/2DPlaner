@@ -858,6 +858,12 @@ function loadPlansList() {
 let plans = loadPlansList();
 let activePlanId = null;
 try { activePlanId = localStorage.getItem(ACTIVE_PLAN_KEY); } catch (e) { /* not fatal */ }
+// Set while browsing an example with no active plan of its own — merely looking at one
+// shouldn't clutter "My plans" with an entry nobody asked to keep. Turns into a real,
+// saved plan (see rerender()) the moment its text actually changes, whether typed or
+// dragged; switching away before that (to a real plan, a different example, a cloud
+// plan) abandons it with nothing left behind.
+let unsavedExample = null;
 
 function activePlan() {
   return plans.find((p) => p.id === activePlanId) || null;
@@ -865,7 +871,10 @@ function activePlan() {
 
 function setActivePlan(id) {
   activePlanId = id;
-  try { localStorage.setItem(ACTIVE_PLAN_KEY, id); } catch (e) { /* not fatal */ }
+  try {
+    if (id) localStorage.setItem(ACTIVE_PLAN_KEY, id);
+    else localStorage.removeItem(ACTIVE_PLAN_KEY);
+  } catch (e) { /* not fatal */ }
 }
 
 // Unique against every *other* plan's own current name — "Studio Apartment", then
@@ -890,6 +899,7 @@ function createPlan(name, text) {
 function switchToPlan(id) {
   const p = plans.find((x) => x.id === id);
   if (!p) return;
+  unsavedExample = null;
   setActivePlan(id);
   sourceEl.value = p.text;
   fixedViewBox = null;
@@ -918,6 +928,7 @@ function refreshPlanSwitcher() {
     const opt = document.createElement("option");
     opt.value = `example:${key}`;
     opt.textContent = label;
+    if (!activePlanId && unsavedExample && unsavedExample.key === key) opt.selected = true;
     exampleGroup.appendChild(opt);
   }
   select.appendChild(exampleGroup);
@@ -1087,7 +1098,16 @@ function showError(msg) {
 
 async function rerender(opts = {}) {
   const active = activePlan();
-  if (active) { active.text = sourceEl.value; active.updatedAt = Date.now(); savePlansList(); }
+  if (active) {
+    active.text = sourceEl.value; active.updatedAt = Date.now(); savePlansList();
+  } else if (unsavedExample && sourceEl.value !== unsavedExample.text) {
+    // First real change (typed or dragged) since the example was loaded — only now does
+    // browsing it turn into a plan worth keeping.
+    const plan = createPlan(unsavedExample.name, sourceEl.value);
+    unsavedExample = null;
+    setActivePlan(plan.id);
+    refreshPlanSwitcher();
+  }
   try {
     const parsed = parse(sourceEl.value);
     // D-034: every plan gets interactivity (and the other two shipped modules) by default,
@@ -1144,8 +1164,13 @@ function withAutoModules(text) {
 }
 
 function newPlanFromExample(key) {
-  const plan = createPlan(EXAMPLE_LABELS[key], withAutoModules(EXAMPLES[key]));
-  switchToPlan(plan.id);
+  const text = withAutoModules(EXAMPLES[key]);
+  unsavedExample = { key, name: EXAMPLE_LABELS[key], text };
+  setActivePlan(null);
+  sourceEl.value = text;
+  fixedViewBox = null;
+  refreshPlanSwitcher();
+  rerender();
 }
 
 document.getElementById("plan-switcher").addEventListener("change", (e) => {
@@ -1162,9 +1187,9 @@ document.getElementById("plan-switcher").addEventListener("change", (e) => {
 });
 
 document.getElementById("cloud-signin-btn").addEventListener("click", async () => {
-  const username = prompt("WordPress username:");
+  const username = prompt("Username:");
   if (!username) return;
-  const password = prompt("WordPress Application Password (not your regular login password):");
+  const password = prompt("Password (the one generated for you when you verified your email — not the one you chose when registering):");
   if (!password) return;
   try {
     await cloudSignIn(username.trim(), password.trim());
