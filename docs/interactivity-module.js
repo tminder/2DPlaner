@@ -27,10 +27,11 @@
       svg .obj.connected-highlight { filter: drop-shadow(0 0 3px #e80) drop-shadow(0 0 3px #e80); }
       /* A fixed stroke-width doesn't scale with the shape's own — a wall already stroked
          thicker than 3px actually looked *thinner* once selected, backwards from what a
-         selection indicator should do. A glow (matching hover/connected-highlight's own
-         pattern above) never touches stroke-width at all, so it reads consistently
-         regardless of how thick or thin the shape's own stroke already is. */
-      svg .obj.selected { filter: drop-shadow(0 0 3px #7c3aed) drop-shadow(0 0 3px #7c3aed); }
+         selection indicator should do. A glow (matching hover's own pattern above, same
+         2px size for consistency, a distinct color to stay tell-apart-able from it) never
+         touches stroke-width at all, so it reads consistently regardless of how thick or
+         thin the shape's own stroke already is. */
+      svg .obj.selected { filter: drop-shadow(0 0 2px #7c3aed) drop-shadow(0 0 2px #7c3aed); }
       svg .icon-btn { cursor: pointer; }
       svg .icon-btn circle { transition: r 0.1s; }
       #plan-root:not(.dragging) svg .icon-btn:hover circle { r: 11; }

@@ -116,15 +116,19 @@
   // textarea's (required for the overlay to stay aligned), with a comment's own // to
   // end-of-line colored separately from plain whitespace within those gaps.
   //
-  // Every token boundary and the selection's own start/end become "cut points" so no
-  // single slice ever straddles two different tokens or crosses into/out of the selected
-  // range — each slice is then either entirely one token or entirely a gap, and entirely
-  // inside or outside the selection, so its classes can be decided once per slice.
-  function renderHighlighted(text, tokens, selRange) {
-    const real = tokens.filter((t) => t.type !== "EOF");
-    const cuts = new Set([0, text.length]);
-    for (const t of real) { cuts.add(t.start); cuts.add(t.end); }
-    if (selRange) { cuts.add(selRange.start); cuts.add(selRange.end); }
+  // Colors [rangeStart, rangeEnd) purely by token type — no selection awareness. Splitting
+  // this out from the selection wrapping below (rather than putting a tok-selected class on
+  // every individual token span inside the selection, as an earlier version did) is what
+  // avoids a real rendering artifact that version had: many adjacent inline <span>s each
+  // painting their own background color show a faint seam at every boundary between them,
+  // reading as a thin border around each separate word. One outer span per contiguous
+  // range, with these purely-colored spans nested inside painting no background of their
+  // own, has nothing to seam against.
+  function colorRange(text, tokens, rangeStart, rangeEnd) {
+    if (rangeStart >= rangeEnd) return "";
+    const real = tokens.filter((t) => t.type !== "EOF" && t.start < rangeEnd && t.end > rangeStart);
+    const cuts = new Set([rangeStart, rangeEnd]);
+    for (const t of real) { cuts.add(Math.max(t.start, rangeStart)); cuts.add(Math.min(t.end, rangeEnd)); }
     const sorted = [...cuts].sort((a, b) => a - b);
 
     let ti = 0, html = "";
@@ -133,13 +137,29 @@
       if (start === end) continue;
       while (ti < real.length && real[ti].end <= start) ti++;
       const tok = ti < real.length && real[ti].start <= start && end <= real[ti].end ? real[ti] : null;
-      const inSelection = !!selRange && start >= selRange.start && end <= selRange.end;
       let escaped = escapeHtml(text.slice(start, end));
       if (!tok) escaped = escaped.replace(/\/\/[^\n]*/g, (m) => `<span class="tok-comment">${m}</span>`);
       const cls = tok ? tokenClass(tok) : null;
-      const classes = [cls ? `tok-${cls}` : null, inSelection ? "tok-selected" : null].filter(Boolean);
-      html += classes.length ? `<span class="${classes.join(" ")}">${escaped}</span>` : escaped;
+      html += cls ? `<span class="tok-${cls}">${escaped}</span>` : escaped;
     }
+    return html;
+  }
+
+  // selRanges: a list of disjoint [start, end) ranges to mark, in ascending order (see
+  // ownRanges below — a parent element can contribute more than one, since its own span
+  // wraps around every child's). Each becomes its own tok-selected wrapper around the
+  // ordinarily-colored text inside it, rather than one wrapper spanning the whole gap
+  // between the first and last range, so a child's own text sitting between two of a
+  // parent's ranges is never itself marked.
+  function renderHighlighted(text, tokens, selRanges) {
+    if (!selRanges.length) return colorRange(text, tokens, 0, text.length);
+    let html = "", cursor = 0;
+    for (const [start, end] of selRanges) {
+      html += colorRange(text, tokens, cursor, start);
+      html += `<span class="tok-selected">${colorRange(text, tokens, start, end)}</span>`;
+      cursor = end;
+    }
+    html += colorRange(text, tokens, cursor, text.length);
     return html;
   }
 
@@ -149,11 +169,27 @@
   // changed without a successful render happening first.
   let lastProgram = null;
 
-  function currentSelectionRange() {
+  // The parts of a selected element's own [start, end) that are actually *its own* text,
+  // not one of its descendants' — requested directly: selecting a parent shouldn't paint
+  // its children's own declarations as if they were selected too, just because they're
+  // textually nested inside the parent's span. A leaf element (no children) is the
+  // degenerate case: one range, identical to its own full span, same as before this existed.
+  function ownRanges(node) {
+    const ranges = [];
+    let cursor = node.start;
+    for (const child of node.children) {
+      if (child.start > cursor) ranges.push([cursor, child.start]);
+      cursor = Math.max(cursor, child.end);
+    }
+    if (cursor < node.end) ranges.push([cursor, node.end]);
+    return ranges;
+  }
+
+  function currentSelectionRanges() {
     const id = core.rootEl.dataset.selectedId;
-    if (!id || !lastProgram) return null;
+    if (!id || !lastProgram) return [];
     const node = lastProgram.nodesById[id];
-    return node ? { start: node.start, end: node.end } : null;
+    return node ? ownRanges(node) : [];
   }
 
   let lastSelectedId; // undefined until the first render — see the scroll-into-view note below
@@ -167,7 +203,7 @@
       backdrop.textContent = text; // an invalid character mid-edit — plain uncolored text beats nothing
       return;
     }
-    backdrop.innerHTML = renderHighlighted(text, tokens, currentSelectionRange());
+    backdrop.innerHTML = renderHighlighted(text, tokens, currentSelectionRanges());
     // A <pre> needs a trailing blank line to actually render a trailing newline — without
     // this the backdrop comes up one line short of the textarea at the very end of the text.
     if (text.endsWith("\n")) backdrop.innerHTML += " ";

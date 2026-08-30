@@ -243,9 +243,35 @@ mark.
 render.** Every render reaches the same `refresh()` (a drag's own repeated re-renders
 included), so scrolling unconditionally there would fight a user dragging an
 already-selected element, yanking the code pane's scroll position every frame. Guarded by
-comparing the current `selectedId` against the previous one, and positioned using the
-already-rendered `.tok-selected` span's own `offsetTop` (exact, including where a long line
-wraps across several visual rows) rather than counting newlines by hand.
+comparing the current `selectedId` against the previous one. Positioned via
+`marked.scrollIntoView()` — a hand-computed target `scrollTop` (from the highlight span's
+own `offsetTop`/`offsetHeight`) was tried first and reported not to work; `offsetHeight` on
+a *multi-line* inline element (exactly what a selected element's span usually is) is
+inconsistently defined across browsers, typically describing one line box rather than the
+true multi-line extent, a plausible explanation even though nothing wrong turned up
+reviewing that math directly. `scrollIntoView()` scrolls `backdrop` (the element's own
+nearest positioned ancestor) rather than `textarea` (the two are only ever kept in sync
+manually, not natively linked) — the result is read back onto `textarea` immediately after.
+
+**Selecting a parent marks only the parent's own text, not its children's — `ownRanges()`,
+not the element's raw `[start, end)`.** A parent's own span (`node.start` to `node.end`)
+textually *contains* every child's own declaration too, so highlighting it naively would
+paint a child's text as "selected" right along with the parent's, just because it happens
+to sit inside the parent's braces. `ownRanges()` walks the parent's direct children (already
+in source order) and returns whatever's *between* them instead — before the first child,
+between consecutive children, after the last — each becoming its own separate
+`tok-selected` wrapper. A leaf element (no children) is the degenerate case: one range,
+identical to its full span, unchanged from a single-child-free element's original behavior.
+
+**Selection background is one wrapper per contiguous range, not a class on every token
+inside it.** An earlier version put a `tok-selected` class directly on each individual
+token/gap `<span>` within the selection — syntactically fine, but many adjacent inline
+elements each painting their own identical background color show a faint seam at every
+boundary between them, a real rendering artifact that read as a thin border around every
+separate word (reported directly). `colorRange()` now renders the ordinary syntax coloring
+with no selection awareness at all; `renderHighlighted()` wraps each of `ownRanges()`'s
+disjoint ranges in exactly one outer `tok-selected` span around that coloring, so there's
+only ever one background-painting element per range, nothing for a seam to form between.
 
 ## Known seams
 
