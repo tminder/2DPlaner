@@ -168,6 +168,17 @@
   footer.site a { color: var(--ink-soft); }
   footer.site a:hover { color: var(--ink); }
 
+  .cookie-notice {
+    position: fixed; left: 1rem; right: 1rem; bottom: 1rem; z-index: 20;
+    max-width: 640px; margin: 0 auto;
+    background: var(--paper-raised); border: 1px solid var(--line); border-radius: 12px;
+    padding: 1rem 1.2rem; box-shadow: 0 6px 24px rgba(0,0,0,0.18);
+    display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+  }
+  .cookie-notice[hidden] { display: none; }
+  .cookie-notice p { margin: 0; font-size: 0.88rem; color: var(--ink-soft); flex: 1 1 20rem; }
+  .cookie-notice button.btn { flex: 0 0 auto; font-family: inherit; cursor: pointer; }
+
   @media (max-width: 760px) {
     .hero { grid-template-columns: 1fr; padding-top: 2rem; }
     .principle-grid { grid-template-columns: 1fr; }
@@ -266,6 +277,27 @@
     <span><a href="/app/">Open the app</a> · <a href="/docs/">Docs</a> · <a href="/profile/">Profile</a> · <a href="/impressum/">Impressum</a></span>
   </footer>
 </div>
+
+<div id="cookie-notice" class="cookie-notice" hidden>
+  <p>This site saves your plans and sign-in state using your browser's own local storage — no tracking, no third-party cookies.</p>
+  <button id="cookie-notice-dismiss" class="btn btn-primary">Got it</button>
+</div>
+<script>
+  // No real HTTP cookies are set anywhere in this project (D-050/D-021: session tokens
+  // live in sessionStorage, plans in localStorage) — worded to say what's actually true
+  // rather than reuse "cookie" boilerplate that wouldn't describe this site accurately.
+  // Dismissal itself uses the same localStorage it's disclosing, shared across every page
+  // on this origin, so dismissing once here covers Docs/Profile/the App too.
+  (function () {
+    var KEY = "planagonia:cookieNoticeDismissed";
+    var el = document.getElementById("cookie-notice");
+    try { if (!localStorage.getItem(KEY)) el.hidden = false; } catch (e) { el.hidden = false; }
+    document.getElementById("cookie-notice-dismiss").addEventListener("click", function () {
+      el.hidden = true;
+      try { localStorage.setItem(KEY, "1"); } catch (e) { /* private mode — not fatal */ }
+    });
+  })();
+</script>
 
 </body>
 </html>

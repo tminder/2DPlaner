@@ -891,4 +891,30 @@ Requested directly, with no reasoning needed beyond the request itself (a routin
 
 **Built as `homepage/impressum/index.html`, served at `/impressum/`** — matches Homepage/Docs/Profile's shared header/footer chrome and color/type tokens (not the App, which never had that chrome to begin with, per the standing convention already noted in homepage's own CSS comments). Content kept to exactly the factual fields provided (name, address, contact email) — no invented legal boilerplate (liability disclaimers, etc.) added on top, since drafting that isn't something to improvise without being asked. `<meta name="robots" content="noindex">`, matching Profile's own pattern (D-052's convention) — a legal-notice page isn't something that should rank in search either. Linked from the shared footer on Homepage, Docs, and Profile (all three already share identical footer markup, duplicated per-page rather than built, per D-034); not linked from the App's own toolbar, which has no equivalent chrome to add it to.
 
+**Addendum, same day: the contact address was changed from the user's own personal address to `info@planagonia.com`**, requested directly right after the page went live — a project-branded contact address rather than a personal one, now that the page exists for people to actually use it.
+
+**Status: built and deployed**, confirmed live via `curl`.
+
+## D-064 A cookie/local-storage notice, worded to say what this site actually does
+
+Requested directly ("add a cookie message"). This project sets no real HTTP cookies anywhere — confirmed by checking, not assumed (`grep` across the repo for `document.cookie`/`Set-Cookie`/`setcookie` turned up nothing) — every bit of persistence is client-side Web Storage: `localStorage` for saved plans (D-034), `sessionStorage` for the cloud sign-in token (D-050). A generic "this site uses cookies" banner would describe something this site doesn't do; worded instead to say what's actually true — "This site saves your plans and sign-in state using your browser's own local storage — no tracking, no third-party cookies" — informative without a false claim.
+
+**A small fixed banner, duplicated across Homepage/Docs/Profile/the App** (matching D-034's own "no build step, small logic duplicated per static page" pattern, same as the shared footer). Dismissal is stored under the same `localStorage` the banner discloses (`planagonia:cookieNoticeDismissed`), same-origin across all four pages — dismissing it once anywhere covers the rest. Not shown on the Impressum page (a `noindex`, rarely-visited utility page one click from wherever the banner was already dismissed).
+
+**A real bug found by testing in a real browser, not by reading the CSS:** the first version never actually hid on dismiss, on any of the four pages. Root cause: `.cookie-notice { display: flex; ... }` and the browser's own built-in `[hidden] { display: none; }` rule are the same CSS specificity (one class selector vs. one attribute selector, both (0,0,1,0)) — a tie is broken by cascade order, and an author stylesheet always comes after the user-agent stylesheet, so `display: flex` silently won regardless of the `hidden` attribute being set correctly by JS. Fixed by adding `.cookie-notice[hidden] { display: none; }` (specificity (0,0,2,0), unambiguously wins) to all four files. Re-tested via Playwright afterward: notice shows on first load, dismiss hides it, the hidden state survives a reload, on every page.
+
+**Status: built, bug found and fixed, verified in a real (headless) browser, and deployed** to all four live pages.
+
+## D-065 A "Beta" badge on the App only
+
+Requested directly, scoped to `/app/` specifically. Added next to the "Planagonia" wordmark in the App's own toolbar header (`docs/index.html`) — the one page with its own distinct chrome, not the shared Homepage/Docs/Profile header used everywhere else, so this couldn't reuse anything already in place. Small, muted amber pill (`.beta-badge`), matching the amber accent already used elsewhere in this app's own palette (e.g. the eyebrow/accent color on Homepage) rather than introducing a new color for it.
+
+**Status: built, confirmed visually and deployed.**
+
+## D-066 GitHub links removed from the Docs page
+
+Requested directly ("remove github from /docs"). The only two GitHub references on `site-docs/index.html` were inline content links pointing to the raw spec files in the repository (`documentation/language.md`, `documentation/modules.md`) from two asides about material this human-facing page deliberately doesn't cover itself. Removed both links; reworded the surrounding sentences so they still make sense as plain text without pointing anywhere (no dangling "see X" with nothing to see). Nothing else on the page referenced GitHub — no separate header/nav icon existed to remove.
+
+**Status: built, confirmed zero `github.com` links remain on the page, and deployed.**
+
 **Status: built and deployed**, confirmed live via `curl`.

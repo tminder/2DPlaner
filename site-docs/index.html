@@ -138,6 +138,17 @@
   footer.site a { color: var(--ink-soft); }
   footer.site a:hover { color: var(--ink); }
 
+  .cookie-notice {
+    position: fixed; left: 1rem; right: 1rem; bottom: 1rem; z-index: 20;
+    max-width: 640px; margin: 0 auto;
+    background: var(--paper-raised); border: 1px solid var(--line); border-radius: 12px;
+    padding: 1rem 1.2rem; box-shadow: 0 6px 24px rgba(0,0,0,0.18);
+    display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+  }
+  .cookie-notice[hidden] { display: none; }
+  .cookie-notice p { margin: 0; font-size: 0.88rem; color: var(--ink-soft); flex: 1 1 20rem; }
+  .cookie-notice button.btn { flex: 0 0 auto; border: none; font-family: inherit; cursor: pointer; }
+
   @media (max-width: 860px) {
     .layout { grid-template-columns: 1fr; }
     aside.toc { position: static; border-bottom: 1px solid var(--line); padding-bottom: 1.2rem; }
@@ -176,7 +187,7 @@
 
     <main class="content">
       <h1>How Planagonia works</h1>
-      <p class="lede">This page is written for people using the app, not for an AI generating plans from scratch — for the precise language grammar an assistant would need, see the <a href="https://github.com/tminder/2DPlaner/blob/master/documentation/language.md">language specification</a> in the repository instead.</p>
+      <p class="lede">This page is written for people using the app, not for an AI generating plans from scratch — an assistant needs the precise language specification instead, which isn't covered here.</p>
 
       <section id="getting-started">
         <h2>Getting started</h2>
@@ -284,7 +295,7 @@
           <strong>You'll be asked before it loads</strong>
           The first time a plan declares a module that isn't one of the three built-in ones, the app asks whether to trust the URL before fetching and running it — module code runs with full access to the page, the same as any script you'd choose to add yourself, so only accept one from somewhere you actually trust.
         </div>
-        <p>Writing your own module means working directly against the app's own JavaScript API — that's developer territory, not covered here; see <a href="https://github.com/tminder/2DPlaner/blob/master/documentation/modules.md">modules.md</a> in the repository for the full surface a module can hook into.</p>
+        <p>Writing your own module means working directly against the app's own JavaScript API — that's developer territory, not covered here.</p>
       </section>
 
       <section id="saving">
@@ -439,6 +450,22 @@
     <span><a href="/app/">Open the app</a> · <a href="/docs/">Docs</a> · <a href="/profile/">Profile</a> · <a href="/impressum/">Impressum</a></span>
   </footer>
 </div>
+
+<div id="cookie-notice" class="cookie-notice" hidden>
+  <p>This site saves your plans and sign-in state using your browser's own local storage — no tracking, no third-party cookies.</p>
+  <button id="cookie-notice-dismiss" class="btn btn-primary">Got it</button>
+</div>
+<script>
+  (function () {
+    var KEY = "planagonia:cookieNoticeDismissed";
+    var el = document.getElementById("cookie-notice");
+    try { if (!localStorage.getItem(KEY)) el.hidden = false; } catch (e) { el.hidden = false; }
+    document.getElementById("cookie-notice-dismiss").addEventListener("click", function () {
+      el.hidden = true;
+      try { localStorage.setItem(KEY, "1"); } catch (e) { /* private mode — not fatal */ }
+    });
+  })();
+</script>
 
 </body>
 </html>

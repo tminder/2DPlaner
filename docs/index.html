@@ -12,7 +12,9 @@
     display: flex; flex-direction: column; overflow: hidden; }
   header { flex: 0 0 auto; display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 1rem;
     background: #fff; border-bottom: 1px solid #ddd; flex-wrap: wrap; }
-  header h1 { font-size: 1.05rem; margin: 0; margin-right: 0.5rem; white-space: nowrap; }
+  header h1 { font-size: 1.05rem; margin: 0; margin-right: 0.5rem; white-space: nowrap; display: flex; align-items: center; gap: 0.4rem; }
+  .beta-badge { font-size: 0.62rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+    color: #8a6a1f; background: #f2dfb8; border-radius: 4px; padding: 0.15rem 0.4rem; }
   header .spacer { flex: 1; }
   button, select { font: inherit; font-size: 0.85rem; padding: 0.4rem 0.7rem; border: 1px solid #ccc;
     border-radius: 5px; background: #fff; cursor: pointer; }
@@ -65,11 +67,22 @@
     font-size: 11px; padding: 0.3rem 0.55rem; border-radius: 6px; opacity: 0.9; }
 
   #file-input { display: none; }
+
+  .cookie-notice {
+    position: fixed; left: 1rem; right: 1rem; bottom: 1rem; z-index: 20;
+    max-width: 640px; margin: 0 auto;
+    background: #fff; border: 1px solid #ccc; border-radius: 10px;
+    padding: 0.9rem 1.1rem; box-shadow: 0 6px 24px rgba(0,0,0,0.18);
+    display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+  }
+  .cookie-notice[hidden] { display: none; }
+  .cookie-notice p { margin: 0; font-size: 0.85rem; color: #555; flex: 1 1 20rem; }
+  .cookie-notice button { flex: 0 0 auto; }
 </style>
 </head>
 <body>
 <header>
-  <h1>Planagonia</h1>
+  <h1>Planagonia <span class="beta-badge">Beta</span></h1>
   <select id="plan-switcher"></select>
   <button id="rename-btn" title="Rename the current plan">Rename…</button>
   <button id="delete-btn" title="Delete the current plan">Delete</button>
@@ -96,6 +109,22 @@
     </div>
   </div>
 </main>
+
+<div id="cookie-notice" class="cookie-notice" hidden>
+  <p>This site saves your plans and sign-in state using your browser's own local storage — no tracking, no third-party cookies.</p>
+  <button id="cookie-notice-dismiss">Got it</button>
+</div>
+<script>
+  (function () {
+    var KEY = "planagonia:cookieNoticeDismissed";
+    var el = document.getElementById("cookie-notice");
+    try { if (!localStorage.getItem(KEY)) el.hidden = false; } catch (e) { el.hidden = false; }
+    document.getElementById("cookie-notice-dismiss").addEventListener("click", function () {
+      el.hidden = true;
+      try { localStorage.setItem(KEY, "1"); } catch (e) { /* private mode — not fatal */ }
+    });
+  })();
+</script>
 
 <script>
 // ---------- Example plans ----------
