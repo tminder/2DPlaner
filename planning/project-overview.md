@@ -60,12 +60,16 @@ static files, no backend, no accounts, `localStorage` for persistence.
 
 ## What's decided but not built
 
-- **D-019** — user auth via a self-hosted, headless WordPress instance. Fully designed,
-  nothing built.
-- **D-021** — a separate, minimal storage service (CRUD for plan text per user). Fully
-  designed, nothing built.
+- **D-019** — user auth via a self-hosted, headless WordPress instance. Still fully
+  designed, nothing built — no WP instance exists; `storage-service/`'s `verifyCredentials`
+  stubs this (see D-047).
+- **D-021** — a separate, minimal storage service. **Now built as code**
+  (`storage-service/`, D-047: Node.js, Express, SQLite) — CRUD for plan text per user,
+  session tokens, ownership checks. Genuinely untested, though: no Node.js is available in
+  the environment it was written in, so nothing has actually been run.
 - **D-025** — deployment topology. Designed, nothing built.
-- No accounts, no cloud sync, no server-side code exists anywhere in this project today.
+- Still no accounts, no cloud sync in the live product — `docs/` remains entirely
+  `localStorage`-only; `storage-service/` isn't wired to it yet, deliberately (see D-047).
 
 ## Independent risk assessment
 

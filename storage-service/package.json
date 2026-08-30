@@ -1,0 +1,17 @@
+{
+  "name": "planagonia-storage-service",
+  "version": "0.1.0",
+  "private": true,
+  "description": "D-021's minimal storage service: CRUD for plan text, scoped per user. Auth (D-019) is stubbed pending a real WordPress instance — see src/auth.js.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2"
+  }
+}
