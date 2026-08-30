@@ -75,7 +75,7 @@
   <button id="delete-btn" title="Delete the current plan">Delete</button>
   <button id="open-btn">Open…</button>
   <button id="save-btn">Save as…</button>
-  <input type="file" id="file-input" accept=".2dplan,.txt,text/plain">
+  <input type="file" id="file-input" accept=".planagon,.2dplan,.txt,text/plain">
   <div class="spacer"></div>
   <span style="font-size: 0.8rem; color: #888;">Saved automatically in this browser</span>
 </header>
@@ -999,7 +999,7 @@ document.getElementById("save-btn").addEventListener("click", () => {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${(p ? p.name : "plan").replace(/[\\/:*?"<>|]+/g, "_")}.2dplan`;
+  a.download = `${(p ? p.name : "plan").replace(/[\\/:*?"<>|]+/g, "_")}.planagon`;
   document.body.appendChild(a);
   a.click();
   a.remove();

@@ -569,6 +569,8 @@ Requested as the direct follow-up to [project-overview.md](project-overview.md)'
 
 **Open/Save adapted to the same model:** Open… (file picker) now creates a new plan named after the imported file rather than replacing the active one; Save as… names the downloaded file after the *plan's own* name (via `activePlan()`) instead of the fixed literal `"plan.2dplan"` it used before, so a person saving multiple plans to disk doesn't get several files that collide on the same filename.
 
+**File extension changed from `.2dplan` to `.planagon`, matching D-040's rename to "Planagonia"** — reads as plan+polygon, short enough to work as an extension. Save as… now downloads `<plan name>.planagon`; the Open… file picker's `accept` list keeps `.2dplan` alongside it so files already saved under the old name still show up when opening, with no other special-casing needed since the app never inspects the extension itself, only the file's text content.
+
 **Deleting the last remaining plan** doesn't leave an empty switcher — it immediately creates a fresh Studio Apartment example plan and switches to it, the same fallback startup already uses when `localStorage` is empty on first visit, so the app is never in a state with zero plans to select from.
 
 **No core-language change.** This is purely `docs/index.html`'s own toolbar/persistence layer — the plan-text format, parser, and renderer are untouched; `AUTO_MODULES` injection (D-034) still runs the same way on every new/imported/example plan via a shared `withAutoModules()` helper (the old `loadPlan()`'s module-injection logic, unchanged, just renamed and split from the "replace the current textarea" behavior it used to also carry out).
