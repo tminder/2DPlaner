@@ -16,6 +16,30 @@ function read_json_body(): array {
     return is_array($data) ? $data : [];
 }
 
+// D-021's own client (docs/, served from GitHub Pages) calls this from a different
+// origin — a browser preflights any request carrying Authorization or a JSON
+// Content-Type with an OPTIONS request first, and won't show the real response to the
+// page's JS at all unless the actual response also carries a matching
+// Access-Control-Allow-Origin. Locked to the one real caller rather than "*" — this API
+// carries session tokens, not public data, so there's no reason to widen it further than
+// the one frontend that's meant to call it. Must run before anything else in a route,
+// including auth — an OPTIONS preflight never carries the real Authorization header, so
+// gating it behind require_session-style checks would make every cross-origin call fail
+// before it's even attempted.
+function apply_cors(array $allowedOrigins): void {
+    $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+    if (in_array($origin, $allowedOrigins, true)) {
+        header("Access-Control-Allow-Origin: $origin");
+        header('Access-Control-Allow-Headers: Content-Type, Authorization');
+        header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
+        header('Vary: Origin');
+    }
+    if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+        http_response_code(204);
+        exit;
+    }
+}
+
 // Reads the bearer token from the Authorization header. Deliberately checks three
 // places, not just $_SERVER['HTTP_AUTHORIZATION'] — a known, common gotcha on shared
 // Apache/PHP-FPM hosting is that the Authorization header isn't passed through to PHP by

@@ -14,6 +14,12 @@ return [
     // `wp rewrite flush --hard`).
     'wp_url' => 'https://auth.planagonia.com',
 
+    // Origins allowed to call this API cross-origin (see src/http.php's apply_cors()).
+    // docs/ is served from GitHub Pages, a different origin than this service — add a
+    // local dev origin here too (e.g. "http://localhost:5500") if testing docs/ locally
+    // against this live service.
+    'allowed_origins' => ['https://tminder.github.io'],
+
     // MySQL connection — create the database via the hosting portal's "Datenbanken"
     // feature first, then fill in exactly what it shows you.
     //

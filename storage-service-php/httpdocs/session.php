@@ -4,6 +4,7 @@ require __DIR__ . '/../app/src/db.php';
 require __DIR__ . '/../app/src/auth.php';
 
 $config = require __DIR__ . '/../app/config.local.php';
+apply_cors($config['allowed_origins']);
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     send_json(405, ['error' => 'Method not allowed']);

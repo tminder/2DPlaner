@@ -8,6 +8,7 @@ require __DIR__ . '/../app/src/auth.php';
 require __DIR__ . '/../app/src/plans_repo.php';
 
 $config = require __DIR__ . '/../app/config.local.php';
+apply_cors($config['allowed_origins']);
 
 $token = bearer_token_from_headers();
 if (!$token) {
