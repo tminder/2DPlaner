@@ -67,5 +67,45 @@ a request can't be used to probe whether some other user's plan id exists.
 - Wiring `docs/index.html` to actually call this service — deliberately not attempted yet,
   matching this project's established practice of validating a piece standalone before
   wiring it into the live product. `docs/` stays fully `localStorage`-only for now.
-- Deployment (this repo doesn't know where the "server vorhanden" mentioned in
-  decisions.md actually is, or how this gets onto it).
+
+## Deploying to Plesk (shared hosting)
+
+The target for this project's first real deployment (`test.planagonia.com`) is shared
+hosting under Plesk — no root/systemd access, Node.js apps run through Plesk's own
+extension (Phusion Passenger under the hood). This couldn't be done from the environment
+this was written in: it has no outbound access on port 22 at all (confirmed — plain HTTPS
+to the same host works, SSH to it times out), so deployment has to be done by hand rather
+than scripted from here.
+
+**A real risk worth checking early: `better-sqlite3` is a native module** (compiled C++,
+via `node-gyp`). Shared hosting frequently lacks the build toolchain `npm install` would
+need to compile it, even though it ships prebuilt binaries for common platforms that often
+avoid needing to compile at all. If `npm install` fails on it, the fix is swapping to a
+pure-JS alternative (Node 22+'s built-in `node:sqlite`, if the host's Node version supports
+it, or `sql.js` otherwise) — `src/db.js` is the only file that would need to change, since
+`src/plans.js`/`src/auth.js` only ever call plain `.prepare()/.get()/.all()/.run()`.
+
+**Steps:**
+
+1. **Subdomain**: Websites & Domains → Add Subdomain → `test.planagonia.com`, if it isn't
+   already set up.
+2. **Node.js tab** on that domain in Plesk. If it's missing, the hosting provider needs to
+   enable the Node.js extension for the account first.
+3. **Application Root**: a subdirectory (e.g. `storage-service`) to hold the app's files.
+4. **Upload this directory's contents** via FTP/SFTP — everything except `node_modules/`,
+   `.env`, and `*.db` (already gitignored; don't need to be uploaded, `npm install` and
+   first run recreate them).
+5. **Application Startup File**: `src/server.js`.
+6. **Environment variables**, set in Plesk's Node.js panel rather than uploading a real
+   `.env` file, if Plesk offers that field:
+   - `SESSION_SECRET` — a long random string (generate locally: `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`)
+   - `DEV_USERNAME` / `DEV_PASSWORD` — credentials for the stubbed dev login
+7. Click **"NPM install"** in Plesk's panel — runs server-side, no shell access needed.
+8. Click **"Enable Node.js"** / restart — Plesk/Passenger starts the process. `PORT` from
+   `.env` is likely irrelevant here; Passenger manages the actual socket/port itself, and
+   `src/server.js`'s `app.listen(process.env.PORT || 3001, ...)` defers to whatever it's
+   given either way.
+9. **Verify**: `GET https://test.planagonia.com/plans` should return
+   `401 {"error":"Missing session token"}` — confirms the app is actually running, not
+   404ing at Plesk's own level. Then `POST /session` with the dev credentials to confirm
+   the full login → token → CRUD path works end to end.
