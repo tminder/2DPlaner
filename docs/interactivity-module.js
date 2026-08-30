@@ -372,27 +372,50 @@
     return false;
   }
 
+  // Binary-searches the largest t in [0,1] such that check(t) doesn't collide, given
+  // check(0) is known safe and check(1) is known not — returns delta scaled by that t
+  // (preserves delta's own sign, since t only ever shrinks toward 0).
+  function clampAxisDelta(check, delta) {
+    let lo = 0, hi = 1;
+    for (let i = 0; i < 14; i++) {
+      const mid = (lo + hi) / 2;
+      if (check(mid)) hi = mid; else lo = mid;
+    }
+    return delta * lo;
+  }
+
   // A hard accept/reject on the full attempted (dx, dy) sounds right but isn't: dx/dy are
   // cumulative from the drag's original mousedown point (not incremental), so rejecting the
   // whole move freezes the shape wherever it last fit while the cursor keeps drifting —
   // every direction then feels "blocked" until the user retraces the entire drifted
-  // distance back to a delta that fits again. Binary-searching the largest fraction of the
-  // *current* attempted delta that doesn't collide keeps the shape sitting right at the
-  // boundary instead, re-solved fresh from the original start on every tick — so moving
-  // away or sideways produces an immediately different, usually non-colliding target next
-  // frame, rather than needing to undo the drift first.
+  // distance back to a delta that fits again.
+  //
+  // A single shared scale factor along the attempted (dx, dy) vector fixes that but creates
+  // a different problem: pushing into a wall while also trying to slide alongside it (the
+  // ordinary way to get past an obstacle) throttles the *sliding* axis down to the same
+  // fraction as the *blocked* axis, so the shape crawls at a fraction of the mouse's own
+  // sideways speed instead of tracking it. Real "slide along the wall" behavior needs each
+  // axis resolved independently: X is only clamped if moving in X *alone* would collide,
+  // then Y is resolved the same way holding X at whatever it ended up at — so an axis the
+  // obstacle doesn't actually block stays fully in sync with the cursor.
   function clampToNoCollision(node, parent, dx, dy, base, positions, warnings) {
     if (collisionsAllowedFor(node, base.settings)) return [dx, dy];
-    const collidesAt = (t) => collidesWithAnySibling(node, parent, proposedGeometryFor(node, dx * t, dy * t, positions), base, positions);
-    if (!collidesAt(1)) return [dx, dy];
-    if (collidesAt(0)) return [0, 0]; // already overlapping even at the drag's own start
-    let lo = 0, hi = 1;
-    for (let i = 0; i < 14; i++) {
-      const mid = (lo + hi) / 2;
-      if (collidesAt(mid)) hi = mid; else lo = mid;
+    const collides = (tx, ty) => collidesWithAnySibling(node, parent, proposedGeometryFor(node, tx, ty, positions), base, positions);
+    if (!collides(dx, dy)) return [dx, dy];
+
+    let resolvedDx = dx;
+    if (collides(dx, 0)) {
+      resolvedDx = collides(0, 0) ? 0 : clampAxisDelta((t) => collides(dx * t, 0), dx);
     }
-    warnings.push(`${node.id}: stopped by a collision. Set allowCollisions: true to allow this.`);
-    return [dx * lo, dy * lo];
+    let resolvedDy = dy;
+    if (collides(resolvedDx, dy)) {
+      resolvedDy = collides(resolvedDx, 0) ? 0 : clampAxisDelta((t) => collides(resolvedDx, dy * t), dy);
+    }
+
+    if (resolvedDx !== dx || resolvedDy !== dy) {
+      warnings.push(`${node.id}: stopped by a collision. Set allowCollisions: true to allow this.`);
+    }
+    return [resolvedDx, resolvedDy];
   }
 
   // ---------- Text-splice helpers ----------
