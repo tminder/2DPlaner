@@ -4,11 +4,11 @@ Reference documentation for the 2DPlaner plan language, as currently designed. U
 [planning/](../planning/), which records *why* each choice was made, this document
 describes *what the language is* for someone building against it or writing plans in it.
 
-**Status:** concept-stage — a first concrete syntax exists as a throwaway parser prototype
-(see Worked examples below), but it's not finalized (see
-[planning/open-questions.md](../planning/open-questions.md) F-002, F-003). Examples below
-match that prototype syntax but should still be read as illustrative, not finalized. This
-document should be kept in sync with
+**Status:** the syntax below is real and running — it's what [docs/](../docs/), the hosted
+app (D-034), actually parses — though still not finalized in every corner (see
+[planning/open-questions.md](../planning/open-questions.md) F-002, F-003). Prototypes 01–14
+predate later renames and syntax additions; read them as historical snapshots, not current
+syntax (see the Worked examples note below). This document should be kept in sync with
 [planning/decisions.md](../planning/decisions.md), which is the source of truth if the two
 disagree.
 
@@ -262,11 +262,7 @@ has to map cleanly to and from direct manipulation of the rendered view. Concret
 Modules can add new rendering and new interactivity, and can add new *reusable, higher-
 level compositions* built from Element and Connection (e.g. a "wall with a door" building
 block) — but not new fundamental primitives; the core stays fixed at exactly the two above
-(D-011). The module API surface has a first concrete shape now — see D-031 and
-[Prototypes/14-interactivity-module/](../Prototypes/14-interactivity-module/) — though
-[planning/open-questions.md](../planning/open-questions.md) F-002 still isn't fully closed.
-
-A plan loads a module by declaring it in the **preamble**, before the root element
+(D-011). A plan loads a module by declaring it in the **preamble**, before the root element
 (D-020):
 
 ```
@@ -274,11 +270,10 @@ module "wall-tools"                              // internal, resolved by name
 module "https://example.com/campervan-kit.js"    // external, fetched from the URL
 ```
 
-One statement form covers both — a bare name resolves against a built-in registry, a
-string with a URL scheme is fetched and run from there. External modules are **trusted by
-default, with no sandboxing** — loading one runs that code directly in the editor/renderer,
-closer to a developer choosing an npm package than an end user clicking an untrusted link
-(matches D-003's technical, AI-reviewed-by-human audience).
+That's the language-level grammar; what a module can actually do once loaded (the
+`window.PlanCore` API, load/cleanup lifecycle, the trust model, and what's currently shipped
+in [docs/](../docs/)) is documented in full in [modules.md](modules.md), kept separate from
+this file since it's about the surrounding system, not the plan language itself.
 
 ## Settings
 
@@ -312,7 +307,10 @@ being allowed and flagged afterward like D-015's unsolvable-expression case.
 Prototypes 01–14 predate the D-033 renames and use the original names throughout
 (`node`, `allowUnrealisticPolygons`) — described below exactly as they exist, not
 retroactively updated. [Prototypes/15-utility-connection/](../Prototypes/15-utility-connection/)
-is the first to use the current names.
+is the first to use the current names. **[docs/](../docs/) is the one that matters going
+forward** — the actual hosted app (D-034), reusing 15's core/module structure, kept in sync
+with this document rather than frozen as a snapshot; the prototypes below stay purely
+historical.
 
 - [Prototypes/language-sketch-01.md](../Prototypes/language-sketch-01.md) — three sketched
   plans (a room, a campervan interior, an outdoor layout) used to derive the primitives

@@ -7,9 +7,12 @@ to [language.md](language.md) (the plan language itself). Keep in sync with
 [planning/decisions.md](../planning/decisions.md), which is the source of truth if the two
 disagree.
 
-**Status:** concept-stage. The pieces below are individually decided (see the D-numbers
-throughout), but nothing has been built as a real deployed system yet — no repo, no server,
-no domain. This document is the map for when that starts.
+**Status:** mixed — the frontend box below is real and deployed
+([docs/](../docs/), live at [tminder.github.io/2DPlaner](https://tminder.github.io/2DPlaner/),
+D-034); the two backend boxes (auth, storage) are individually decided (see the D-numbers
+throughout) but not built — no accounts exist yet, only local persistence (D-007). Read the
+Frontend section as describing what's running today; the Backend sections as the plan for
+when that starts.
 
 ## Components
 
@@ -50,21 +53,35 @@ Everything in the top box runs entirely client-side. The two backend boxes are t
 server-side pieces, and they don't talk to each other except at login — though physically
 they sit on the same server, same domain (D-025), not separate hosts.
 
+The diagram's top box is still this decision's original target shape, not a description of
+`docs/` today: the code editor built so far is a plain `<textarea>` (matching D-034's "no
+build step, zero dependencies" scope cut, not Monaco/CodeMirror), and there's no login/"my
+plans" UI since the backend boxes below aren't built. Only "SVG renderer + drag-and-drop"
+and "local persistence" are real right now.
+
 ## Frontend
 
 A single-page app, no server-side rendering for the editing experience itself.
 
 - **Code editor + SVG renderer**, side by side, both always live (D-006). The parser,
-  Node/Connection tree, and renderer all run in the browser (D-004: SVG; D-013: the two
+  Element/Connection tree, and renderer all run in the browser (D-004: SVG; D-013: the two
   core primitives) — this is required for instant feedback while typing and dragging
   (D-009), not a preference.
+- **Core + module split** (D-031): `docs/index.html` only parses and renders — every
+  interactive behavior (drag, selection, connect/disconnect, hover, zoom/pan) lives in a
+  separately loaded module, `docs/interactivity-module.js`, built against the
+  `window.PlanCore` API. See [modules.md](modules.md) for the full API surface and how
+  modules load.
 - **Drag-and-drop** rewrites the source text directly via span-splicing (D-012, D-014,
-  D-018), not a full re-serialization — see the prototypes for the mechanics.
-- **Local persistence** (D-007): localStorage and file export/import work with no backend
-  at all. This is the baseline — logged-out use is fully functional.
+  D-018), not a full re-serialization — implemented in the interactivity module above.
+- **Local persistence** (D-007): `localStorage` (autosaved on every change, D-034) and file
+  export/import work with no backend at all. This is the baseline — logged-out use is fully
+  functional, and it's the *only* thing currently built (no accounts exist yet).
 - **Modules** (D-020): loaded by the browser directly, either from a built-in registry
   (internal, by name) or fetched from an arbitrary URL (external) — no backend proxy, no
-  sandboxing. Trust model: see [open-questions.md](../planning/open-questions.md) F-009.
+  sandboxing. See [modules.md](modules.md) for the mechanism and trust model; the open
+  question of whether that model still holds if the audience broadens is
+  [open-questions.md](../planning/open-questions.md) F-009.
 - **AI authoring** (D-023): currently copy-paste. The human writes/edits the plan by
   conversing with an AI in a separate session, then pastes the result into the code
   editor. No API calls to an LLM happen from within the app. See F-008 for what a live
