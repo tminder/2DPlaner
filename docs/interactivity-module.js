@@ -252,9 +252,44 @@
     return ids;
   }
 
+  // Moving every corner a shape references by the same delta is a rigid translation of the
+  // shape itself — which by definition can never change its own self-intersection status,
+  // since translation preserves every pairwise distance and angle. But core's ordinary
+  // realism check (inside nodeDragEdits, run once per corner) has no idea a whole group is
+  // moving together: it only ever sees *one* corner move while the others still sit at
+  // their old spot, which reads as the shape deforming even though it's actually just
+  // sliding — and, with both shipped examples setting allowSelfIntersectingPolygons: false,
+  // reliably rejected the very first corner of almost any real drag. Checked here instead,
+  // once, against the fully-translated result — any *other* shape that shares one of these
+  // corners without moving along with the rest of it (a real deformation, not a rigid
+  // slide) is still correctly checked against what actually happens to it.
+  function wouldSelfIntersect(cornerIds, dx, dy, base, cornerUsers, warnings, movedId) {
+    if (base.settings.allowSelfIntersectingPolygons) return false;
+    const positions = {};
+    core.computePositions(base.root, null, [0, 0], positions);
+    for (const cid of cornerIds) {
+      const p = positions[cid];
+      positions[cid] = [p[0] + dx, p[1] + dy];
+    }
+    const affectedShapeIds = new Set();
+    for (const cid of cornerIds) for (const uid of cornerUsers[cid] ?? []) affectedShapeIds.add(uid);
+    for (const shapeId of affectedShapeIds) {
+      const shapeNode = base.nodesById[shapeId];
+      if (shapeNode.props.shape !== "polygon") continue;
+      const pts = shapeNode.props.points.map((pt) => core.resolvePointAbs(pt, positions[shapeId], positions));
+      if (core.polygonSelfIntersects(pts)) {
+        warnings.push(`${movedId}: this would make '${shapeId}' self-intersecting. Set allowSelfIntersectingPolygons: true to allow this.`);
+        return true;
+      }
+    }
+    return false;
+  }
+
   function dragEditsFor(node, parent, dx, dy, base, cornerUsers, warnings) {
     const cornerIds = cornerRefIdsOf(node);
     if (!cornerIds.length) return core.nodeDragEdits(node, parent, dx, dy, base, cornerUsers, warnings);
+    if (wouldSelfIntersect(cornerIds, dx, dy, base, cornerUsers, warnings, node.id)) return [];
+
     const edits = [];
     for (const pt of node.props.points) {
       if (!Array.isArray(pt)) continue;
@@ -262,10 +297,15 @@
       if (core.isEditable(x)) edits.push({ start: x.start, end: x.end, text: core.formatNumber(x.value + dx, x.unit) });
       if (core.isEditable(y)) edits.push({ start: y.start, end: y.end, text: core.formatNumber(y.value + dy, y.unit) });
     }
+    // Already validated as a whole above — relax the setting for these per-corner calls so
+    // core's own one-at-a-time check (which would otherwise re-reject the same rigid slide
+    // it can't see as one) stays out of the way; `base` is this drag frame's own throwaway
+    // parse, so mutating it here has no effect beyond this function call.
+    const relaxedBase = { ...base, settings: { ...base.settings, allowSelfIntersectingPolygons: true } };
     for (const cid of cornerIds) {
-      const cornerNode = base.nodesById[cid];
-      const cornerParent = cornerNode.parentId ? base.nodesById[cornerNode.parentId] : null;
-      edits.push(...core.nodeDragEdits(cornerNode, cornerParent, dx, dy, base, cornerUsers, warnings));
+      const cornerNode = relaxedBase.nodesById[cid];
+      const cornerParent = cornerNode.parentId ? relaxedBase.nodesById[cornerNode.parentId] : null;
+      edits.push(...core.nodeDragEdits(cornerNode, cornerParent, dx, dy, relaxedBase, cornerUsers, warnings));
     }
     return edits;
   }
