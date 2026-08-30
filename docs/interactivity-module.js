@@ -311,9 +311,13 @@
 
   // allowCollisions on the element itself always overrides the plan-wide settings default
   // (unset means "inherit the plan default") — same override pattern as D-038's edgeLengths.
+  // Defaults to allowed (checking off), unlike its settings-block neighbors
+  // (allowSelfIntersectingPolygons/collision checking's own original default): a common,
+  // legitimate pattern — a rug under a table, say — geometrically overlaps on purpose, so
+  // this has to be opt-in per plan rather than silently blocking drags nothing asked for.
   function collisionsAllowedFor(node, settings) {
     if (typeof node.props.allowCollisions === "boolean") return node.props.allowCollisions;
-    return !!settings.allowCollisions;
+    return settings.allowCollisions !== false;
   }
 
   // A rect/circle/polygon's own collision geometry at its *current* (unmoved) position.
@@ -360,16 +364,19 @@
 
   // Checked against siblings only (see the section note above) — not elements dragged
   // along via a connection (F-004 scope note: a first, common-case implementation, not
-  // exhaustive over every way a drag can move more than one element at once).
-  function collidesWithAnySibling(node, parent, geometry, base, positions) {
-    if (!geometry || !parent) return false;
+  // exhaustive over every way a drag can move more than one element at once). Returns the
+  // first overlapping sibling's own geometry (or null) rather than a bare boolean, since
+  // clampToNoCollision below needs to know *what* it's sliding against, not just that it's
+  // blocked.
+  function firstCollidingSibling(node, parent, geometry, base, positions) {
+    if (!geometry || !parent) return null;
     for (const sibling of parent.children) {
       if (sibling.id === node.id) continue;
       if (collisionsAllowedFor(sibling, base.settings)) continue;
       const siblingGeometry = solidGeometryFor(sibling, positions);
-      if (siblingGeometry && shapesOverlap(geometry, siblingGeometry)) return true;
+      if (siblingGeometry && shapesOverlap(geometry, siblingGeometry)) return siblingGeometry;
     }
-    return false;
+    return null;
   }
 
   // Binary-searches the largest t in [0,1] such that check(t) doesn't collide, given
@@ -384,38 +391,88 @@
     return delta * lo;
   }
 
+  function polygonCentroid(poly) {
+    return [poly.reduce((s, p) => s + p[0], 0) / poly.length, poly.reduce((s, p) => s + p[1], 0) / poly.length];
+  }
+
+  function shapeCenter(g) {
+    if (g.kind === "rect") return [(g.left + g.right) / 2, (g.top + g.bottom) / 2];
+    if (g.kind === "circle") return [g.cx, g.cy];
+    return polygonCentroid(g.points);
+  }
+
+  // The outward direction from `sibling`'s own boundary toward `point` — a circle's radial
+  // direction from its center, or a rect/polygon's nearest-edge normal (oriented away from
+  // that shape's own centroid). This is what makes sliding generalize beyond axis-aligned
+  // rect walls: the X/Y-only version of this check could only slide along a boundary that
+  // happened to run parallel to an axis, which a circle's boundary or a polygon's diagonal
+  // edge (e.g. the utility example's plot boundary) never does.
+  function contactNormal(point, sibling) {
+    if (sibling.kind === "circle") {
+      const dx = point[0] - sibling.cx, dy = point[1] - sibling.cy;
+      const len = Math.hypot(dx, dy);
+      return len > 1e-9 ? [dx / len, dy / len] : [1, 0];
+    }
+    const poly = sibling.kind === "rect" ? rectCorners(sibling) : sibling.points;
+    const centroid = polygonCentroid(poly);
+    let best = null;
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i], b = poly[(i + 1) % poly.length];
+      const dist = pointToSegmentDistance(point, a, b);
+      if (best && dist >= best.dist) continue;
+      const ex = b[0] - a[0], ey = b[1] - a[1];
+      const elen = Math.hypot(ex, ey) || 1;
+      let nx = -ey / elen, ny = ex / elen;
+      const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      if (nx * (mid[0] - centroid[0]) + ny * (mid[1] - centroid[1]) < 0) { nx = -nx; ny = -ny; }
+      best = { dist, normal: [nx, ny] };
+    }
+    return best ? best.normal : null;
+  }
+
   // A hard accept/reject on the full attempted (dx, dy) sounds right but isn't: dx/dy are
   // cumulative from the drag's original mousedown point (not incremental), so rejecting the
   // whole move freezes the shape wherever it last fit while the cursor keeps drifting —
   // every direction then feels "blocked" until the user retraces the entire drifted
   // distance back to a delta that fits again.
   //
-  // A single shared scale factor along the attempted (dx, dy) vector fixes that but creates
-  // a different problem: pushing into a wall while also trying to slide alongside it (the
-  // ordinary way to get past an obstacle) throttles the *sliding* axis down to the same
-  // fraction as the *blocked* axis, so the shape crawls at a fraction of the mouse's own
-  // sideways speed instead of tracking it. Real "slide along the wall" behavior needs each
-  // axis resolved independently: X is only clamped if moving in X *alone* would collide,
-  // then Y is resolved the same way holding X at whatever it ended up at — so an axis the
-  // obstacle doesn't actually block stays fully in sync with the cursor.
+  // A shared X/Y-axis-separated resolution fixed the "every direction blocked" symptom for
+  // a rect sliding along another rect's wall, but only because a rect's own edges happen to
+  // be axis-aligned — it doesn't slide around a circle or along a polygon's diagonal edge,
+  // since neither boundary runs parallel to X or Y. General fix: binary-search the point
+  // along the straight line to (dx, dy) where collision first begins, then slide the
+  // *remaining* attempted movement along the tangent of whatever it hit there (the nearest
+  // edge's own direction for a rect/polygon, the circle's own tangent for a circle) —
+  // exactly the same idea, generalized from "along X or Y" to "along the obstacle's own
+  // local surface direction."
   function clampToNoCollision(node, parent, dx, dy, base, positions, warnings) {
     if (collisionsAllowedFor(node, base.settings)) return [dx, dy];
-    const collides = (tx, ty) => collidesWithAnySibling(node, parent, proposedGeometryFor(node, tx, ty, positions), base, positions);
+    const geometryAt = (tx, ty) => proposedGeometryFor(node, tx, ty, positions);
+    const collides = (tx, ty) => !!firstCollidingSibling(node, parent, geometryAt(tx, ty), base, positions);
     if (!collides(dx, dy)) return [dx, dy];
+    if (collides(0, 0)) return [0, 0]; // already overlapping even at the drag's own start
 
-    let resolvedDx = dx;
-    if (collides(dx, 0)) {
-      resolvedDx = collides(0, 0) ? 0 : clampAxisDelta((t) => collides(dx * t, 0), dx);
-    }
-    let resolvedDy = dy;
-    if (collides(resolvedDx, dy)) {
-      resolvedDy = collides(resolvedDx, 0) ? 0 : clampAxisDelta((t) => collides(resolvedDx, dy * t), dy);
-    }
+    const t = clampAxisDelta((tt) => collides(dx * tt, dy * tt), 1);
+    const boundaryDx = dx * t, boundaryDy = dy * t;
+    warnings.push(`${node.id}: stopped by a collision. Set allowCollisions: true to allow this.`);
 
-    if (resolvedDx !== dx || resolvedDy !== dy) {
-      warnings.push(`${node.id}: stopped by a collision. Set allowCollisions: true to allow this.`);
+    const blocker = firstCollidingSibling(node, parent, geometryAt(dx, dy), base, positions);
+    const normal = blocker && contactNormal(shapeCenter(geometryAt(boundaryDx, boundaryDy)), blocker);
+    if (!normal) return [boundaryDx, boundaryDy];
+
+    const remDx = dx - boundaryDx, remDy = dy - boundaryDy;
+    const tangent = [-normal[1], normal[0]];
+    const slide = remDx * tangent[0] + remDy * tangent[1];
+    let slideDx = tangent[0] * slide, slideDy = tangent[1] * slide;
+
+    // The tangent is only exact at the contact point — for a curved (circle) or
+    // multi-edge (polygon) boundary, a large slide step can curve back into the same
+    // obstacle; re-clamped the same way as the main move if so, rather than assumed safe.
+    if (collides(boundaryDx + slideDx, boundaryDy + slideDy)) {
+      const s = clampAxisDelta((tt) => collides(boundaryDx + slideDx * tt, boundaryDy + slideDy * tt), 1);
+      slideDx *= s; slideDy *= s;
     }
-    return [resolvedDx, resolvedDy];
+    return [boundaryDx + slideDx, boundaryDy + slideDy];
   }
 
   // ---------- Text-splice helpers ----------
