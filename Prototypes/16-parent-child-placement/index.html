@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Prototype 16: parent-child placement (containment)</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 1.5rem; color: #222; }
+  h1 { font-size: 1.1rem; }
+  p { max-width: 720px; color: #444; font-size: 0.9rem; }
+  .layout { display: flex; gap: 1rem; margin-top: 1rem; }
+  textarea { width: 420px; height: 520px; font-family: ui-monospace, Consolas, monospace; font-size: 13px;
+    padding: 0.75rem; border: 1px solid #ccc; border-radius: 6px; }
+  #plan-root svg { border: 1px solid #ccc; border-radius: 6px; background: #fff; cursor: default; }
+  #plan-root svg [data-id] { cursor: grab; }
+  #plan-root svg [data-id]:active { cursor: grabbing; }
+  #error { color: #a11; white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+  #dragmsg { color: #666; white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+</style>
+</head>
+<body>
+<h1>Prototype 16: parent-child placement (containment)</h1>
+<p>
+  Tests D-032's "inside" placement mode: <code>connection child parent { placement: "inside" }</code>
+  constrains a child to stay within its own parent's boundary when dragged, sliding along the
+  boundary (via the parent's nearest edge, reusing D-041's contact-normal/tangent-slide approach)
+  rather than freezing outright. Drag "sofa" around inside "room" — it should never be draggable
+  outside the room rect, and should slide along a wall if you keep pushing past it.
+</p>
+<p>
+  <strong>Scope of this test:</strong> containment only, no <code>flush</code> combinable
+  addition (D-032's door-in-wall half) — that's a separate, not-yet-built piece. Only a
+  <code>rect</code> child with a plain literal <code>position</code> is supported, dragged
+  against a <code>rect</code>/<code>polygon</code> parent; no corner-refs, no other
+  connections, no self-intersection checking. A standalone local test, not wired into
+  <a href="../../docs/">docs/</a>.
+</p>
+<div class="layout">
+  <textarea id="source" spellcheck="false"></textarea>
+  <div>
+    <div id="plan-root"></div>
+    <div id="error"></div>
+    <div id="dragmsg"></div>
+  </div>
+</div>
+<script>
+// ---------- Tokenizer / parser / renderer — copied verbatim from docs/index.html, the
+// proven current core, trimmed of module loading (nothing here needs it). ----------
+const TOKEN_RE = /\s+|\/\/[^\n]*|"(?:[^"\\]|\\.)*"|\d+(?:\.\d+)?(?:cm|m)?\b|[A-Za-z_][A-Za-z0-9_]*|[{}\[\]():,.+\-*/]/y;
+const KEYWORDS = new Set(["element", "module", "connection", "settings", "true", "false"]);
+const PUNCT = { "{": "LBRACE", "}": "RBRACE", "[": "LBRACKET", "]": "RBRACKET",
+  "(": "LPAREN", ")": "RPAREN", ":": "COLON", ",": "COMMA", ".": "DOT",
+  "+": "PLUS", "-": "MINUS", "*": "STAR", "/": "SLASH" };
+
+function tokenize(src) {
+  const tokens = [];
+  let i = 0;
+  while (i < src.length) {
+    TOKEN_RE.lastIndex = i;
+    const m = TOKEN_RE.exec(src);
+    if (!m || m.index !== i) throw new Error(`Unexpected character ${JSON.stringify(src[i])} at position ${i}`);
+    const text = m[0];
+    const start = i;
+    i += text.length;
+    if (/^\s+$/.test(text) || text.startsWith("//")) continue;
+    if (text.startsWith('"')) {
+      tokens.push({ type: "STRING", value: text.slice(1, -1), start, end: i });
+    } else if (/^\d/.test(text)) {
+      const unitMatch = text.match(/(cm|m)$/);
+      const unit = unitMatch ? unitMatch[0] : "";
+      const num = parseFloat(unit ? text.slice(0, -unit.length) : text);
+      tokens.push({ type: "NUMBER", value: unit === "cm" ? num / 100 : num, unit, start, end: i });
+    } else if (/^[A-Za-z_]/.test(text)) {
+      tokens.push({ type: KEYWORDS.has(text) ? text.toUpperCase() : "IDENT", value: text, start, end: i });
+    } else {
+      tokens.push({ type: PUNCT[text], value: text, start, end: i });
+    }
+  }
+  tokens.push({ type: "EOF", value: null, start: i, end: i });
+  return tokens;
+}
+
+function parse(src) {
+  const tokens = tokenize(src);
+  const nodesById = {};
+  let pos = 0;
+  const peek = () => tokens[pos];
+  const next = () => tokens[pos++];
+  const expect = (type) => {
+    if (peek().type !== type) throw new Error(`Expected ${type} but got ${peek().type} (${JSON.stringify(peek().value)})`);
+    return next();
+  };
+
+  function parseProgram() {
+    const modules = [];
+    while (peek().type === "MODULE") { next(); modules.push(expect("STRING").value); }
+    let settings = {};
+    if (peek().type === "SETTINGS") { next(); settings = parseObjectLiteral(); }
+    const root = parseElementDecl(null);
+    const connections = [];
+    while (peek().type !== "EOF") connections.push(parseConnectionDecl());
+    return { root, nodesById, modules, settings, connections };
+  }
+
+  function parseElementDecl(parentId) {
+    const startTok = expect("ELEMENT");
+    const id = expect("IDENT").value;
+    expect("LBRACE");
+    const props = {};
+    const children = [];
+    while (peek().type !== "RBRACE") {
+      if (peek().type === "ELEMENT") {
+        children.push(parseElementDecl(id));
+      } else {
+        const key = expect("IDENT").value;
+        expect("COLON");
+        props[key] = parseValue();
+      }
+    }
+    const endTok = expect("RBRACE");
+    const node = { id, props, children, parentId, start: startTok.start, end: endTok.end };
+    nodesById[id] = node;
+    return node;
+  }
+
+  function parseConnectionDecl() {
+    const startTok = expect("CONNECTION");
+    const from = expect("IDENT").value;
+    const toTok = expect("IDENT");
+    let props = {};
+    let endPos = toTok.end;
+    if (peek().type === "LBRACE") {
+      props = parseObjectLiteral();
+      endPos = tokens[pos - 1].end;
+    }
+    return { from, to: toTok.value, props, start: startTok.start, end: endPos };
+  }
+
+  function parseValue() {
+    if (peek().type === "LBRACKET") return parseArray();
+    if (peek().type === "LBRACE") return parseObjectLiteral();
+    if (peek().type === "STRING") return next().value;
+    if (peek().type === "TRUE") { next(); return true; }
+    if (peek().type === "FALSE") { next(); return false; }
+    return parseExprValue();
+  }
+
+  function parseArray() {
+    expect("LBRACKET");
+    const items = [];
+    while (peek().type !== "RBRACKET") {
+      items.push(parseValue());
+      if (peek().type === "COMMA") next(); else break;
+    }
+    expect("RBRACKET");
+    return items;
+  }
+
+  function parseObjectLiteral() {
+    expect("LBRACE");
+    const obj = {};
+    while (peek().type !== "RBRACE") {
+      const key = expect("IDENT").value;
+      expect("COLON");
+      obj[key] = parseValue();
+      if (peek().type === "COMMA") next();
+    }
+    expect("RBRACE");
+    return obj;
+  }
+
+  function parseExprValue() {
+    const ast = parseExpr();
+    if (ast.type === "num" && !ast.compound) {
+      return { value: ast.value, unit: ast.unit, start: ast.start, end: ast.end };
+    }
+    if (ast.type === "neg" && ast.value.type === "num" && !ast.value.compound) {
+      return { value: -ast.value.value, unit: ast.value.unit, start: ast.start, end: ast.value.end };
+    }
+    if (containsPath(ast)) {
+      const fn = (ctx) => evalAst(ast, ctx);
+      fn.ast = ast;
+      if (ast.type === "path" && ast.segments.length === 1) fn.cornerRef = ast.segments[0];
+      return fn;
+    }
+    return evalAst(ast, null);
+  }
+
+  function parseExpr() {
+    let node = parseTerm();
+    while (peek().type === "PLUS" || peek().type === "MINUS") {
+      const op = next().type;
+      node = { type: "bin", op, left: node, right: parseTerm(), compound: true };
+    }
+    return node;
+  }
+
+  function parseTerm() {
+    let node = parseFactor();
+    while (peek().type === "STAR" || peek().type === "SLASH") {
+      const op = next().type;
+      node = { type: "bin", op, left: node, right: parseFactor(), compound: true };
+    }
+    return node;
+  }
+
+  function parseFactor() {
+    if (peek().type === "MINUS") {
+      const t = next();
+      return { type: "neg", value: parseFactor(), compound: true, start: t.start };
+    }
+    if (peek().type === "LPAREN") { next(); const e = parseExpr(); expect("RPAREN"); return e; }
+    if (peek().type === "NUMBER") {
+      const t = next();
+      return { type: "num", value: t.value, unit: t.unit, start: t.start, end: t.end };
+    }
+    if (peek().type === "IDENT") return { type: "path", segments: parsePath() };
+    throw new Error(`Expected a value, got ${peek().type}`);
+  }
+
+  function parsePath() {
+    const segments = [expect("IDENT").value];
+    while (peek().type === "DOT") { next(); segments.push(expect("IDENT").value); }
+    return segments;
+  }
+
+  return parseProgram();
+}
+
+function containsPath(ast) {
+  if (ast.type === "path") return true;
+  if (ast.type === "neg") return containsPath(ast.value);
+  if (ast.type === "bin") return containsPath(ast.left) || containsPath(ast.right);
+  return false;
+}
+
+function evalAst(ast, ctx) {
+  if (ast.type === "num") return ast.value;
+  if (ast.type === "neg") return -evalAst(ast.value, ctx);
+  if (ast.type === "bin") {
+    const l = evalAst(ast.left, ctx), r = evalAst(ast.right, ctx);
+    if (ast.op === "PLUS") return l + r;
+    if (ast.op === "MINUS") return l - r;
+    if (ast.op === "STAR") return l * r;
+    if (ast.op === "SLASH") return l / r;
+  }
+  if (ast.type === "path") {
+    let cur = ctx;
+    for (const seg of ast.segments) {
+      if (cur == null) throw new Error(`Cannot resolve '${ast.segments.join(".")}' — no value for '${seg}'`);
+      if ((seg === "x" || seg === "y") && Array.isArray(cur)) cur = cur[seg === "x" ? 0 : 1];
+      else cur = numOf(cur[seg]);
+    }
+    return numOf(cur);
+  }
+}
+
+function numOf(v) {
+  return v && typeof v === "object" && "value" in v && typeof v.value === "number" ? v.value : v;
+}
+function isEditable(v) { return v && typeof v === "object" && "start" in v; }
+
+const M = 60; // meters -> px
+
+function resolvePositionArray(props, parentProps) {
+  const raw = props.position || [0, 0];
+  return raw.map((v) => (typeof v === "function" ? v({ parent: parentProps }) : numOf(v)));
+}
+
+function computePositions(node, parent, offset, positions) {
+  const [px, py] = resolvePositionArray(node.props, parent ? parent.props : null);
+  const abs = [offset[0] + px, offset[1] + py];
+  positions[node.id] = abs;
+  for (const child of node.children) computePositions(child, node, abs, positions);
+}
+
+function resolvePointAbs(pt, ownAbs, positions) {
+  if (Array.isArray(pt)) return [ownAbs[0] + numOf(pt[0]), ownAbs[1] + numOf(pt[1])];
+  if (typeof pt === "function" && pt.cornerRef) {
+    const p = positions[pt.cornerRef];
+    if (!p) throw new Error(`points reference to unknown element '${pt.cornerRef}'`);
+    return p;
+  }
+  throw new Error("a points entry must be a [x,y] pair or a single sibling element id");
+}
+
+function renderShape(node, positions, shapesOut, anchorsOut) {
+  const ownAbs = positions[node.id];
+  const { shape, style } = node.props;
+  const idAttr = `data-id="${node.id}"`;
+
+  if (shape === "rect" && style) {
+    const w = numOf(node.props.size[0]), h = numOf(node.props.size[1]);
+    shapesOut.push(`<rect class="obj" ${idAttr} pointer-events="all" x="${ownAbs[0]*M}" y="${ownAbs[1]*M}" width="${w*M}" height="${h*M}"
+      fill="${style.fill ?? "none"}" stroke="${style.stroke ?? "none"}" stroke-width="${numOf(style.strokeWidth ?? 0.02)*M}" />`);
+  } else if ((shape === "polyline" || shape === "polygon") && style) {
+    const absPts = node.props.points.map((pt) => resolvePointAbs(pt, ownAbs, positions));
+    const ptsStr = absPts.map(([x, y]) => `${x*M},${y*M}`).join(" ");
+    const tag = shape === "polygon" ? "polygon" : "polyline";
+    shapesOut.push(`<${tag} class="obj" ${idAttr} pointer-events="all" points="${ptsStr}" fill="${style.fill ?? "none"}" stroke="${style.stroke}" stroke-width="${numOf(style.strokeWidth)*M}" />`);
+  } else if (shape === "circle" && style) {
+    const r = numOf(node.props.radius ?? 0.1);
+    shapesOut.push(`<circle class="obj" ${idAttr} pointer-events="all" cx="${ownAbs[0]*M}" cy="${ownAbs[1]*M}" r="${r*M}"
+      fill="${style.fill ?? "none"}" stroke="${style.stroke ?? "none"}" stroke-width="${numOf(style.strokeWidth ?? 0.02)*M}" />`);
+  } else {
+    anchorsOut.push(`<circle class="anchor-hit" ${idAttr} pointer-events="all" cx="${ownAbs[0]*M}" cy="${ownAbs[1]*M}" r="8" fill="#ccc" />`);
+  }
+  for (const child of node.children) renderShape(child, positions, shapesOut, anchorsOut);
+}
+
+let fixedViewBox = null;
+
+function render(program) {
+  const positions = {};
+  computePositions(program.root, null, [0, 0], positions);
+  const shapes = [], anchors = [];
+  renderShape(program.root, positions, shapes, anchors);
+
+  if (!fixedViewBox) {
+    const pts = Object.values(positions);
+    let minX = Math.min(...pts.map(p => p[0])), maxX = Math.max(...pts.map(p => p[0]));
+    let minY = Math.min(...pts.map(p => p[1])), maxY = Math.max(...pts.map(p => p[1]));
+    const pad = 0.7;
+    minX -= pad; maxX += pad; minY -= pad; maxY += pad;
+    fixedViewBox = { minX, minY, vw: (maxX - minX) * M, vh: (maxY - minY) * M };
+  }
+  const { minX, minY, vw, vh } = fixedViewBox;
+  return `<svg width="${vw}" height="${vh}" viewBox="${minX*M} ${minY*M} ${vw} ${vh}">${[...shapes, ...anchors].join("\n")}</svg>`;
+}
+
+function formatNumber(value, unit) {
+  const base = unit === "cm" ? value * 100 : value;
+  return `${Math.round(base * 1000) / 1000}${unit}`;
+}
+
+// ---------- New for this prototype: D-032's "inside" containment, reusing D-041's
+// contact-normal/tangent-slide approach (Prototypes/16, see planning/decisions.md D-032). ----------
+
+function pointInPolygon(pt, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i], [xj, yj] = poly[j];
+    const crosses = (yi > pt[1]) !== (yj > pt[1]) &&
+      pt[0] < (xj - xi) * (pt[1] - yi) / (yj - yi) + xi;
+    if (crosses) inside = !inside;
+  }
+  return inside;
+}
+
+function pointToSegmentDistance(p, a, b) {
+  const abx = b[0] - a[0], aby = b[1] - a[1];
+  const len2 = abx * abx + aby * aby;
+  let t = len2 === 0 ? 0 : ((p[0] - a[0]) * abx + (p[1] - a[1]) * aby) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(p[0] - (a[0] + t * abx), p[1] - (a[1] + t * aby));
+}
+
+function rectCorners(abs, w, h) {
+  return [[abs[0], abs[1]], [abs[0] + w, abs[1]], [abs[0] + w, abs[1] + h], [abs[0], abs[1] + h]];
+}
+
+// The parent's own boundary as a corner list — scoped to rect/polygon, matching D-032's
+// "which shapes have an unambiguous boundary" scoping.
+function parentPolygonFor(parentNode, positions) {
+  const abs = positions[parentNode.id];
+  if (parentNode.props.shape === "rect" && parentNode.props.size) {
+    return rectCorners(abs, numOf(parentNode.props.size[0]), numOf(parentNode.props.size[1]));
+  }
+  if (parentNode.props.shape === "polygon" && parentNode.props.points) {
+    return parentNode.props.points.map((pt) => resolvePointAbs(pt, abs, positions));
+  }
+  return null;
+}
+
+// Only a rect child with a literal position is exercised by this prototype (see the scope
+// note at the top of the page) — a real build would need this to cover circle/polygon
+// children too, matching D-041's solidGeometryFor.
+function childCornersAt(node, dx, dy, positions) {
+  const [x, y] = positions[node.id];
+  const w = numOf(node.props.size[0]), h = numOf(node.props.size[1]);
+  return rectCorners([x + dx, y + dy], w, h);
+}
+
+// All child corners inside the parent polygon. Doesn't also check for a child edge
+// crossing a concave parent boundary with no corner actually outside — a known gap, fine
+// for this test's simple convex rect room, flagged rather than silently assumed solid.
+function isContained(childCorners, parentPoly) {
+  return childCorners.every((p) => pointInPolygon(p, parentPoly));
+}
+
+function clampAxisDelta(check, delta) {
+  let lo = 0, hi = 1;
+  for (let i = 0; i < 14; i++) {
+    const mid = (lo + hi) / 2;
+    if (check(mid)) hi = mid; else lo = mid;
+  }
+  return delta * lo;
+}
+
+// Nearest-edge normal of the parent boundary — only used here to build the sliding
+// tangent, so its sign (in vs. out) doesn't matter, unlike D-041's collision use where the
+// direction of push-back had to be right.
+function nearestEdgeNormal(point, poly) {
+  let best = null;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    const dist = pointToSegmentDistance(point, a, b);
+    if (best && dist >= best.dist) continue;
+    const ex = b[0] - a[0], ey = b[1] - a[1];
+    const elen = Math.hypot(ex, ey) || 1;
+    best = { dist, normal: [-ey / elen, ex / elen] };
+  }
+  return best ? best.normal : null;
+}
+
+// Same shape as D-041's clampToNoCollision — binary-search the boundary point along the
+// attempted move where the child would first leave the parent, then slide the remaining
+// distance along the parent boundary's tangent at that point, instead of freezing outright.
+function clampToStayInside(node, parentPoly, dx, dy, positions, warnings) {
+  const escapes = (tx, ty) => !isContained(childCornersAt(node, tx, ty, positions), parentPoly);
+  if (!escapes(dx, dy)) return [dx, dy];
+  if (escapes(0, 0)) return [0, 0]; // already outside even at the drag's own start
+
+  const t = clampAxisDelta((tt) => escapes(dx * tt, dy * tt), 1);
+  const boundaryDx = dx * t, boundaryDy = dy * t;
+  warnings.push(`${node.id}: stays inside '${node.parentId}'`);
+
+  const boundaryCorners = childCornersAt(node, boundaryDx, boundaryDy, positions);
+  const center = [(boundaryCorners[0][0] + boundaryCorners[2][0]) / 2, (boundaryCorners[0][1] + boundaryCorners[2][1]) / 2];
+  const normal = nearestEdgeNormal(center, parentPoly);
+  if (!normal) return [boundaryDx, boundaryDy];
+
+  const remDx = dx - boundaryDx, remDy = dy - boundaryDy;
+  const tangent = [-normal[1], normal[0]];
+  const slide = remDx * tangent[0] + remDy * tangent[1];
+  let slideDx = tangent[0] * slide, slideDy = tangent[1] * slide;
+  if (escapes(boundaryDx + slideDx, boundaryDy + slideDy)) {
+    const s = clampAxisDelta((tt) => escapes(boundaryDx + slideDx * tt, boundaryDy + slideDy * tt), 1);
+    slideDx *= s; slideDy *= s;
+  }
+  return [boundaryDx + slideDx, boundaryDy + slideDy];
+}
+
+function placementFor(node, parent, connections) {
+  if (!parent) return null;
+  for (const c of connections) {
+    if ((c.from === node.id && c.to === parent.id) || (c.from === parent.id && c.to === node.id)) {
+      if (c.props && c.props.placement) return c.props.placement;
+    }
+  }
+  return null;
+}
+
+// ---------- Wire up: a trimmed single-file drag handler (no module split — this is a
+// throwaway local test, not the docs/ product) supporting exactly one thing beyond a plain
+// drag: containment via placement: "inside". ----------
+const sourceEl = document.getElementById("source");
+const rootEl = document.getElementById("plan-root");
+const errorEl = document.getElementById("error");
+const dragmsgEl = document.getElementById("dragmsg");
+let program = null;
+let drag = null;
+
+function rerender(opts = {}) {
+  try {
+    program = parse(sourceEl.value);
+    if (!opts.preserveViewBox) fixedViewBox = null;
+    rootEl.innerHTML = render(program);
+    errorEl.textContent = "";
+  } catch (e) {
+    errorEl.textContent = "Error: " + e.message;
+  }
+}
+
+function currentPxPerMeter() {
+  const svg = rootEl.querySelector("svg");
+  const vb = svg?.viewBox?.baseVal;
+  if (!vb || !vb.width) return M;
+  const rect = svg.getBoundingClientRect();
+  if (!rect.width || !rect.height) return M;
+  return M * Math.min(rect.width / vb.width, rect.height / vb.height);
+}
+
+rootEl.addEventListener("pointerdown", (e) => {
+  const el = e.target.closest("[data-id]");
+  if (!el || !program) return;
+  const node = program.nodesById[el.dataset.id];
+  if (!node.props.position) return;
+  drag = { id: node.id, baseText: sourceEl.value, clientX: e.clientX, clientY: e.clientY };
+});
+
+window.addEventListener("pointermove", (e) => {
+  if (!drag) return;
+  const pxPerMeter = currentPxPerMeter();
+  const dx = (e.clientX - drag.clientX) / pxPerMeter;
+  const dy = (e.clientY - drag.clientY) / pxPerMeter;
+  applyDrag(drag, dx, dy);
+});
+
+window.addEventListener("pointerup", () => { drag = null; });
+
+function applyDrag(dragState, dx, dy) {
+  let base;
+  try {
+    base = parse(dragState.baseText);
+  } catch (e) {
+    dragmsgEl.textContent = `Can't continue this drag: the source is currently invalid (${e.message}).`;
+    return;
+  }
+  const node = base.nodesById[dragState.id];
+  const parent = node.parentId ? base.nodesById[node.parentId] : null;
+  const warnings = [];
+
+  if (placementFor(node, parent, base.connections) === "inside") {
+    const positions = {};
+    computePositions(base.root, null, [0, 0], positions);
+    const parentPoly = parentPolygonFor(parent, positions);
+    if (parentPoly) {
+      [dx, dy] = clampToStayInside(node, parentPoly, dx, dy, positions, warnings);
+    } else {
+      warnings.push(`${parent.id}: not a rect/polygon, containment not checked (D-032 scope)`);
+    }
+  }
+
+  const [x0, y0] = node.props.position;
+  if (!isEditable(x0) || !isEditable(y0)) {
+    dragmsgEl.textContent = `${node.id}: position isn't a plain literal, can't drag (this prototype's scope)`;
+    return;
+  }
+  const edits = [
+    { start: x0.start, end: x0.end, text: formatNumber(x0.value + dx, x0.unit) },
+    { start: y0.start, end: y0.end, text: formatNumber(y0.value + dy, y0.unit) },
+  ].sort((a, b) => b.start - a.start);
+  let text = dragState.baseText;
+  for (const ed of edits) text = text.slice(0, ed.start) + ed.text + text.slice(ed.end);
+
+  sourceEl.value = text;
+  dragmsgEl.textContent = warnings.join("\n");
+  rerender({ preserveViewBox: true });
+}
+
+sourceEl.value = `element room {
+  shape: "rect"
+  size: [6m, 4m]
+  position: [0m, 0m]
+  style: { fill: "#f7f5f0", stroke: "#333", strokeWidth: 0.04 }
+
+  element sofa {
+    shape: "rect"
+    size: [1.6m, 0.7m]
+    position: [1m, 1m]
+    style: { fill: "#cfe0f5", stroke: "#4a76a8", strokeWidth: 0.02 }
+  }
+}
+
+connection sofa room { placement: "inside" }
+`;
+sourceEl.addEventListener("input", () => rerender());
+rerender();
+</script>
+</body>
+</html>

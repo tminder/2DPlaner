@@ -417,3 +417,12 @@ historical.
   the first working slice of D-032: a connected point now slides along its parent's wall
   instead of dragging the whole
   house when moved directly.
+- [Prototypes/16-parent-child-placement/](../Prototypes/16-parent-child-placement/) — a
+  standalone local test of D-032's `placement: "inside"` mode (declared via
+  `connection child parent { placement: "inside" }`): a rect child dragged against its rect
+  parent is clamped to stay within the parent's boundary, sliding along the wall it hits
+  rather than freezing, reusing D-041's contact-normal/tangent-slide approach retargeted
+  from "stay outside a sibling" to "stay inside a parent." Not wired into
+  [docs/](../docs/) — a first validation, not a finished feature. Scoped narrowly: only a
+  `rect` child with a literal `position`, no `flush` (D-032's other, still-unbuilt half),
+  no corner-refs or other connections.
