@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Profile — Planagonia</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: light;
+    --paper: #f7f4ee; --paper-raised: #ffffff; --ink: #221f1c; --ink-soft: #5b5650;
+    --line: #d8d2c6; --blue: #2c5f7c; --blue-deep: #1e4457; --amber: #b9791f;
+    --amber-soft: #f2dfb8; --danger: #a63d34;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --paper: #191715; --paper-raised: #221f1c; --ink: #f1ece2; --ink-soft: #b5ada0;
+      --line: #3a352c; --blue: #6fa6c4; --blue-deep: #8fbfda; --amber: #e0ab53;
+      --amber-soft: #4a3c22; --danger: #e28b80;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --paper: #191715; --paper-raised: #221f1c; --ink: #f1ece2; --ink-soft: #b5ada0;
+    --line: #3a352c; --blue: #6fa6c4; --blue-deep: #8fbfda; --amber: #e0ab53;
+    --amber-soft: #4a3c22; --danger: #e28b80;
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font-family: "IBM Plex Sans", system-ui, sans-serif; line-height: 1.6; }
+  h1, h2, .wordmark { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+  a { color: var(--blue-deep); }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 0 1.5rem; }
+
+  header.site { display: flex; align-items: center; justify-content: space-between; padding: 1.4rem 0; }
+  .wordmark { font-size: 1.05rem; font-weight: 600; color: var(--ink); text-decoration: none; display: flex; align-items: center; gap: 0.5rem; }
+  .wordmark .dot { color: var(--amber); }
+  nav.site a { color: var(--ink-soft); text-decoration: none; font-size: 0.92rem; margin-left: 1.75rem; }
+  nav.site a:hover { color: var(--ink); }
+
+  main { padding: 1.5rem 0 5rem; }
+  h1 { font-size: 1.7rem; margin: 0 0 0.4rem; }
+  main > p.lede { color: var(--ink-soft); margin: 0 0 2.2rem; max-width: 52ch; }
+
+  .card { background: var(--paper-raised); border: 1px solid var(--line); border-radius: 12px; padding: 1.6rem; margin-bottom: 1.5rem; }
+  .card h2 { font-size: 1rem; margin: 0 0 1rem; }
+
+  label { display: block; font-size: 0.85rem; color: var(--ink-soft); margin: 0.9rem 0 0.35rem; }
+  label:first-of-type { margin-top: 0; }
+  input[type="text"], input[type="password"] {
+    width: 100%; padding: 0.6rem 0.75rem; border: 1px solid var(--line); border-radius: 7px;
+    background: var(--paper); color: var(--ink); font: inherit; font-size: 0.95rem;
+  }
+  input:focus { outline: 2px solid var(--blue); outline-offset: 1px; }
+  .hint { font-size: 0.8rem; color: var(--ink-soft); margin-top: 0.4rem; }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.65rem 1.2rem;
+    border-radius: 7px; font-size: 0.9rem; font-weight: 600; text-decoration: none;
+    border: 1px solid transparent; cursor: pointer; font-family: inherit;
+  }
+  .btn-primary { background: var(--blue); color: #fff; margin-top: 1.2rem; }
+  .btn-primary:hover { background: var(--blue-deep); }
+  .btn-ghost { border-color: var(--line); background: transparent; color: var(--ink); }
+  .btn-ghost:hover { border-color: var(--ink-soft); }
+
+  .account-row { display: flex; align-items: center; justify-content: space-between; }
+  .account-row .who { font-size: 0.95rem; }
+  .account-row .who .name { font-weight: 600; }
+
+  ul.plans { list-style: none; margin: 0; padding: 0; }
+  ul.plans li {
+    display: flex; justify-content: space-between; align-items: center; gap: 1rem;
+    padding: 0.75rem 0; border-bottom: 1px solid var(--line);
+  }
+  ul.plans li:last-child { border-bottom: none; }
+  ul.plans .name { font-weight: 500; }
+  ul.plans .updated { font-size: 0.78rem; color: var(--ink-soft); }
+  .empty { color: var(--ink-soft); font-size: 0.9rem; }
+
+  .msg { font-size: 0.85rem; margin-top: 0.9rem; }
+  .msg.error { color: var(--danger); }
+  .msg.ok { color: var(--ink-soft); }
+
+  .callout {
+    background: var(--amber-soft); border-left: 3px solid var(--amber); border-radius: 0 8px 8px 0;
+    padding: 0.9rem 1.2rem; color: var(--ink); font-size: 0.88rem; margin-top: 1.5rem;
+  }
+
+  footer.site { padding: 2.5rem 0 3rem; color: var(--ink-soft); font-size: 0.86rem; }
+  footer.site a { color: var(--ink-soft); }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="site">
+    <a class="wordmark" href="/"><span class="dot">▦</span> Planagonia</a>
+    <nav class="site">
+      <a href="/app/">Open the app</a>
+      <a href="/docs/">Docs</a>
+    </nav>
+  </header>
+</div>
+
+<div class="wrap">
+  <main>
+    <h1>Profile</h1>
+    <p class="lede">Sign in to see the plans you've saved to the cloud. This is the same account and the same sign-in as the app — signing in here also signs you in there, and vice versa, for the rest of this browser tab.</p>
+
+    <div id="signed-out-view" class="card" hidden>
+      <h2>Sign in</h2>
+      <form id="signin-form">
+        <label for="username">WordPress username</label>
+        <input type="text" id="username" autocomplete="username" required>
+        <label for="password">Application Password</label>
+        <input type="password" id="password" autocomplete="current-password" required>
+        <p class="hint">Not your regular WordPress login password — an <a href="https://make.wordpress.org/support/user-manual/security/two-step-authentication/#application-passwords" target="_blank" rel="noopener">Application Password</a>, generated for this specific use.</p>
+        <button type="submit" class="btn btn-primary">Sign in</button>
+        <p id="signin-msg" class="msg" role="status"></p>
+      </form>
+    </div>
+
+    <div id="signed-in-view" class="card" hidden>
+      <h2>Account</h2>
+      <div class="account-row">
+        <p class="who">Signed in as <span class="name" id="who-username"></span></p>
+        <button id="signout-btn" class="btn btn-ghost">Sign out</button>
+      </div>
+    </div>
+
+    <div id="plans-view" class="card" hidden>
+      <h2>Your cloud plans</h2>
+      <ul class="plans" id="plans-list"></ul>
+      <p id="plans-empty" class="empty" hidden>No plans saved to the cloud yet — open a plan in the app and use "Save to Cloud."</p>
+      <p id="plans-msg" class="msg error" hidden></p>
+    </div>
+
+    <div class="callout">
+      Renaming your account, deleting it, or managing Application Passwords isn't handled here yet — those live in WordPress's own account tools for now.
+    </div>
+  </main>
+</div>
+
+<div class="wrap">
+  <footer class="site">
+    <span>Planagonia — <a href="/">Home</a> · <a href="/app/">Open the app</a></span>
+  </footer>
+</div>
+
+<script>
+  // Same origin as the App (planagonia.com), same sessionStorage keys — a sign-in here
+  // is recognized there and vice versa, within the same browser tab, no extra plumbing
+  // needed. Deliberately duplicated rather than shared via a build step, matching this
+  // project's standing "no build step, plain static files" choice (D-034) — each static
+  // page carries the small amount of logic it needs on its own.
+  const CLOUD_API_BASE = "https://api.planagonia.com";
+  const CLOUD_TOKEN_KEY = "planagonia:cloudToken";
+  const CLOUD_USERNAME_KEY = "planagonia:cloudUsername";
+
+  function cloudToken() { try { return sessionStorage.getItem(CLOUD_TOKEN_KEY); } catch (e) { return null; } }
+  function cloudUsername() { try { return sessionStorage.getItem(CLOUD_USERNAME_KEY); } catch (e) { return null; } }
+  function setCloudSession(token, username) {
+    try {
+      if (token) { sessionStorage.setItem(CLOUD_TOKEN_KEY, token); sessionStorage.setItem(CLOUD_USERNAME_KEY, username); }
+      else { sessionStorage.removeItem(CLOUD_TOKEN_KEY); sessionStorage.removeItem(CLOUD_USERNAME_KEY); }
+    } catch (e) { /* private mode — sign-in just won't persist across a reload */ }
+  }
+
+  async function cloudFetch(path, opts = {}) {
+    const token = cloudToken();
+    if (!token) throw new Error("Not signed in");
+    const res = await fetch(`${CLOUD_API_BASE}${path}`, { ...opts, headers: { ...(opts.headers || {}), Authorization: `Bearer ${token}` } });
+    if (res.status === 401) { setCloudSession(null, null); render(); throw new Error("Session expired — sign in again"); }
+    return res;
+  }
+
+  function fmtDate(ms) {
+    return new Date(ms).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  }
+
+  async function loadPlans() {
+    const listEl = document.getElementById("plans-list");
+    const emptyEl = document.getElementById("plans-empty");
+    const msgEl = document.getElementById("plans-msg");
+    listEl.innerHTML = "";
+    emptyEl.hidden = true;
+    msgEl.hidden = true;
+    try {
+      const res = await cloudFetch("/plans.php");
+      if (!res.ok) throw new Error(`list failed (${res.status})`);
+      const { plans } = await res.json();
+      if (!plans.length) { emptyEl.hidden = false; return; }
+      for (const p of plans.sort((a, b) => b.updatedAt - a.updatedAt)) {
+        const li = document.createElement("li");
+        li.innerHTML = `<span class="name"></span><span class="updated"></span>`;
+        li.querySelector(".name").textContent = p.name;
+        li.querySelector(".updated").textContent = fmtDate(p.updatedAt);
+        listEl.appendChild(li);
+      }
+    } catch (e) {
+      msgEl.textContent = e.message;
+      msgEl.hidden = false;
+    }
+  }
+
+  function render() {
+    const signedIn = !!cloudToken();
+    document.getElementById("signed-out-view").hidden = signedIn;
+    document.getElementById("signed-in-view").hidden = !signedIn;
+    document.getElementById("plans-view").hidden = !signedIn;
+    if (signedIn) {
+      document.getElementById("who-username").textContent = cloudUsername();
+      loadPlans();
+    }
+  }
+
+  document.getElementById("signin-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const username = document.getElementById("username").value.trim();
+    const password = document.getElementById("password").value.trim();
+    const msgEl = document.getElementById("signin-msg");
+    msgEl.className = "msg";
+    msgEl.textContent = "Signing in…";
+    try {
+      const res = await fetch(`${CLOUD_API_BASE}/session.php`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || `Sign-in failed (${res.status})`);
+      setCloudSession(body.token, username);
+      document.getElementById("password").value = "";
+      msgEl.textContent = "";
+      render();
+    } catch (err) {
+      msgEl.className = "msg error";
+      msgEl.textContent = err.message;
+    }
+  });
+
+  document.getElementById("signout-btn").addEventListener("click", () => {
+    setCloudSession(null, null);
+    render();
+  });
+
+  render();
+</script>
+
+</body>
+</html>

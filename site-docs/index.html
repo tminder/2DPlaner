@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Documentation — Planagonia</title>
+<meta name="description" content="How to write a Planagonia plan: elements, connections, dragging, modules, and the shipped examples — written for people, not the language spec.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: light;
+    --paper: #f7f4ee;
+    --paper-raised: #ffffff;
+    --ink: #221f1c;
+    --ink-soft: #5b5650;
+    --line: #d8d2c6;
+    --blue: #2c5f7c;
+    --blue-deep: #1e4457;
+    --amber: #b9791f;
+    --amber-soft: #f2dfb8;
+    --code-bg: #221f1c;
+    --code-ink: #f1ece2;
+    --code-key: #8fbfda;
+    --code-str: #e0ab53;
+    --rug: #e0d5c0; --bed: #cfe0f5; --bed-line: #4a76a8;
+    --desk: #fbe3b0; --desk-line: #a87a2b;
+    --stove: #d9534f; --stove-line: #8a2f2a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --paper: #191715; --paper-raised: #221f1c; --ink: #f1ece2; --ink-soft: #b5ada0;
+      --line: #3a352c; --blue: #6fa6c4; --blue-deep: #8fbfda; --amber: #e0ab53;
+      --amber-soft: #4a3c22; --code-bg: #0f0e0c; --code-ink: #e9e4da;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --paper: #191715; --paper-raised: #221f1c; --ink: #f1ece2; --ink-soft: #b5ada0;
+    --line: #3a352c; --blue: #6fa6c4; --blue-deep: #8fbfda; --amber: #e0ab53;
+    --amber-soft: #4a3c22; --code-bg: #0f0e0c; --code-ink: #e9e4da;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: "IBM Plex Sans", system-ui, sans-serif; line-height: 1.6;
+  }
+  h1, h2, h3, .wordmark, code, pre { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+  h1, h2, h3 { text-wrap: balance; letter-spacing: -0.01em; }
+  a { color: var(--blue-deep); }
+  code {
+    background: var(--amber-soft); color: var(--ink); padding: 0.1em 0.4em;
+    border-radius: 4px; font-size: 0.88em;
+  }
+  .wrap { max-width: 1160px; margin: 0 auto; padding: 0 1.5rem; }
+
+  header.site {
+    display: flex; align-items: center; justify-content: space-between; padding: 1.4rem 0;
+  }
+  .wordmark { font-size: 1.05rem; font-weight: 600; color: var(--ink); text-decoration: none; display: flex; align-items: center; gap: 0.5rem; }
+  .wordmark .dot { color: var(--amber); }
+  nav.site a { color: var(--ink-soft); text-decoration: none; font-size: 0.92rem; margin-left: 1.75rem; }
+  nav.site a:hover { color: var(--ink); }
+  .btn {
+    display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.55rem 1.05rem;
+    border-radius: 7px; font-size: 0.88rem; font-weight: 600; text-decoration: none;
+  }
+  .btn-primary { background: var(--blue); color: #fff; }
+  .btn-primary:hover { background: var(--blue-deep); }
+
+  .layout { display: grid; grid-template-columns: 220px 1fr; gap: 3rem; padding: 1rem 0 5rem; align-items: start; }
+  aside.toc {
+    position: sticky; top: 1.5rem; font-size: 0.88rem;
+  }
+  aside.toc .eyebrow { font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--amber); margin-bottom: 0.8rem; }
+  aside.toc ul { list-style: none; margin: 0; padding: 0; }
+  aside.toc li { margin-bottom: 0.55rem; }
+  aside.toc a { color: var(--ink-soft); text-decoration: none; }
+  aside.toc a:hover { color: var(--ink); }
+
+  main.content h1 { font-size: 1.9rem; margin: 0 0 0.6rem; }
+  main.content > p.lede { color: var(--ink-soft); font-size: 1.05rem; max-width: 62ch; margin: 0 0 3rem; }
+  main.content section { margin-bottom: 3.4rem; scroll-margin-top: 1.5rem; }
+  main.content section h2 { font-size: 1.4rem; margin: 0 0 0.4rem; padding-top: 0.2rem; border-top: 1px solid var(--line); padding-top: 1.6rem; }
+  main.content section h3 { font-size: 1.05rem; margin: 1.6rem 0 0.5rem; }
+  main.content section > p { color: var(--ink-soft); max-width: 68ch; }
+  main.content ul, main.content ol { color: var(--ink-soft); max-width: 66ch; padding-left: 1.3rem; }
+  main.content li { margin-bottom: 0.4rem; }
+  main.content li code { color: var(--ink); }
+
+  pre.code-block {
+    background: var(--code-bg); color: var(--code-ink); border-radius: 10px;
+    padding: 1.1rem 1.3rem; overflow-x: auto; font-size: 0.84rem; line-height: 1.55;
+    margin: 1rem 0;
+  }
+  pre.code-block .k { color: var(--code-key); }
+  pre.code-block .s { color: var(--code-str); }
+  pre.code-block .c { color: #8a8378; }
+
+  .figure {
+    display: flex; align-items: center; gap: 1.4rem; background: var(--paper-raised);
+    border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.3rem; margin: 1rem 0;
+  }
+  .figure svg { flex: 0 0 auto; width: 120px; height: 100px; }
+  .figure p { margin: 0; }
+
+  table.ref { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: 0.92rem; }
+  table.ref th, table.ref td { text-align: left; padding: 0.55rem 0.8rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.ref th { color: var(--ink-soft); font-weight: 600; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.04em; }
+  table.ref td code { white-space: nowrap; }
+
+  .example-card {
+    background: var(--paper-raised); border: 1px solid var(--line); border-radius: 12px;
+    padding: 1.3rem 1.5rem; margin-bottom: 1.5rem;
+  }
+  .example-card h3 { margin-top: 0; }
+  .example-card p.desc { color: var(--ink-soft); margin: 0 0 0.9rem; }
+  details.example-code summary { cursor: pointer; font-size: 0.86rem; color: var(--blue-deep); font-weight: 600; }
+  details.example-code pre { margin-top: 0.8rem; }
+
+  .callout {
+    background: var(--amber-soft); border-left: 3px solid var(--amber); border-radius: 0 8px 8px 0;
+    padding: 0.9rem 1.2rem; color: var(--ink); font-size: 0.92rem; max-width: 66ch; margin: 1rem 0;
+  }
+  .callout strong { display: block; margin-bottom: 0.2rem; }
+
+  footer.site { padding: 2.5rem 0 3rem; color: var(--ink-soft); font-size: 0.86rem; border-top: 1px solid var(--line); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.7rem; }
+  footer.site a { color: var(--ink-soft); }
+
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; }
+    aside.toc { position: static; border-bottom: 1px solid var(--line); padding-bottom: 1.2rem; }
+    aside.toc ul { columns: 2; }
+    .figure { flex-direction: column; align-items: flex-start; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="site">
+    <a class="wordmark" href="/"><span class="dot">▦</span> Planagonia</a>
+    <nav class="site">
+      <a href="/app/">Open the app</a>
+      <a href="https://github.com/tminder/2DPlaner">GitHub</a>
+    </nav>
+  </header>
+</div>
+
+<div class="wrap">
+  <div class="layout">
+    <aside class="toc">
+      <p class="eyebrow">Documentation</p>
+      <ul>
+        <li><a href="#getting-started">Getting started</a></li>
+        <li><a href="#elements">Elements</a></li>
+        <li><a href="#connections">Connections</a></li>
+        <li><a href="#interactivity">Working in the app</a></li>
+        <li><a href="#settings-modules">Settings &amp; modules</a></li>
+        <li><a href="#saving">Saving &amp; the cloud</a></li>
+        <li><a href="#examples">Examples</a></li>
+      </ul>
+    </aside>
+
+    <main class="content">
+      <h1>How Planagonia works</h1>
+      <p class="lede">This page is written for people using the app, not for an AI generating plans from scratch — for the precise language grammar an assistant would need, see the <a href="https://github.com/tminder/2DPlaner/blob/master/documentation/language.md">language specification</a> in the repository instead.</p>
+
+      <section id="getting-started">
+        <h2>Getting started</h2>
+        <p>Every plan is written in a small language, and rendered live next to the code that defines it. There's no "compile" step and no separate preview mode — the code pane on the left and the drawing on the right are two views of the exact same thing, always.</p>
+        <p>The smallest possible plan is a single shape:</p>
+        <pre class="code-block"><span class="k">element</span> room {
+  shape: <span class="s">"rect"</span>
+  size: [4m, 3m]
+  position: [0m, 0m]
+}</pre>
+        <p>Paste that into the code pane in the <a href="/app/">app</a> and you'll see a 4×3 meter rectangle appear. Drag it around in the viewer — the <code>position</code> values in the code update as you move it. Edit the numbers in the code instead, and the rectangle moves to match.</p>
+      </section>
+
+      <section id="elements">
+        <h2>Elements</h2>
+        <p>An <code>element</code> is the one building block the whole language is made of — a room, a wall, a piece of furniture, or just a reference point. Every element has an id (the word right after <code>element</code>) and a block of properties.</p>
+
+        <h3>Shape and size</h3>
+        <table class="ref">
+          <tr><th>Shape</th><th>Needs</th><th>Looks like</th></tr>
+          <tr><td><code>"rect"</code></td><td><code>size: [w, h]</code></td><td>a rectangle</td></tr>
+          <tr><td><code>"circle"</code></td><td><code>radius: r</code></td><td>a circle</td></tr>
+          <tr><td><code>"polygon"</code></td><td><code>points: [[x,y], ...]</code></td><td>a closed shape</td></tr>
+          <tr><td><code>"polyline"</code></td><td><code>points: [[x,y], ...]</code></td><td>an open line (walls)</td></tr>
+        </table>
+        <p>Leave <code>shape</code> off entirely and the element is just an invisible reference point — useful for marking a corner other shapes can point to (see Connections below).</p>
+
+        <h3>Position and units</h3>
+        <p>Every element has a <code>position: [x, y]</code> in real-world units — meters by default, or write <code>90cm</code> for centimeters. Position is always relative to whatever the element is nested inside, not the whole plan — more on that below.</p>
+
+        <h3>Style</h3>
+        <pre class="code-block">style: { fill: <span class="s">"#cfe0f5"</span>, stroke: <span class="s">"#4a76a8"</span>, strokeWidth: 0.02 }</pre>
+        <p>Plain color/stroke properties, same idea as CSS. <code>strokeWidth</code> is in meters too, like everything else geometric.</p>
+
+        <h3>Labels</h3>
+        <p><code>label: "Bett"</code> plus <code>show: "hover"</code> or <code>show: "always"</code> puts a text label on the shape — hidden until you hover over it, or always visible.</p>
+
+        <h3>Nesting means containment</h3>
+        <p>An element written inside another element's braces becomes its child — and its own <code>position</code> is then relative to that parent, not the whole plan:</p>
+        <pre class="code-block"><span class="k">element</span> room {
+  shape: <span class="s">"rect"</span>
+  size: [5m, 4m]
+
+  <span class="c">// bed sits 0.3m, 0.4m from the room's own corner — not the plan's</span>
+  <span class="k">element</span> bed {
+    shape: <span class="s">"rect"</span>
+    size: [1.6m, 2m]
+    position: [0.3m, 0.4m]
+  }
+}</pre>
+        <p>Add <code>childPlacement: "inside"</code> to a parent and its rect children are automatically kept from being dragged outside its own boundary — they slide along the wall instead of leaving the room.</p>
+      </section>
+
+      <section id="connections">
+        <h2>Connections</h2>
+        <p>A <code>connection</code> links two elements so dragging one carries the other along with it — useful for a piece of furniture that should always stay flush against another:</p>
+        <pre class="code-block"><span class="k">connection</span> stove counter</pre>
+
+        <h3>Shared corners</h3>
+        <p>Walls that actually meet at a point should share that point exactly, rather than two separate coordinates that happen to match. Give a shape's <code>points</code> a sibling element's id instead of a literal <code>[x, y]</code> pair, and it always resolves to that element's own current position:</p>
+        <div class="figure">
+          <svg viewBox="0 0 120 100"><polyline points="10,20 60,20 60,80" fill="none" style="stroke:var(--ink-soft)" stroke-width="2"/><circle cx="10" cy="20" r="3" style="fill:var(--amber)"/><circle cx="60" cy="20" r="3" style="fill:var(--amber)"/><circle cx="60" cy="80" r="3" style="fill:var(--amber)"/></svg>
+          <p>Three corner elements, referenced by two wall segments — drag any one corner and both connected walls follow it.</p>
+        </div>
+        <pre class="code-block"><span class="k">element</span> corner_1 { position: [0m, 0m] }
+<span class="k">element</span> corner_2 { position: [3m, 0m] }
+
+<span class="k">element</span> wall_a {
+  shape: <span class="s">"polyline"</span>
+  points: [corner_1, corner_2]
+  style: { stroke: <span class="s">"#444"</span>, strokeWidth: 0.1 }
+}</pre>
+      </section>
+
+      <section id="interactivity">
+        <h2>Working in the app</h2>
+        <ul>
+          <li><strong>Drag</strong> any shape to move it, or drag one of its corners to reshape it.</li>
+          <li><strong>Click</strong> a shape to select it — its span in the code pane highlights, and small connect/disconnect icons appear where it touches other elements.</li>
+          <li><strong>Right-click</strong> a shape for a context menu (currently: Delete).</li>
+          <li><strong>Scroll</strong> to zoom the viewer, drag empty space to pan, and use the <em>Fit</em> button to reset the view.</li>
+        </ul>
+        <div class="callout">
+          <strong>Collisions and overlaps</strong>
+          Two shapes are allowed to overlap by default — a rug under a table, say. Set <code>allowCollisions: true</code> on an element (or in a plan-wide <code>settings {}</code> block) to have it slide along whatever it bumps into instead of overlapping it.
+        </div>
+      </section>
+
+      <section id="settings-modules">
+        <h2>Settings &amp; modules</h2>
+        <p>A plan can start with a <code>settings {}</code> block for plan-wide defaults:</p>
+        <table class="ref">
+          <tr><th>Setting</th><th>Default</th><th>What it does</th></tr>
+          <tr><td><code>allowCollisions</code></td><td><code>true</code></td><td>whether siblings may overlap</td></tr>
+          <tr><td><code>allowSelfIntersectingPolygons</code></td><td><code>false</code></td><td>whether a polygon may cross itself</td></tr>
+          <tr><td><code>edgeLengths</code></td><td><code>false</code></td><td>show each edge's length by default</td></tr>
+        </table>
+        <p><code>module "name.js"</code> loads extra rendering or interactivity from a file — three modules load into every plan automatically (labels/dimensions, drag-and-drop, and the code-highlighting you're using right now if you're in the app), so you'll rarely need to write this yourself.</p>
+      </section>
+
+      <section id="saving">
+        <h2>Saving &amp; the cloud</h2>
+        <p>Every plan you touch is saved automatically in your browser — no account needed. Use <em>Open…</em>/<em>Save as…</em> to move a plan to and from a file on your computer.</p>
+        <p>Sign in with a WordPress account (top of the app) to also explicitly push the plan you're working on to the cloud, or pull one you saved earlier back in — useful for picking up the same plan on a different device. This is optional and separate from the automatic local save, which always happens regardless of whether you're signed in.</p>
+      </section>
+
+      <section id="examples">
+        <h2>Examples</h2>
+        <p>Every example below is also built into the app itself — open the plan switcher and pick it from "New from example…".</p>
+
+        <div class="example-card">
+          <h3>Blank</h3>
+          <p class="desc">The absolute minimum: one rectangle, nothing else. The same plan shown in "Getting started" above.</p>
+        </div>
+
+        <div class="example-card">
+          <h3>Studio Apartment</h3>
+          <p class="desc">A small room with a bed, desk, side table, and a rug — shared-corner walls with a door, containment keeping the furniture inside the room, and a connection linking the stove to the counter beside it.</p>
+          <details class="example-code">
+            <summary>Show the code</summary>
+            <pre class="code-block"><span class="k">element</span> room {
+  shape: <span class="s">"rect"</span>
+  size: [5m, 4m]
+  position: [0m, 0m]
+  style: { fill: <span class="s">"#f7f5f0"</span>, stroke: <span class="s">"#333"</span>, strokeWidth: 0.04 }
+  childPlacement: <span class="s">"inside"</span>
+
+  <span class="k">element</span> corner_1 { position: [0m, 0m] }
+  <span class="k">element</span> corner_2 { position: [2.2m, 0m] }
+  <span class="k">element</span> corner_3 { position: [3.1m, 0m] }
+  <span class="k">element</span> corner_4 { position: [5m, 0m] }
+
+  <span class="k">element</span> wall_a {
+    shape: <span class="s">"polyline"</span>
+    points: [corner_1, corner_2]
+    style: { stroke: <span class="s">"#444"</span>, strokeWidth: 0.1 }
+  }
+  <span class="k">element</span> door {
+    shape: <span class="s">"polyline"</span>
+    points: [corner_2, corner_3]
+    style: { stroke: <span class="s">"#8a6a42"</span>, strokeWidth: 0.1, strokeDash: <span class="s">"0.15,0.1"</span> }
+    label: <span class="s">"Tür"</span>
+    show: <span class="s">"hover"</span>
+  }
+  <span class="k">element</span> wall_b {
+    shape: <span class="s">"polyline"</span>
+    points: [corner_3, corner_4]
+    style: { stroke: <span class="s">"#444"</span>, strokeWidth: 0.1 }
+  }
+
+  <span class="k">element</span> bed {
+    shape: <span class="s">"rect"</span>
+    size: [1.6m, 2m]
+    position: [0.3m, 0.4m]
+    style: { fill: <span class="s">"#cfe0f5"</span>, stroke: <span class="s">"#4a76a8"</span>, strokeWidth: 0.02 }
+    label: <span class="s">"Bett"</span>
+    show: <span class="s">"hover"</span>
+  }
+
+  <span class="k">element</span> side_table {
+    shape: <span class="s">"circle"</span>
+    radius: 0.35m
+    position: [2.5m, 3.3m]
+    style: { fill: <span class="s">"#bfe3f5"</span>, stroke: <span class="s">"#3a7a9a"</span>, strokeWidth: 0.03 }
+    label: <span class="s">"Tisch"</span>
+    show: <span class="s">"always"</span>
+    dimensions: true
+  }
+
+  <span class="k">element</span> stove {
+    shape: <span class="s">"rect"</span>
+    size: [0.6m, 0.6m]
+    position: [4.1m, 2.6m]
+    style: { fill: <span class="s">"#d9534f"</span>, stroke: <span class="s">"#8a2f2a"</span>, strokeWidth: 0.02 }
+    label: <span class="s">"Herd"</span>
+    show: <span class="s">"hover"</span>
+  }
+
+  <span class="k">element</span> counter {
+    shape: <span class="s">"rect"</span>
+    size: [0.5m, 1.2m]
+    position: [4.1m, 1.4m]
+    style: { fill: <span class="s">"#e8c896"</span>, stroke: <span class="s">"#a9895c"</span>, strokeWidth: 0.02 }
+    label: <span class="s">"Ablage"</span>
+    show: <span class="s">"hover"</span>
+  }
+
+  <span class="k">element</span> rug {
+    shape: <span class="s">"polygon"</span>
+    points: [[1m, 2.6m], [1.9m, 2.5m], [2.1m, 3.4m], [1.5m, 3.9m], [0.7m, 3.5m]]
+    style: { fill: <span class="s">"#e0d5c0"</span>, stroke: <span class="s">"#b0a080"</span>, strokeWidth: 0.02 }
+    label: <span class="s">"Teppich"</span>
+    show: <span class="s">"hover"</span>
+  }
+}
+
+<span class="k">connection</span> stove counter</pre>
+          </details>
+        </div>
+
+        <div class="example-card">
+          <h3>Utility Connection</h3>
+          <p class="desc">A property boundary, a house, and a power line reaching from the street to a fixed attachment point on the house — the same primitives used for a room work just as well outside one.</p>
+          <details class="example-code">
+            <summary>Show the code</summary>
+            <pre class="code-block"><span class="k">element</span> grundstueck {
+  shape: <span class="s">"polygon"</span>
+  points: [[0m, 0m], [11m, 0m], [12m, 9m], [-1m, 9m]]
+  style: { fill: <span class="s">"#dce8c8"</span>, stroke: <span class="s">"#7a9a5a"</span>, strokeWidth: 0.06 }
+  label: <span class="s">"Grundstück"</span>
+  show: <span class="s">"hover"</span>
+  edgeLengths: true
+
+  <span class="k">element</span> haus {
+    shape: <span class="s">"rect"</span>
+    size: [5.5m, 4m]
+    position: [3m, 3m]
+    style: { fill: <span class="s">"#e8d6b8"</span>, stroke: <span class="s">"#8a6a42"</span>, strokeWidth: 0.08 }
+    label: <span class="s">"Haus"</span>
+    show: <span class="s">"always"</span>
+    dimensions: true
+  }
+
+  <span class="k">element</span> haus_anschluss { position: [3m, 4.5m] }
+
+  <span class="k">element</span> stromanschluss {
+    shape: <span class="s">"polyline"</span>
+    points: [[1.5m, 0.5m], [1.5m, 4.5m], haus_anschluss]
+    style: { stroke: <span class="s">"#e0a800"</span>, strokeWidth: 0.05, strokeDash: <span class="s">"0.3,0.15"</span> }
+    label: <span class="s">"Stromanschluss"</span>
+    show: <span class="s">"hover"</span>
+  }
+}
+
+<span class="k">connection</span> haus_anschluss haus</pre>
+          </details>
+        </div>
+      </section>
+
+      <div style="text-align:center; padding: 1rem 0 0;">
+        <a class="btn btn-primary" href="/app/">Try it in the app →</a>
+      </div>
+    </main>
+  </div>
+</div>
+
+<div class="wrap">
+  <footer class="site">
+    <span>Planagonia documentation — for the AI-facing language spec, see the <a href="https://github.com/tminder/2DPlaner/tree/master/documentation">repository</a>.</span>
+    <span><a href="/">Home</a> · <a href="/app/">Open the app</a></span>
+  </footer>
+</div>
+
+</body>
+</html>
