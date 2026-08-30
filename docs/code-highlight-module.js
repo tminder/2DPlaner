@@ -175,18 +175,27 @@
     // Scroll only when the selection actually *changed* — every render, not just a
     // selection change, reaches this same function (a drag's own repeated re-renders
     // included), and re-scrolling the code pane on every drag tick of an already-selected
-    // element would fight the user rather than help them. Uses the highlight span's own
-    // rendered position (already in the DOM, just written) rather than counting newlines
-    // by hand, so it's exact even where a long line wraps across several visual rows.
+    // element would fight the user rather than help them.
+    //
+    // A first attempt hand-computed the target scrollTop from the highlight span's own
+    // offsetTop/offsetHeight — reported not to actually move the scroll position, and nothing
+    // wrong with that math turned up on review, but a multi-line inline <span> (which is
+    // exactly what a whole element declaration spanning several lines produces) is a case
+    // where offsetHeight in particular is inconsistently defined across browsers, only
+    // reliably describing one line box rather than the element's true multi-line extent.
+    // scrollIntoView() delegates the actual "is this visible, where should it end up"
+    // geometry to the browser instead of re-deriving it here, sidestepping that class of
+    // bug entirely. It scrolls backdrop (marked's own nearest positioned/overflow ancestor,
+    // not textarea, since the two are only ever kept in sync manually) — read the result
+    // back onto textarea afterward, the reverse direction of every other sync in this file.
     const id = core.rootEl.dataset.selectedId;
     if (id !== lastSelectedId) {
       lastSelectedId = id;
       const marked = backdrop.querySelector(".tok-selected");
       if (marked) {
-        const viewHeight = textarea.clientHeight;
-        if (marked.offsetTop < textarea.scrollTop || marked.offsetTop + marked.offsetHeight > textarea.scrollTop + viewHeight) {
-          textarea.scrollTop = Math.max(0, marked.offsetTop - viewHeight / 4);
-        }
+        marked.scrollIntoView({ block: "center", inline: "nearest" });
+        textarea.scrollTop = backdrop.scrollTop;
+        textarea.scrollLeft = backdrop.scrollLeft;
       }
     }
     syncScroll();

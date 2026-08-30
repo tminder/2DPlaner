@@ -25,7 +25,12 @@
          "dragging", rather than making core aware of interactivity state. */
       #plan-root.dragging svg .obj:hover + .annotation[data-show="hover"] { opacity: 0 !important; }
       svg .obj.connected-highlight { filter: drop-shadow(0 0 3px #e80) drop-shadow(0 0 3px #e80); }
-      svg .obj.selected { stroke-width: 3px !important; }
+      /* A fixed stroke-width doesn't scale with the shape's own — a wall already stroked
+         thicker than 3px actually looked *thinner* once selected, backwards from what a
+         selection indicator should do. A glow (matching hover/connected-highlight's own
+         pattern above) never touches stroke-width at all, so it reads consistently
+         regardless of how thick or thin the shape's own stroke already is. */
+      svg .obj.selected { filter: drop-shadow(0 0 3px #7c3aed) drop-shadow(0 0 3px #7c3aed); }
       svg .icon-btn { cursor: pointer; }
       svg .icon-btn circle { transition: r 0.1s; }
       #plan-root:not(.dragging) svg .icon-btn:hover circle { r: 11; }
