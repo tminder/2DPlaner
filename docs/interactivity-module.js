@@ -19,7 +19,7 @@
       #plan-root.dragging svg { cursor: grabbing; }
       #plan-root svg [data-id] { cursor: grab; }
       #plan-root svg [data-id]:active { cursor: grabbing; }
-      #plan-root:not(.dragging) svg .obj:hover { filter: drop-shadow(0 0 2px #37f) drop-shadow(0 0 2px #37f); }
+      #plan-root:not(.dragging) svg .obj:hover { filter: drop-shadow(0 0 2px rgba(51,119,255,0.55)); }
       /* Core's label hover-reveal rule is a plain rendering feature with no idea a drag can
          be in progress; this overrides it with higher specificity while #plan-root carries
          "dragging", rather than making core aware of interactivity state. */
@@ -31,7 +31,7 @@
          2px size for consistency, a distinct color to stay tell-apart-able from it) never
          touches stroke-width at all, so it reads consistently regardless of how thick or
          thin the shape's own stroke already is. */
-      svg .obj.selected { filter: drop-shadow(0 0 2px #7c3aed) drop-shadow(0 0 2px #7c3aed); }
+      svg .obj.selected { filter: drop-shadow(0 0 2px rgba(124,58,237,0.55)); }
       svg .icon-btn { cursor: pointer; }
       svg .icon-btn circle { transition: r 0.1s; }
       #plan-root:not(.dragging) svg .icon-btn:hover circle { r: 11; }
