@@ -184,6 +184,14 @@
     .principle-grid { grid-template-columns: 1fr; }
     section.author .row { grid-template-columns: 1fr; }
   }
+  @media (max-width: 640px) {
+    header.site { flex-wrap: wrap; row-gap: 0.5rem; }
+    nav.site a { margin-left: 0; margin-right: 1.1rem; }
+    footer.site { flex-direction: column; align-items: flex-start; }
+    .author-diagram { flex-direction: column; }
+    .author-diagram .box { min-width: 0; width: 100%; }
+    .author-diagram .arrow { transform: rotate(90deg); }
+  }
 </style>
 </head>
 <body>

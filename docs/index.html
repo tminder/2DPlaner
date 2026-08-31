@@ -44,8 +44,8 @@
   #plan-root svg { width: 100%; height: 100%; display: block; background: #fff;
     border: 1px solid #ccc; border-radius: 6px; }
 
-  svg .obj { transition: filter 0.1s; }
-  .anchor-hit { fill: transparent; }
+  svg .obj { transition: filter 0.1s; touch-action: none; }
+  .anchor-hit { fill: transparent; touch-action: none; }
   svg .annotation text { pointer-events: none; font-family: system-ui, sans-serif; }
   svg .annotation[data-show="hover"] { opacity: 0; transition: opacity 0.15s; }
   svg .obj:hover + .annotation[data-show="hover"] { opacity: 1; }
@@ -68,6 +68,18 @@
 
   #file-input { display: none; }
 
+  /* Desktop-first: the two-pane code+viewer split (D-006) is the default and stays
+     unchanged above this width. Below it, there's no room for a 420px-wide code pane
+     next to anything usable, so the two panes stack instead of sitting side by side —
+     an adjustment for small screens, not a redesign of the layout itself. */
+  @media (max-width: 760px) {
+    header { padding: 0.5rem 0.6rem; gap: 0.5rem; }
+    header .spacer { flex-basis: 100%; height: 0; }
+    .layout { flex-direction: column; }
+    textarea { flex: 1 1 40%; min-height: 140px; width: 100%; }
+    .viewer-pane { flex: 1 1 45%; min-height: 200px; }
+  }
+
   .cookie-notice {
     position: fixed; left: 1rem; right: 1rem; bottom: 1rem; z-index: 20;
     max-width: 640px; margin: 0 auto;
@@ -78,6 +90,18 @@
   .cookie-notice[hidden] { display: none; }
   .cookie-notice p { margin: 0; font-size: 0.85rem; color: #555; flex: 1 1 20rem; }
   .cookie-notice button { flex: 0 0 auto; }
+
+  /* Bottom placement (the default, fine on a normally-scrolling page) would sit right on
+     top of the viewer pane on the stacked mobile layout above — there's no scrolling past
+     it on this fixed-height page, so until dismissed it would block dragging the one thing
+     this page is for. Moved to the top and shrunk instead; it only ever blocks the toolbar
+     for a moment. Placed after .cookie-notice's own base rule (not just inside a narrower
+     media query) so its `bottom: auto` actually wins the cascade instead of being
+     re-clobbered by the later, equally-specific base rule. */
+  @media (max-width: 760px) {
+    .cookie-notice { top: 0.6rem; bottom: auto; left: 0.6rem; right: 0.6rem; padding: 0.7rem 0.9rem; gap: 0.6rem; }
+    .cookie-notice p { font-size: 0.8rem; }
+  }
 </style>
 </head>
 <body>

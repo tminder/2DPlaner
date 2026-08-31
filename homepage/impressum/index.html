@@ -91,6 +91,12 @@
   }
   footer.site a { color: var(--ink-soft); }
   footer.site a:hover { color: var(--ink); }
+
+  @media (max-width: 640px) {
+    header.site { flex-wrap: wrap; row-gap: 0.5rem; }
+    nav.site a { margin-left: 0; margin-right: 1.1rem; }
+    footer.site { flex-direction: column; align-items: flex-start; }
+  }
 </style>
 </head>
 <body>

@@ -111,7 +111,9 @@
   .figure svg { flex: 0 0 auto; width: 120px; height: 100px; }
   .figure p { margin: 0; }
 
-  table.ref { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: 0.92rem; }
+  .table-scroll { overflow-x: auto; margin: 1rem 0; }
+  .table-scroll table.ref { margin: 0; }
+  table.ref { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
   table.ref th, table.ref td { text-align: left; padding: 0.55rem 0.8rem; border-bottom: 1px solid var(--line); vertical-align: top; }
   table.ref th { color: var(--ink-soft); font-weight: 600; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.04em; }
   table.ref td code { white-space: nowrap; }
@@ -151,9 +153,21 @@
 
   @media (max-width: 860px) {
     .layout { grid-template-columns: 1fr; }
+    /* A grid item's default min-width is its own content's min-content size, not 0 — the
+       same "won't shrink below its content" trap docs/index.html's flex layout already
+       has a comment about, just the grid-layout version of it. Without this, a long
+       unbreakable token anywhere in main.content (a code snippet, a table cell) keeps
+       this column, and the whole page, wider than the viewport. */
+    .layout > * { min-width: 0; }
     aside.toc { position: static; border-bottom: 1px solid var(--line); padding-bottom: 1.2rem; }
     aside.toc ul { columns: 2; }
     .figure { flex-direction: column; align-items: flex-start; }
+  }
+  @media (max-width: 640px) {
+    header.site { flex-wrap: wrap; row-gap: 0.5rem; }
+    nav.site a { margin-left: 0; margin-right: 1.1rem; }
+    footer.site { flex-direction: column; align-items: flex-start; }
+    aside.toc ul { columns: 1; }
   }
 </style>
 </head>
@@ -206,6 +220,7 @@
         <p>An <code>element</code> is the one building block the whole language is made of — a room, a wall, a piece of furniture, or just a reference point. Every element has an id (the word right after <code>element</code>) and a block of properties.</p>
 
         <h3>Shape and size</h3>
+        <div class="table-scroll">
         <table class="ref">
           <tr><th>Shape</th><th>Needs</th><th>Looks like</th></tr>
           <tr><td><code>"rect"</code></td><td><code>size: [w, h]</code></td><td>a rectangle</td></tr>
@@ -213,6 +228,7 @@
           <tr><td><code>"polygon"</code></td><td><code>points: [[x,y], ...]</code></td><td>a closed shape</td></tr>
           <tr><td><code>"polyline"</code></td><td><code>points: [[x,y], ...]</code></td><td>an open line (walls)</td></tr>
         </table>
+        </div>
         <p>Leave <code>shape</code> off entirely and the element is just an invisible reference point — useful for marking a corner other shapes can point to (see Connections below).</p>
 
         <h3>Position and units</h3>
@@ -279,12 +295,14 @@
       <section id="settings-modules">
         <h2>Settings &amp; modules</h2>
         <p>A plan can start with a <code>settings {}</code> block for plan-wide defaults:</p>
+        <div class="table-scroll">
         <table class="ref">
           <tr><th>Setting</th><th>Default</th><th>What it does</th></tr>
           <tr><td><code>allowCollisions</code></td><td><code>true</code></td><td>whether siblings may overlap</td></tr>
           <tr><td><code>allowSelfIntersectingPolygons</code></td><td><code>false</code></td><td>whether a polygon may cross itself</td></tr>
           <tr><td><code>edgeLengths</code></td><td><code>false</code></td><td>show each edge's length by default</td></tr>
         </table>
+        </div>
         <p><code>module "name.js"</code> loads extra rendering or interactivity from a file — three modules load into every plan automatically (labels/dimensions, drag-and-drop, and the code-highlighting you're using right now if you're in the app), so you'll rarely need to write this yourself.</p>
 
         <h3>Custom (external) modules</h3>
