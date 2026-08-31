@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blog — Planagonia</title>
+<meta name="description" content="Progress updates from the team building Planagonia, written for everyone — not just developers.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: light;
+    --paper: #f7f4ee;
+    --paper-raised: #ffffff;
+    --ink: #221f1c;
+    --ink-soft: #5b5650;
+    --line: #d8d2c6;
+    --blue: #2c5f7c;
+    --blue-deep: #1e4457;
+    --amber: #b9791f;
+    --amber-soft: #f2dfb8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --paper: #191715; --paper-raised: #221f1c; --ink: #f1ece2; --ink-soft: #b5ada0;
+      --line: #3a352c; --blue: #6fa6c4; --blue-deep: #8fbfda; --amber: #e0ab53; --amber-soft: #4a3c22;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --paper: #191715; --paper-raised: #221f1c; --ink: #f1ece2; --ink-soft: #b5ada0;
+    --line: #3a352c; --blue: #6fa6c4; --blue-deep: #8fbfda; --amber: #e0ab53; --amber-soft: #4a3c22;
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font-family: "IBM Plex Sans", system-ui, sans-serif; line-height: 1.55; }
+  h1, h2, h3, .wordmark { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+  h1, h2, h3 { text-wrap: balance; letter-spacing: -0.01em; }
+  a { color: var(--blue-deep); }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 0 1.5rem; }
+  .wrap-chrome { max-width: 1080px; margin: 0 auto; padding: 0 1.5rem; }
+
+  header.site { display: flex; align-items: center; justify-content: space-between; padding: 1.4rem 0; }
+  .wordmark { font-size: 1.05rem; font-weight: 600; color: var(--ink); text-decoration: none; display: flex; align-items: center; gap: 0.5rem; }
+  .wordmark .dot { color: var(--amber); }
+  nav.site a { color: var(--ink-soft); text-decoration: none; font-size: 0.92rem; margin-left: 1.75rem; }
+  nav.site a:hover { color: var(--ink); }
+  .nav-toggle { display: none; }
+
+  main { padding: 1.5rem 0 4rem; }
+  .eyebrow {
+    font-family: "IBM Plex Mono", monospace; font-size: 0.78rem; letter-spacing: 0.09em;
+    text-transform: uppercase; color: var(--amber); margin: 0 0 0.9rem;
+  }
+  h1.page-title { font-size: clamp(1.9rem, 3.4vw, 2.5rem); margin: 0 0 0.6rem; }
+  p.lede { color: var(--ink-soft); font-size: 1.05rem; max-width: 52ch; margin: 0 0 2.6rem; }
+
+  .post-list { display: flex; flex-direction: column; gap: 1.1rem; }
+  .post-card {
+    display: block; text-decoration: none; color: inherit;
+    background: var(--paper-raised); border: 1px solid var(--line); border-radius: 12px;
+    padding: 1.6rem 1.8rem; transition: transform 0.12s ease, border-color 0.12s ease;
+  }
+  .post-card:hover { transform: translateY(-1px); border-color: var(--ink-soft); }
+  .post-card .date {
+    font-family: "IBM Plex Mono", monospace; font-size: 0.76rem; letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--amber); margin: 0 0 0.6rem;
+  }
+  .post-card h2 { font-size: 1.25rem; margin: 0 0 0.6rem; }
+  .post-card p.excerpt { color: var(--ink-soft); font-size: 0.95rem; margin: 0; font-family: "IBM Plex Sans", system-ui, sans-serif; }
+
+  footer.site {
+    padding: 2.5rem 0 3rem; color: var(--ink-soft); font-size: 0.86rem;
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.7rem;
+  }
+  footer.site a { color: var(--ink-soft); }
+  footer.site a:hover { color: var(--ink); }
+
+  .cookie-notice {
+    position: fixed; left: 1rem; right: 1rem; bottom: 1rem; z-index: 20;
+    max-width: 640px; margin: 0 auto;
+    background: var(--paper-raised); border: 1px solid var(--line); border-radius: 12px;
+    padding: 1rem 1.2rem; box-shadow: 0 6px 24px rgba(0,0,0,0.18);
+    display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+  }
+  .cookie-notice[hidden] { display: none; }
+  .cookie-notice p { margin: 0; font-size: 0.88rem; color: var(--ink-soft); flex: 1 1 20rem; }
+  .cookie-notice button {
+    flex: 0 0 auto; font-family: inherit; cursor: pointer; border: none; border-radius: 7px;
+    background: var(--blue); color: #fff; padding: 0.6rem 1.1rem; font-size: 0.9rem; font-weight: 600;
+  }
+  .cookie-notice button:hover { background: var(--blue-deep); }
+
+  @media (max-width: 640px) {
+    header.site { flex-wrap: wrap; row-gap: 0.7rem; }
+    .nav-toggle {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 2.3rem; height: 2.3rem; border: 1px solid var(--line); border-radius: 7px;
+      background: var(--paper-raised); color: var(--ink); font-size: 1.15rem; cursor: pointer;
+    }
+    nav.site { display: none; flex-basis: 100%; flex-direction: column; gap: 0.9rem; }
+    nav.site.open { display: flex; }
+    nav.site a { margin-left: 0; font-size: 1rem; }
+    footer.site { flex-direction: column; align-items: flex-start; }
+    .post-card { padding: 1.3rem 1.4rem; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap-chrome">
+  <header class="site">
+    <a class="wordmark" href="/"><span class="dot">▦</span> Planagonia</a>
+    <button class="nav-toggle" id="nav-toggle" aria-label="Menu" aria-expanded="false" aria-controls="site-nav">☰</button>
+    <nav class="site" id="site-nav">
+      <a href="/app/">Open the app</a>
+      <a href="/docs/">Docs</a>
+      <a href="/blog/">Blog</a>
+      <a href="/profile/">Profile</a>
+    </nav>
+  </header>
+</div>
+<script>
+  (function () {
+    var toggle = document.getElementById("nav-toggle");
+    var nav = document.getElementById("site-nav");
+    toggle.addEventListener("click", function () {
+      var open = nav.classList.toggle("open");
+      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+  })();
+</script>
+
+<div class="wrap">
+  <main>
+    <p class="eyebrow">Blog</p>
+    <h1 class="page-title">What's new at Planagonia</h1>
+    <p class="lede">Progress updates from the team building this, written for anyone — not just people who read code for fun.</p>
+
+    <div class="post-list">
+      <a class="post-card" href="/blog/planagonia-is-live/">
+        <p class="date">August 31, 2026</p>
+        <h2>Planagonia Is Live: What's New</h2>
+        <p class="excerpt">In two days, Planagonia went from a pile of experiments to a real website you can sign up for and use — accounts, a mobile-friendly redesign, and a handful of bugs squashed along the way.</p>
+      </a>
+    </div>
+  </main>
+</div>
+
+<div class="wrap-chrome">
+  <footer class="site">
+    <span>Planagonia — a 2D plan generator.</span>
+    <span><a href="/app/">Open the app</a> · <a href="/docs/">Docs</a> · <a href="/blog/">Blog</a> · <a href="/profile/">Profile</a> · <a href="/impressum/">Impressum</a></span>
+  </footer>
+</div>
+
+<div id="cookie-notice" class="cookie-notice" hidden>
+  <p>This site saves your plans and sign-in state using your browser's own local storage — no tracking, no third-party cookies.</p>
+  <button id="cookie-notice-dismiss">Got it</button>
+</div>
+<script>
+  (function () {
+    var KEY = "planagonia:cookieNoticeDismissed";
+    var el = document.getElementById("cookie-notice");
+    try { if (!localStorage.getItem(KEY)) el.hidden = false; } catch (e) { el.hidden = false; }
+    document.getElementById("cookie-notice-dismiss").addEventListener("click", function () {
+      el.hidden = true;
+      try { localStorage.setItem(KEY, "1"); } catch (e) { /* private mode — not fatal */ }
+    });
+  })();
+</script>
+
+</body>
+</html>

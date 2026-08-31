@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Planagonia Is Live: What's New — Blog</title>
+<meta name="description" content="In two days, Planagonia went from a set of experiments to a real website you can sign up for and use. Here's what changed, in plain language.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: light;
+    --paper: #f7f4ee;
+    --paper-raised: #ffffff;
+    --ink: #221f1c;
+    --ink-soft: #5b5650;
+    --line: #d8d2c6;
+    --blue: #2c5f7c;
+    --blue-deep: #1e4457;
+    --amber: #b9791f;
+    --amber-soft: #f2dfb8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --paper: #191715; --paper-raised: #221f1c; --ink: #f1ece2; --ink-soft: #b5ada0;
+      --line: #3a352c; --blue: #6fa6c4; --blue-deep: #8fbfda; --amber: #e0ab53; --amber-soft: #4a3c22;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --paper: #191715; --paper-raised: #221f1c; --ink: #f1ece2; --ink-soft: #b5ada0;
+    --line: #3a352c; --blue: #6fa6c4; --blue-deep: #8fbfda; --amber: #e0ab53; --amber-soft: #4a3c22;
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font-family: "IBM Plex Sans", system-ui, sans-serif; line-height: 1.6; }
+  h1, h2, .wordmark { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+  h1, h2 { text-wrap: balance; letter-spacing: -0.01em; }
+  a { color: var(--blue-deep); }
+  .wrap { max-width: 680px; margin: 0 auto; padding: 0 1.5rem; }
+  .wrap-chrome { max-width: 1080px; margin: 0 auto; padding: 0 1.5rem; }
+
+  header.site { display: flex; align-items: center; justify-content: space-between; padding: 1.4rem 0; }
+  .wordmark { font-size: 1.05rem; font-weight: 600; color: var(--ink); text-decoration: none; display: flex; align-items: center; gap: 0.5rem; }
+  .wordmark .dot { color: var(--amber); }
+  nav.site a { color: var(--ink-soft); text-decoration: none; font-size: 0.92rem; margin-left: 1.75rem; }
+  nav.site a:hover { color: var(--ink); }
+  .nav-toggle { display: none; }
+
+  main { padding: 1rem 0 4rem; }
+  .eyebrow {
+    font-family: "IBM Plex Mono", monospace; font-size: 0.78rem; letter-spacing: 0.09em;
+    text-transform: uppercase; color: var(--amber); margin: 0 0 0.7rem;
+  }
+  .back-link { display: inline-block; margin-bottom: 1.6rem; font-size: 0.88rem; color: var(--ink-soft); text-decoration: none; }
+  .back-link:hover { color: var(--ink); }
+  h1.post-title { font-size: clamp(1.7rem, 4vw, 2.3rem); margin: 0 0 0.6rem; line-height: 1.2; }
+  p.dateline { color: var(--ink-soft); font-size: 0.88rem; margin: 0 0 2.4rem; }
+
+  .post { font-family: "IBM Plex Serif", Georgia, serif; font-size: 1.08rem; }
+  .post p { margin: 0 0 1.3rem; }
+  .post p.lede { font-size: 1.18rem; color: var(--ink-soft); }
+  .post h2 {
+    font-family: "IBM Plex Sans", system-ui, sans-serif; font-size: 1.25rem; font-weight: 600;
+    margin: 2.4rem 0 0.8rem; letter-spacing: -0.005em;
+  }
+  .post ul { margin: 0 0 1.3rem; padding-left: 1.3rem; }
+  .post li { margin-bottom: 0.55rem; }
+  .post strong { color: var(--ink); }
+
+  .callout {
+    background: var(--amber-soft); border-left: 3px solid var(--amber); border-radius: 0 8px 8px 0;
+    padding: 1rem 1.3rem; margin: 2rem 0; font-family: "IBM Plex Sans", system-ui, sans-serif;
+    font-size: 0.95rem;
+  }
+  .callout a { font-weight: 600; }
+
+  footer.site {
+    padding: 2.5rem 0 3rem; color: var(--ink-soft); font-size: 0.86rem;
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.7rem;
+  }
+  footer.site a { color: var(--ink-soft); }
+  footer.site a:hover { color: var(--ink); }
+
+  .cookie-notice {
+    position: fixed; left: 1rem; right: 1rem; bottom: 1rem; z-index: 20;
+    max-width: 640px; margin: 0 auto;
+    background: var(--paper-raised); border: 1px solid var(--line); border-radius: 12px;
+    padding: 1rem 1.2rem; box-shadow: 0 6px 24px rgba(0,0,0,0.18);
+    display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+  }
+  .cookie-notice[hidden] { display: none; }
+  .cookie-notice p { margin: 0; font-size: 0.88rem; color: var(--ink-soft); flex: 1 1 20rem; font-family: "IBM Plex Sans", system-ui, sans-serif; }
+  .cookie-notice button {
+    flex: 0 0 auto; font-family: inherit; cursor: pointer; border: none; border-radius: 7px;
+    background: var(--blue); color: #fff; padding: 0.6rem 1.1rem; font-size: 0.9rem; font-weight: 600;
+  }
+  .cookie-notice button:hover { background: var(--blue-deep); }
+
+  @media (max-width: 640px) {
+    header.site { flex-wrap: wrap; row-gap: 0.7rem; }
+    .nav-toggle {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 2.3rem; height: 2.3rem; border: 1px solid var(--line); border-radius: 7px;
+      background: var(--paper-raised); color: var(--ink); font-size: 1.15rem; cursor: pointer;
+    }
+    nav.site { display: none; flex-basis: 100%; flex-direction: column; gap: 0.9rem; }
+    nav.site.open { display: flex; }
+    nav.site a { margin-left: 0; font-size: 1rem; }
+    footer.site { flex-direction: column; align-items: flex-start; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap-chrome">
+  <header class="site">
+    <a class="wordmark" href="/"><span class="dot">▦</span> Planagonia</a>
+    <button class="nav-toggle" id="nav-toggle" aria-label="Menu" aria-expanded="false" aria-controls="site-nav">☰</button>
+    <nav class="site" id="site-nav">
+      <a href="/app/">Open the app</a>
+      <a href="/docs/">Docs</a>
+      <a href="/blog/">Blog</a>
+      <a href="/profile/">Profile</a>
+    </nav>
+  </header>
+</div>
+<script>
+  (function () {
+    var toggle = document.getElementById("nav-toggle");
+    var nav = document.getElementById("site-nav");
+    toggle.addEventListener("click", function () {
+      var open = nav.classList.toggle("open");
+      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+  })();
+</script>
+
+<div class="wrap">
+  <main>
+    <a class="back-link" href="/blog/">← Back to the blog</a>
+    <p class="eyebrow">Product update</p>
+    <h1 class="post-title">Planagonia Is Live: What's New</h1>
+    <p class="dateline">August 31, 2026</p>
+
+    <div class="post">
+      <p class="lede">Two days ago, Planagonia was a pile of experiments living only on one computer. Today it's a real website — one you can visit, sign up for, and use to sketch out a floor plan, with your work following you between devices instead of being stuck in a single browser tab. Here's what changed, and why it should matter to you rather than just to us.</p>
+
+      <h2>You can finally create an account</h2>
+      <p>Until now, whatever you drew in Planagonia only ever lived in the one browser you drew it in — close it on a different computer and your plan simply wasn't there. That's fixed. You can now sign up with just an email address and a password, confirm your email with one click, and save your plans to your account instead of just to your browser. Start a layout on your laptop at home, check it later on your phone — it'll be right there.</p>
+      <p>We kept the sign-up itself as small as we could: no username to invent, no extra fields. Just an email and a password, and we take care of the rest.</p>
+
+      <h2>The whole site now actually works on a phone</h2>
+      <p>Until this week, Planagonia was designed with a full-size computer screen in mind — which meant it was genuinely awkward to use on a phone. We went through the entire site and fixed that, without changing how it looks or works on a real computer:</p>
+      <ul>
+        <li>The menu at the top of every page now tucks neatly behind a small ☰ icon instead of spilling across the screen.</li>
+        <li>Inside the app itself, the code and the drawing — previously squeezed on top of each other, both too small to actually use on a small screen — are now separate <strong>Code</strong> and <strong>Viewer</strong> tabs you can switch between with a tap.</li>
+        <li>The row of buttons along the top of the app is shorter and calmer. The everyday ones stay put; the occasional ones (Rename, Delete, and the rest) now live behind a small "···" button, out of the way until you actually need them.</li>
+      </ul>
+
+      <h2>A few small, honest additions</h2>
+      <ul>
+        <li>A proper legal notice page, with our real contact details.</li>
+        <li>A short, plain note about what the site actually stores in your browser — your plans and your sign-in state, nothing more, and no tracking or third-party cookies involved.</li>
+        <li>A small "Beta" label on the app itself. It's still evolving quickly, and we'd rather say so than let you find out the hard way.</li>
+      </ul>
+
+      <h2>Squashing what wasn't quite right</h2>
+      <p>Even a young product picks up rough edges fast, and two were worth calling out:</p>
+      <ul>
+        <li>Dragging certain shapes around a plan could silently stop working, with nothing on screen telling you why. Found and fixed.</li>
+        <li>The button that recenters your view on your whole plan wasn't reliably doing that — sometimes doing nothing at all, sometimes leaving part of your plan cropped out of view. It now reliably shows your entire plan again, however far you'd zoomed or scrolled around.</li>
+      </ul>
+
+      <div class="callout">
+        Curious what any of this actually looks like? <a href="/app/">Open the app</a> and try it — no account needed just to look around, though now you can save your work to one if you'd like it to follow you.
+      </div>
+
+      <p>We'll keep posting here as Planagonia grows — the next things on our list include letting you resend a confirmation email if the first one gets lost, and jumping straight from a saved plan on your profile into the app. Thanks for reading, and for trying something this new.</p>
+    </div>
+  </main>
+</div>
+
+<div class="wrap-chrome">
+  <footer class="site">
+    <span>Planagonia — a 2D plan generator.</span>
+    <span><a href="/app/">Open the app</a> · <a href="/docs/">Docs</a> · <a href="/blog/">Blog</a> · <a href="/profile/">Profile</a> · <a href="/impressum/">Impressum</a></span>
+  </footer>
+</div>
+
+<div id="cookie-notice" class="cookie-notice" hidden>
+  <p>This site saves your plans and sign-in state using your browser's own local storage — no tracking, no third-party cookies.</p>
+  <button id="cookie-notice-dismiss">Got it</button>
+</div>
+<script>
+  (function () {
+    var KEY = "planagonia:cookieNoticeDismissed";
+    var el = document.getElementById("cookie-notice");
+    try { if (!localStorage.getItem(KEY)) el.hidden = false; } catch (e) { el.hidden = false; }
+    document.getElementById("cookie-notice-dismiss").addEventListener("click", function () {
+      el.hidden = true;
+      try { localStorage.setItem(KEY, "1"); } catch (e) { /* private mode — not fatal */ }
+    });
+  })();
+</script>
+
+</body>
+</html>
