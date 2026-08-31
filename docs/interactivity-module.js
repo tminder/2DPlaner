@@ -1112,15 +1112,6 @@
     updateScaleBar();
   }
 
-  function resetView() {
-    viewState = null;
-    const svg = core.rootEl.querySelector("svg");
-    if (svg && lastCoreFit) {
-      svg.setAttribute("viewBox", `${lastCoreFit.x} ${lastCoreFit.y} ${lastCoreFit.width} ${lastCoreFit.height}`);
-    }
-    updateScaleBar();
-  }
-
   function handlePointerMove(e) {
     if (canvasDrag) {
       const svg = core.rootEl.querySelector("svg");
@@ -1202,7 +1193,26 @@
     }
   }
 
-  function handleFitClick() { resetView(); }
+  // Not just "reapply the last computed fit box" (that was the whole first bug: dragging
+  // an element outside the original content bounds never touched that cached box at all,
+  // since every drag rerenders with preserveViewBox:true specifically so the camera
+  // doesn't jump mid-drag — so Fit kept resetting to a stale box that could crop out
+  // exactly what was just dragged there). core.rerender() with no opts is what an
+  // ordinary text edit already does on every keystroke: drop core's own cached
+  // fixedViewBox and recompute a fresh one from wherever every element actually sits now.
+  //
+  // Clearing viewState here too, not left to handleRendered's own "only if the box
+  // actually changed" check below — a second real bug, found by testing the plain
+  // pan-with-nothing-dragged case right after fixing the one above: if nothing moved,
+  // the freshly recomputed box is identical to the last one, that check sees no
+  // difference and leaves viewState alone, and the *old* pan/zoom gets reapplied right
+  // back onto the newly rendered SVG — Fit silently doing nothing whenever there was
+  // nothing to actually refit. Clicking Fit means "discard my zoom/pan," unconditionally,
+  // whether or not the underlying content also happens to need a bigger box this time.
+  function handleFitClick() {
+    viewState = null;
+    core.rerender();
+  }
 
   // Resize can change the SVG's on-screen size without any render or zoom/pan action of
   // ours (window resize, or the code pane being resized) — the scale bar (and the drag
