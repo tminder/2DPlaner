@@ -984,6 +984,14 @@
   // what was added. ----------
   function handlePointerDown(e) {
     if (e.button !== 0) return; // right-click only opens the context menu
+    // The Fit button (and any future plain HTML control appended over the viewer, like
+    // the scale bar) is a child of core.rootEl too, so its own pointerdown bubbles up to
+    // this same listener — a real bug, not a hypothetical, found by actually clicking
+    // Fit after panning and seeing nothing happen: preventDefault() below suppressed the
+    // browser's own click-event synthesis for the button before handleFitClick ever got a
+    // chance to run. Bail out before touching it at all, so a plain button always gets to
+    // handle its own click natively, the same as it would anywhere else on the page.
+    if (e.target.closest("button")) return;
     // Without this, a mousedown-and-move over the SVG is indistinguishable from starting a
     // native text selection to the browser — every drag/pan gesture would leave a stray
     // selection highlight (and, on some browsers, try to start a native element drag) on
