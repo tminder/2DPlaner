@@ -19,6 +19,11 @@
   button, select { font: inherit; font-size: 0.85rem; padding: 0.4rem 0.7rem; border: 1px solid #ccc;
     border-radius: 5px; background: #fff; cursor: pointer; }
   button:hover, select:hover { background: #f0f0f0; }
+  /* Desktop: invisible to layout, so every button inside is just a normal flex item of
+     header exactly as before — this wrapper only starts doing anything at the mobile
+     breakpoint below. */
+  .toolbar-more { display: contents; }
+  .toolbar-toggle, .mobile-tabs { display: none; }
 
   /* main/.layout fill exactly the viewport height left after the header — nothing here
      should ever make the page itself scroll. Both panes stretch to that full height;
@@ -68,16 +73,48 @@
 
   #file-input { display: none; }
 
-  /* Desktop-first: the two-pane code+viewer split (D-006) is the default and stays
-     unchanged above this width. Below it, there's no room for a 420px-wide code pane
-     next to anything usable, so the two panes stack instead of sitting side by side —
-     an adjustment for small screens, not a redesign of the layout itself. */
+  /* Desktop-first: the two-pane code+viewer split (D-006), the always-visible toolbar,
+     and its button sizing are all the default and stay unchanged above this width. Below
+     it: the toolbar's rarely-needed actions collapse behind one "more" toggle instead of
+     wrapping the header across several rows of full-size buttons, and the two panes
+     become tabs — showing both panes at once, even stacked, leaves neither one tall
+     enough to be usable — rather than a redesign of either. */
   @media (max-width: 760px) {
-    header { padding: 0.5rem 0.6rem; gap: 0.5rem; }
-    header .spacer { flex-basis: 100%; height: 0; }
+    header { padding: 0.4rem 0.5rem; gap: 0.4rem; }
+    button, select { font-size: 0.78rem; padding: 0.32rem 0.55rem; }
+    .saved-note { display: none; } /* the toolbar's own least essential line, cut first */
+    header .spacer { display: none; }
+
+    .toolbar-toggle {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 2rem; height: 2rem; padding: 0; font-size: 1.05rem; line-height: 1;
+    }
+    .toolbar-more {
+      display: none; flex-basis: 100%; flex-direction: column; align-items: stretch; gap: 0.35rem;
+    }
+    .toolbar-more.open { display: flex; }
+    .toolbar-more button, .toolbar-more select { width: 100%; }
+
+    .mobile-tabs { display: flex; gap: 0.4rem; padding: 0.5rem 0.5rem 0; background: #fff; border-bottom: 1px solid #ddd; }
+    .tab-btn {
+      flex: 1 1 0; padding: 0.5rem; border: 1px solid #ccc; border-radius: 6px 6px 0 0;
+      border-bottom: none; background: #f0f0f0; font: inherit; font-size: 0.82rem; cursor: pointer;
+    }
+    .tab-btn.active { background: #fff; font-weight: 600; }
+
+    main { padding: 0.5rem; }
     .layout { flex-direction: column; }
-    textarea { flex: 1 1 40%; min-height: 140px; width: 100%; }
-    .viewer-pane { flex: 1 1 45%; min-height: 200px; }
+    /* Only the active tab's pane is shown at all, so it gets the whole remaining height —
+       no percentage split needed the way the earlier two-pane-stacked version needed one. */
+    textarea, .viewer-pane, #code-highlight-wrap { flex: 1 1 auto; min-height: 0; width: 100%; height: auto; }
+    .layout[data-mobile-tab="code"] .viewer-pane { display: none; }
+    /* Hides the bare textarea when code-highlight-module.js hasn't loaded, and its
+       wrapper (#code-highlight-wrap, D-042) when it has — the module moves the real
+       textarea inside that wrapper at runtime, so hiding just the textarea itself would
+       still leave the wrapper's own colored backdrop <pre> sibling, and the flex space
+       it occupies, on screen. */
+    .layout[data-mobile-tab="viewer"] textarea,
+    .layout[data-mobile-tab="viewer"] #code-highlight-wrap { display: none; }
   }
 
   .cookie-notice {
@@ -91,15 +128,23 @@
   .cookie-notice p { margin: 0; font-size: 0.85rem; color: #555; flex: 1 1 20rem; }
   .cookie-notice button { flex: 0 0 auto; }
 
-  /* Bottom placement (the default, fine on a normally-scrolling page) would sit right on
-     top of the viewer pane on the stacked mobile layout above — there's no scrolling past
-     it on this fixed-height page, so until dismissed it would block dragging the one thing
-     this page is for. Moved to the top and shrunk instead; it only ever blocks the toolbar
-     for a moment. Placed after .cookie-notice's own base rule (not just inside a narrower
-     media query) so its `bottom: auto` actually wins the cascade instead of being
-     re-clobbered by the later, equally-specific base rule. */
+  /* Fixed placement (fine on a normally-scrolling page) has no safe spot on this one:
+     the active tab's pane now fills 100% of the space below the header, so a fixed
+     notice — top, bottom, wherever — sits directly on top of it and silently absorbs
+     every touch meant for the plan or the toolbar underneath, confirmed the hard way by
+     testing an actual drag through it rather than assumed from a screenshot. Taken out
+     of `position: fixed` entirely instead, right here: `order: -1` puts it first in
+     body's own flex column regardless of its DOM position (after </main>, unchanged, so
+     it stays last for screen-reader/keyboard order — dismissing it isn't the first thing
+     a keyboard user should be steered to). header/.mobile-tabs/main then push down to
+     make room for it the same way any ordinary flex item would, and reclaim that space
+     the instant `hidden` removes it — no overlap possible, nothing to calculate. */
   @media (max-width: 760px) {
-    .cookie-notice { top: 0.6rem; bottom: auto; left: 0.6rem; right: 0.6rem; padding: 0.7rem 0.9rem; gap: 0.6rem; }
+    .cookie-notice {
+      position: static; order: -1; max-width: none; margin: 0;
+      border-radius: 0; border-width: 0 0 1px 0; box-shadow: none;
+      padding: 0.6rem 0.7rem; gap: 0.6rem;
+    }
     .cookie-notice p { font-size: 0.8rem; }
   }
 </style>
@@ -108,20 +153,27 @@
 <header>
   <h1>Planagonia <span class="beta-badge">Beta</span></h1>
   <select id="plan-switcher"></select>
-  <button id="rename-btn" title="Rename the current plan">Rename…</button>
-  <button id="delete-btn" title="Delete the current plan">Delete</button>
-  <button id="open-btn">Import…</button>
-  <button id="save-btn">Export…</button>
-  <input type="file" id="file-input" accept=".planagon,.2dplan,.txt,text/plain">
-  <button id="cloud-signin-btn" title="Sign in to save/load plans in the cloud">Sign in…</button>
-  <span id="cloud-status" style="font-size: 0.8rem; color: #888;"></span>
-  <button id="cloud-save-btn" title="Save the current plan to the cloud" hidden>Save to Cloud</button>
-  <button id="cloud-signout-btn" title="Sign out" hidden>Sign out</button>
+  <button class="toolbar-toggle" id="toolbar-toggle" aria-label="More actions" aria-expanded="false" aria-controls="toolbar-more">⋯</button>
+  <div class="toolbar-more" id="toolbar-more">
+    <button id="rename-btn" title="Rename the current plan">Rename…</button>
+    <button id="delete-btn" title="Delete the current plan">Delete</button>
+    <button id="open-btn">Import…</button>
+    <button id="save-btn">Export…</button>
+    <input type="file" id="file-input" accept=".planagon,.2dplan,.txt,text/plain">
+    <button id="cloud-signin-btn" title="Sign in to save/load plans in the cloud">Sign in…</button>
+    <span id="cloud-status" style="font-size: 0.8rem; color: #888;"></span>
+    <button id="cloud-save-btn" title="Save the current plan to the cloud" hidden>Save to Cloud</button>
+    <button id="cloud-signout-btn" title="Sign out" hidden>Sign out</button>
+  </div>
   <div class="spacer"></div>
-  <span style="font-size: 0.8rem; color: #888;">Saved automatically in this browser</span>
+  <span class="saved-note" style="font-size: 0.8rem; color: #888;">Saved automatically in this browser</span>
 </header>
+<div class="mobile-tabs">
+  <button class="tab-btn" id="tab-code" data-tab="code">Code</button>
+  <button class="tab-btn active" id="tab-viewer" data-tab="viewer">Viewer</button>
+</div>
 <main>
-  <div class="layout">
+  <div class="layout" id="layout" data-mobile-tab="viewer">
     <textarea id="source" spellcheck="false"></textarea>
     <div class="viewer-pane">
       <div id="plan-root"></div>
@@ -146,6 +198,31 @@
     document.getElementById("cookie-notice-dismiss").addEventListener("click", function () {
       el.hidden = true;
       try { localStorage.setItem(KEY, "1"); } catch (e) { /* private mode — not fatal */ }
+    });
+  })();
+</script>
+
+<script>
+  // Mobile-only chrome: a "more actions" toggle for the toolbar's rarely-needed buttons,
+  // and code/viewer tabs in place of the always-both-visible desktop layout. Both are
+  // no-ops above the 760px breakpoint (the toggle and tabs are display:none there, and
+  // .layout's data-mobile-tab attribute has nothing to select against) — this script
+  // only ever changes what's shown, never anything the rest of the app's own logic reads.
+  (function () {
+    var toolbarToggle = document.getElementById("toolbar-toggle");
+    var toolbarMore = document.getElementById("toolbar-more");
+    toolbarToggle.addEventListener("click", function () {
+      var open = toolbarMore.classList.toggle("open");
+      toolbarToggle.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+
+    var layout = document.getElementById("layout");
+    var tabButtons = document.querySelectorAll(".tab-btn");
+    tabButtons.forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        layout.dataset.mobileTab = btn.dataset.tab;
+        tabButtons.forEach(function (b) { b.classList.toggle("active", b === btn); });
+      });
     });
   })();
 </script>

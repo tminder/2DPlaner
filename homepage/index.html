@@ -87,6 +87,7 @@
     color: var(--ink-soft); text-decoration: none; font-size: 0.92rem; margin-left: 1.75rem;
   }
   nav.site a:hover { color: var(--ink); }
+  .nav-toggle { display: none; }
   .btn {
     display: inline-flex; align-items: center; gap: 0.5rem;
     padding: 0.7rem 1.3rem; border-radius: 7px; font-size: 0.95rem; font-weight: 600;
@@ -185,8 +186,17 @@
     section.author .row { grid-template-columns: 1fr; }
   }
   @media (max-width: 640px) {
-    header.site { flex-wrap: wrap; row-gap: 0.5rem; }
-    nav.site a { margin-left: 0; margin-right: 1.1rem; }
+    header.site { flex-wrap: wrap; row-gap: 0.7rem; }
+    .nav-toggle {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 2.3rem; height: 2.3rem; border: 1px solid var(--line); border-radius: 7px;
+      background: var(--paper-raised); color: var(--ink); font-size: 1.15rem; cursor: pointer;
+    }
+    nav.site {
+      display: none; flex-basis: 100%; flex-direction: column; gap: 0.9rem;
+    }
+    nav.site.open { display: flex; }
+    nav.site a { margin-left: 0; font-size: 1rem; }
     footer.site { flex-direction: column; align-items: flex-start; }
     .author-diagram { flex-direction: column; }
     .author-diagram .box { min-width: 0; width: 100%; }
@@ -199,13 +209,24 @@
 <div class="wrap-chrome">
   <header class="site">
     <a class="wordmark" href="/"><span class="dot">▦</span> Planagonia</a>
-    <nav class="site">
+    <button class="nav-toggle" id="nav-toggle" aria-label="Menu" aria-expanded="false" aria-controls="site-nav">☰</button>
+    <nav class="site" id="site-nav">
       <a href="/app/">Open the app</a>
       <a href="/docs/">Docs</a>
       <a href="/profile/">Profile</a>
     </nav>
   </header>
 </div>
+<script>
+  (function () {
+    var toggle = document.getElementById("nav-toggle");
+    var nav = document.getElementById("site-nav");
+    toggle.addEventListener("click", function () {
+      var open = nav.classList.toggle("open");
+      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+  })();
+</script>
 
 <div class="wrap">
   <section class="hero">
