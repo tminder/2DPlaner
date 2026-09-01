@@ -988,6 +988,7 @@
     core.sourceEl.value = text.trimEnd() + `\nconnection ${fromId} ${toId}\n`;
     core.dragmsgEl.textContent = `Connected: ${fromId} – ${toId}`;
     core.rerender({ preserveViewBox: true });
+    core.commitUndoStep();
   }
 
   function removeConnection(fromId, toId) {
@@ -1000,6 +1001,7 @@
     core.sourceEl.value = deleteSpans(text, [conn]);
     core.dragmsgEl.textContent = `Disconnected '${fromId}' and '${toId}'.`;
     core.rerender({ preserveViewBox: true });
+    core.commitUndoStep();
   }
 
   function deleteElement(nodeId) {
@@ -1025,6 +1027,7 @@
     if (selectedId === nodeId) selectedId = null;
     core.dragmsgEl.textContent = `Deleted '${nodeId}'.`;
     core.rerender();
+    core.commitUndoStep();
   }
 
   // ---------- Context menu ----------
@@ -1294,6 +1297,10 @@
       selectedId = drag.id; // click or drag-and-release both select the element
       drag = null;
       core.rerender({ preserveViewBox: true });
+      // Once per gesture, not once per pointermove frame (applyDrag runs on every one of
+      // those) — commitUndoStep is a no-op if the text didn't actually change, so a plain
+      // click-to-select (drag set, nothing moved) never clutters history either.
+      core.commitUndoStep();
     }
   }
 

@@ -19,6 +19,9 @@
   button, select { font: inherit; font-size: 0.85rem; padding: 0.4rem 0.7rem; border: 1px solid #ccc;
     border-radius: 5px; background: #fff; cursor: pointer; }
   button:hover, select:hover { background: #f0f0f0; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  button:disabled:hover { background: #fff; }
+  #undo-btn, #redo-btn { padding: 0.4rem 0.6rem; font-size: 1rem; line-height: 1; }
   /* Desktop: invisible to layout, so every button inside is just a normal flex item of
      header exactly as before — this wrapper only starts doing anything at the mobile
      breakpoint below. */
@@ -153,6 +156,8 @@
 <header>
   <h1>Planagonia <span class="beta-badge">Beta</span></h1>
   <select id="plan-switcher"></select>
+  <button id="undo-btn" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
+  <button id="redo-btn" title="Redo (Ctrl+Shift+Z)" aria-label="Redo">↷</button>
   <button class="toolbar-toggle" id="toolbar-toggle" aria-label="More actions" aria-expanded="false" aria-controls="toolbar-more">⋯</button>
   <div class="toolbar-more" id="toolbar-more">
     <button id="rename-btn" title="Rename the current plan">Rename…</button>
@@ -1032,6 +1037,7 @@ function switchToPlan(id) {
   unsavedExample = null;
   setActivePlan(id);
   sourceEl.value = p.text;
+  resetUndoHistory(p.text);
   fixedViewBox = null;
   refreshPlanSwitcher();
   rerender();
@@ -1226,6 +1232,67 @@ function showError(msg) {
   errorHideTimer = setTimeout(() => { errorEl.textContent = ""; }, 5000);
 }
 
+// ---------- Undo/redo (F-017) ----------
+// A plain array of full source-text snapshots, not a diff/patch stack — this app's source
+// text is small, and a linear history of "the text at each committed point" is simple to
+// get right. Deliberately not layered on the textarea's own native undo: a drag or
+// context-menu action mutates sourceEl.value directly (never a real keystroke), so the
+// native stack never sees it at all — the one way to make it see them,
+// document.execCommand("insertText", ...), requires the textarea to actually be focused,
+// which on a touch device means the on-screen keyboard popping up on every single drag.
+// Considered and rejected for exactly that reason (asked directly, confirmed before
+// building either way) — this app's own mobile viewer (D-068) exists specifically so
+// dragging doesn't need the keyboard anywhere near it. Cost of the plain-array approach
+// instead: typed-edit undo granularity is "whatever the debounce below grouped," not the
+// browser's own finer per-word heuristic.
+const UNDO_CAP = 200;
+let undoHistory = [];
+let undoIndex = -1;
+
+function resetUndoHistory(text) {
+  undoHistory = [text];
+  undoIndex = 0;
+  updateUndoUi();
+}
+
+// The one commit point every edit source (a finished drag, a context-menu action, a
+// debounced burst of typing) funnels through — pushes the *current* sourceEl.value as a
+// new step, truncating any redo tail the way committing a fresh edit after an undo always
+// does. A no-op if nothing actually changed since the last step, so e.g. a drag gesture
+// that ends up moving nothing doesn't clutter history with a duplicate.
+function commitUndoStep() {
+  const text = sourceEl.value;
+  if (text === undoHistory[undoIndex]) return;
+  undoHistory = undoHistory.slice(0, undoIndex + 1);
+  undoHistory.push(text);
+  undoIndex++;
+  if (undoHistory.length > UNDO_CAP) { undoHistory.shift(); undoIndex--; }
+  updateUndoUi();
+}
+
+function undo() {
+  if (undoIndex <= 0) return;
+  undoIndex--;
+  sourceEl.value = undoHistory[undoIndex];
+  rerender({ preserveViewBox: true });
+  updateUndoUi();
+}
+
+function redo() {
+  if (undoIndex >= undoHistory.length - 1) return;
+  undoIndex++;
+  sourceEl.value = undoHistory[undoIndex];
+  rerender({ preserveViewBox: true });
+  updateUndoUi();
+}
+
+function updateUndoUi() {
+  const undoBtn = document.getElementById("undo-btn");
+  const redoBtn = document.getElementById("redo-btn");
+  if (undoBtn) undoBtn.disabled = undoIndex <= 0;
+  if (redoBtn) redoBtn.disabled = undoIndex >= undoHistory.length - 1;
+}
+
 // ---------- Module composition (D-011/F-002's third promise, D-046) ----------
 // Every existing module hook runs *after* core has already rendered — fine for an
 // overlay, useless for a module that needs to inject nodes the renderer itself should
@@ -1327,6 +1394,7 @@ window.PlanCore = {
   M,
   rerender,
   registerBeforeRender,
+  commitUndoStep,
   onRendered: (cb) => {
     renderedCallbacks.push(cb);
     return () => {
@@ -1354,6 +1422,7 @@ function newPlanFromExample(key) {
   unsavedExample = { key, name: EXAMPLE_LABELS[key], text };
   setActivePlan(null);
   sourceEl.value = text;
+  resetUndoHistory(text);
   fixedViewBox = null;
   refreshPlanSwitcher();
   rerender();
@@ -1458,11 +1527,37 @@ if (!plans.length) {
 }
 setActivePlan(activePlanId);
 sourceEl.value = activePlan().text;
+resetUndoHistory(activePlan().text);
 fixedViewBox = null;
 updateCloudUi();
 refreshPlanSwitcher();
 rerender();
-sourceEl.addEventListener("input", () => rerender());
+
+// Typing commits to undo history in debounced bursts (one step per pause, not per
+// keystroke) rather than on every input event — matches how most editors group typed
+// undo, and avoids a history entry for every single character. blur commits immediately
+// (clearing any pending debounce) so clicking away from a quick, still-pending edit
+// doesn't leave it stranded uncommitted.
+let typingCommitTimer = null;
+sourceEl.addEventListener("input", () => {
+  rerender();
+  clearTimeout(typingCommitTimer);
+  typingCommitTimer = setTimeout(commitUndoStep, 600);
+});
+sourceEl.addEventListener("blur", () => {
+  clearTimeout(typingCommitTimer);
+  commitUndoStep();
+});
+
+document.getElementById("undo-btn").addEventListener("click", undo);
+document.getElementById("redo-btn").addEventListener("click", redo);
+document.addEventListener("keydown", (e) => {
+  const mod = e.ctrlKey || e.metaKey;
+  if (!mod) return;
+  const key = e.key.toLowerCase();
+  if (key === "z" && !e.shiftKey) { e.preventDefault(); undo(); }
+  else if ((key === "z" && e.shiftKey) || key === "y") { e.preventDefault(); redo(); }
+});
 </script>
 </body>
 </html>
