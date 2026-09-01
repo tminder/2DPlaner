@@ -542,6 +542,52 @@
     return [clampedX - x, clampedY - y];
   }
 
+  // Which of the parent rect's four edges a contained child is currently nearest —
+  // "nearest" rather than "touching", since flush is judged from wherever the child
+  // already sits (its own declared position), not only once it happens to be flush.
+  function nearestParentRectEdge(childBox, parentAbs, parentSize) {
+    const [pw, ph] = parentSize;
+    const distances = {
+      left: childBox.left - parentAbs[0],
+      right: (parentAbs[0] + pw) - childBox.right,
+      top: childBox.top - parentAbs[1],
+      bottom: (parentAbs[1] + ph) - childBox.bottom,
+    };
+    return Object.keys(distances).reduce((a, b) => (distances[a] <= distances[b] ? a : b));
+  }
+
+  // D-032's other, previously-unbuilt half of mode 3: `flush: true` layered on top of
+  // `placement: "inside"` — contained *and* pinned against whichever edge of the parent
+  // it's nearest to (a door built into a wall, as opposed to a sofa merely kept inside a
+  // room). Same shape as trySlideAlongConnectedRect's "outside, attached" mechanic
+  // (D-032 mode 2) but measured against the *inside* of the parent's own boundary instead
+  // of an externally connected rect: motion perpendicular to the locked edge is ignored
+  // (this doesn't let a flush child peel off and re-attach to a different edge — a bigger
+  // gesture than this version supports, matching how narrowly every other placement mode
+  // is scoped); motion along the edge slides within its own span, clamped by the same
+  // exact per-axis math clampRectToStayInsideRect already uses, just pinned on one axis
+  // rather than free on both.
+  function clampFlushInsideRect(nodeId, dx, dy, positions, parentAbs, parentSize, childSize, warnings) {
+    const [x, y] = positions[nodeId];
+    const [pw, ph] = parentSize, [cw, ch] = childSize;
+    const currentBox = { left: x, top: y, right: x + cw, bottom: y + ch };
+    const edge = nearestParentRectEdge(currentBox, parentAbs, parentSize);
+
+    let newX = x, newY = y;
+    if (edge === "left" || edge === "right") {
+      newX = edge === "left" ? parentAbs[0] : parentAbs[0] + pw - cw;
+      const targetY = y + dy;
+      newY = Math.min(parentAbs[1] + ph - ch, Math.max(parentAbs[1], targetY));
+      if (targetY !== newY) warnings.push(`${nodeId}: reached the end of the wall`);
+    } else {
+      newY = edge === "top" ? parentAbs[1] : parentAbs[1] + ph - ch;
+      const targetX = x + dx;
+      newX = Math.min(parentAbs[0] + pw - cw, Math.max(parentAbs[0], targetX));
+      if (targetX !== newX) warnings.push(`${nodeId}: reached the end of the wall`);
+    }
+    return [newX - x, newY - y];
+  }
+
   // Entry point, mirroring clampToNoCollision's shape. Silently no-ops (no warning) for a
   // node that merely *inherited* "inside" from its parent's childPlacement default but
   // isn't a rect — e.g. a corner-ref wall or a circle side table sitting in a room with
@@ -549,7 +595,20 @@
   // specific promise about every child. An *explicit* placement: "inside" on an
   // unsupported shape does warn, since that one was a direct, unmet request.
   function clampToContainment(node, parent, dx, dy, positions, warnings) {
-    if (placementFor(node, parent) !== "inside") return [dx, dy];
+    const placement = placementFor(node, parent);
+    if (placement !== "inside") {
+      // Anything explicitly declared but not one of this language's two recognized
+      // placement values (D-032: "inside", "outside" — "outside" isn't checked here at
+      // all, it's mode 2's own connected-point mechanic, see trySlideAlongConnectedRect)
+      // is silently unrecognized elsewhere in this language (D-044's own status note), so
+      // flagging it here — where an author would actually be looking, mid-drag — beats
+      // leaving a typo silently doing nothing forever.
+      if (typeof node.props.placement === "string" && placement !== "outside") {
+        warnings.push(`${node.id}: placement "${placement}" isn't recognized (expected "inside" or "outside") — ignored`);
+      }
+      return [dx, dy];
+    }
+    const flush = node.props.flush === true;
     if (node.props.shape !== "rect" || !node.props.size) {
       if (typeof node.props.placement === "string") {
         warnings.push(`${node.id}: containment only checked for rect children (D-032 scope), not enforced here`);
@@ -557,13 +616,17 @@
       return [dx, dy];
     }
     if (parent.props.shape === "rect" && parent.props.size) {
-      const [newDx, newDy] = clampRectToStayInsideRect(
-        node.id, dx, dy, positions, positions[parent.id],
-        [core.numOf(parent.props.size[0]), core.numOf(parent.props.size[1])],
-        [core.numOf(node.props.size[0]), core.numOf(node.props.size[1])]
-      );
+      const parentAbs = positions[parent.id];
+      const parentSize = [core.numOf(parent.props.size[0]), core.numOf(parent.props.size[1])];
+      const childSize = [core.numOf(node.props.size[0]), core.numOf(node.props.size[1])];
+      const [newDx, newDy] = flush
+        ? clampFlushInsideRect(node.id, dx, dy, positions, parentAbs, parentSize, childSize, warnings)
+        : clampRectToStayInsideRect(node.id, dx, dy, positions, parentAbs, parentSize, childSize);
       if (newDx !== dx || newDy !== dy) warnings.push(`${node.id}: stays inside '${parent.id}'`);
       return [newDx, newDy];
+    }
+    if (flush) {
+      warnings.push(`${node.id}: flush only checked for a rect parent (D-032 scope), not enforced here`);
     }
     const parentPoly = parentBoundaryPolygon(parent, positions);
     if (!parentPoly) {
@@ -711,10 +774,17 @@
     // A connected point resting on a rect's edge slides along that edge instead of
     // dragging the rect (D-032) — only for the directly-dragged element; Shift
     // (singleOnly) still means "ignore everything, move just me". Dragging the rect
-    // itself is unaffected: a connected point still follows it rigidly.
+    // itself is unaffected: a connected point still follows it rigidly. This has always
+    // applied automatically, purely from the geometry (a connected point actually resting
+    // on a rect) — `placement: "outside"` doesn't gate it, only confirms it: declaring it
+    // explicitly is a way to state intent (and get warned below if that intent isn't
+    // actually met), not a requirement to make the mechanic work at all.
     let edits = !dragState.singleOnly && !node.props.shape && node.props.position
       ? trySlideAlongConnectedRect(node, base, dx, dy, cornerUsers, warnings)
       : null;
+    if (!edits && node.props.placement === "outside") {
+      warnings.push(`${node.id}: placement "outside" expects a connection to a rect it's actually resting against — not met here, dragging normally instead`);
+    }
 
     if (!edits) {
       edits = [...dragEditsFor(node, parent, dx, dy, base, cornerUsers, warnings)];

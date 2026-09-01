@@ -363,12 +363,39 @@ isn't itself a `rect` is silently left unconstrained, rather than warned about o
 drag — but an *explicit* `placement: "inside"` on an unsupported child does warn, since
 that was a direct, specific request nothing can currently honor.
 
-**Not yet built:** `flush` (D-032's other, still-open half — a door-in-wall style
-attachment that's *both* contained *and* seeking one specific edge, layered on top of
-`"inside"`), and containment for an element moved along by a `connection` rather than
-dragged directly (the same F-004 gap collision checking has). First validated standalone
-in [Prototypes/16-parent-child-placement/](../Prototypes/16-parent-child-placement/), now
-wired into [docs/](../docs/)'s `interactivity-module.js`.
+**`flush` is now built** — D-032's other half, a door-in-wall style attachment that's
+*both* contained *and* pinned against one specific edge, layered on top of `"inside"`:
+
+```
+element window {
+  shape: "rect"
+  size: [1.2m, 0.2m]
+  position: [1m, 0m]
+  placement: "inside"
+  flush: true                        // in addition to staying inside, stays pinned to
+}                                     // whichever edge of the parent it's nearest to
+```
+
+`flush` is judged from wherever the element already sits — whichever of the parent's four
+edges it's currently nearest becomes the locked edge. Dragging along that edge slides the
+element within its own span (warning, not blocking, once it reaches either end); dragging
+perpendicular to it is ignored outright, the same "motion off-axis doesn't do anything"
+shape mode 2's outside-attached mechanic already uses. This doesn't let an element peel
+off one edge and re-attach to a different one — a bigger gesture than this version
+supports, same narrow scope as everywhere else placement is checked. Scoped identically
+to plain `"inside"`: a `rect` child (literal size) against a `rect` parent only — declaring
+`flush` against a `polygon`/other parent warns rather than silently doing nothing.
+
+**Still open:** containment for an element moved along by a `connection` rather than
+dragged directly (the same F-004 gap collision checking has).
+
+**An unrecognized `placement` value now warns, mid-drag, rather than being silently
+ignored forever.** `"inside"` and `"outside"` (mode 2's own connected-point mechanic,
+which has never needed an explicit declaration to work — see the Drag-and-drop section
+above — but is now recognized as a real, named value too, so declaring it states intent
+and gets checked) are the only two this language currently understands; anything else
+(a typo, a guessed value) surfaces `placement "X" isn't recognized` the first time that
+element is dragged, instead of the value doing nothing with no explanation anywhere.
 
 ## Modules
 
