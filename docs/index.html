@@ -1226,6 +1226,61 @@ function showError(msg) {
   errorHideTimer = setTimeout(() => { errorEl.textContent = ""; }, 5000);
 }
 
+// ---------- Module composition (D-011/F-002's third promise, D-046) ----------
+// Every existing module hook runs *after* core has already rendered — fine for an
+// overlay, useless for a module that needs to inject nodes the renderer itself should
+// treat as first-class (a "wall with a door" expanding from a few parameters into the
+// same corner/polyline structure a human would hand-author, D-018). registerBeforeRender
+// callbacks run once per render, on the freshly-parsed tree, free to push synthesized
+// nodes into any node's own `children` array before render() ever sees them — rendering
+// itself needs zero composition-specific code, since a synthesized polyline flows through
+// the exact same code path a typed one would.
+// Returns an unsubscribe function, same shape as onRendered below — D-031's own lesson
+// (module loading and module *activation* are different things once a module has state)
+// applies here too: a composing module has to be able to stop expanding its composites
+// once deactivated (D-045's deactivateRemovedModules), or its callback keeps running
+// forever after the plan stops declaring it.
+let beforeRenderCallbacks = [];
+function registerBeforeRender(cb) {
+  beforeRenderCallbacks.push(cb);
+  return () => {
+    const i = beforeRenderCallbacks.indexOf(cb);
+    if (i !== -1) beforeRenderCallbacks.splice(i, 1);
+  };
+}
+
+// parse() only ever indexes the nodes it actually parsed — a node a beforeRender callback
+// pushes afterward needs nodesById rebuilt, or its own data-id (rendered exactly like any
+// other element's, D-046) looks up to nothing the moment a click or drag tries to resolve
+// it. Cheap to just walk the whole tree fresh rather than asking every composing module
+// to maintain the map itself.
+function reindexNodes(node, nodesById) {
+  nodesById[node.id] = node;
+  for (const child of node.children) reindexNodes(child, nodesById);
+}
+
+// Runs every registered beforeRender callback against an already-parsed program, then
+// reindexes — the one place this pair of steps happens, so nothing ever calls one without
+// the other. Deliberately *not* folded into parse() itself: parse() also has to run once,
+// on its own, just to discover which modules a plan declares in the first place (module
+// loading depends on that), before any of those modules' own beforeRender callbacks could
+// possibly exist yet — expanding has to happen strictly after loading, never bundled into
+// the same parse that's what triggers loading.
+function expandTree(program) {
+  for (const cb of beforeRenderCallbacks) cb(program);
+  reindexNodes(program.root, program.nodesById);
+  return program;
+}
+
+// What interactivity-module.js's own throwaway reparses (drag-in-progress,
+// connect/disconnect snap) actually need: by the time any of those can run, whatever a
+// plan declares has necessarily already loaded once (nothing to click or drag until a
+// first real render happened) — so, unlike rerender() below, there's no module-loading
+// race to worry about here, and parsing plus expanding can safely happen as one step.
+function parseExpanded(text) {
+  return expandTree(parse(text));
+}
+
 async function rerender(opts = {}) {
   const active = activePlan();
   if (active) {
@@ -1250,7 +1305,7 @@ async function rerender(opts = {}) {
     const requiredModules = [...new Set([...AUTO_MODULES, ...parsed.modules])];
     deactivateRemovedModules(requiredModules);
     await ensureModulesLoaded(requiredModules);
-    program = parsed;
+    program = expandTree(parsed);
     if (!opts.preserveViewBox) fixedViewBox = null;
     const result = render(program);
     rootEl.innerHTML = result.svg;
@@ -1264,13 +1319,14 @@ async function rerender(opts = {}) {
 }
 
 window.PlanCore = {
-  parse, render, tokenize,
+  parse, parseExpanded, render, tokenize,
   numOf, isEditable, formatNumber,
   computePositions, computeCornerUsers, resolvePointAbs, connectedNodeIds, nodeDragEdits,
   polygonSelfIntersects,
   rootEl, sourceEl, dragmsgEl, modlogEl,
   M,
   rerender,
+  registerBeforeRender,
   onRendered: (cb) => {
     renderedCallbacks.push(cb);
     return () => {

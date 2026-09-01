@@ -744,7 +744,11 @@
   function applyDrag(dragState, dx, dy) {
     let base;
     try {
-      base = core.parse(dragState.baseText);
+      // parseExpanded, not the bare parse — this drag frame's own throwaway tree needs
+      // any synthesized composite children (docs/wall-with-door-module.js, D-046) in it
+      // too, or resolving one by id (exactly what's about to happen for the very node
+      // being dragged, if it's one of them) throws instead of finding nothing.
+      base = core.parseExpanded(dragState.baseText);
     } catch (e) {
       core.dragmsgEl.textContent = `Can't continue this drag: the source text is currently invalid (${e.message}). Fix it in the editor or reload to reset.`;
       return;
@@ -784,6 +788,11 @@
       : null;
     if (!edits && node.props.placement === "outside") {
       warnings.push(`${node.id}: placement "outside" expects a connection to a rect it's actually resting against — not met here, dragging normally instead`);
+    }
+
+    if (!edits) {
+      const composite = composeParentOf(node, base);
+      if (composite) edits = composeDragEdits(node, composite, dx, dy, warnings);
     }
 
     if (!edits) {
@@ -852,6 +861,69 @@
     return core.nodeDragEdits(node, parent, slideDx, slideDy, base, cornerUsers, warnings);
   }
 
+  // ---------- Compose drag-editability (F-002's other, previously-unattempted half,
+  // D-046) — a synthesized child (docs/wall-with-door-module.js's own _wall_a/_door/
+  // _wall_b, pushed into the tree by core.registerBeforeRender before this module ever
+  // sees it) has no source-text span of its own: it was computed, never typed, so
+  // core.nodeDragEdits finds nothing editable in its points and produces no edits at all
+  // — exactly the "nothing solvable to drag" gap D-046 flagged and deliberately left open
+  // rather than guessed at. Solved backward into the *composite's own* from/to/doorAt
+  // instead, genuinely more than D-012's generic "invert a linear expression" covers, so
+  // handled as its own explicit, per-composition-type mechanism rather than a general one
+  // — D-046's own framing, not a scope-cut made here. ----------
+
+  // Only wallWithDoor exists right now (docs/wall-with-door-module.js) — this returns the
+  // owning composite node only for that specific composition, not a general "is this
+  // node's parent a composite" check, since there's nothing else yet to generalize from.
+  function composeParentOf(node, base) {
+    if (!node.parentId) return null;
+    const parent = base.nodesById[node.parentId];
+    return parent && parent.props.compose === "wallWithDoor" ? parent : null;
+  }
+
+  function composeDragEdits(node, composite, dx, dy, warnings) {
+    const suffix = node.id.slice(composite.id.length);
+    if (suffix !== "_wall_a" && suffix !== "_door" && suffix !== "_wall_b") return null;
+
+    const from = composite.props.from, to = composite.props.to;
+    if (!core.isEditable(from[0]) || !core.isEditable(from[1]) ||
+        !core.isEditable(to[0]) || !core.isEditable(to[1])) {
+      return null; // from/to aren't plain literals (e.g. an expression) — nothing to solve backward into
+    }
+
+    // Dragging either wall segment moves the whole wall: from and to shift together, the
+    // same rigid-translate a hand-authored shape's literal points already get.
+    if (suffix === "_wall_a" || suffix === "_wall_b") {
+      return [
+        { start: from[0].start, end: from[0].end, text: core.formatNumber(from[0].value + dx, from[0].unit) },
+        { start: from[1].start, end: from[1].end, text: core.formatNumber(from[1].value + dy, from[1].unit) },
+        { start: to[0].start, end: to[0].end, text: core.formatNumber(to[0].value + dx, to[0].unit) },
+        { start: to[1].start, end: to[1].end, text: core.formatNumber(to[1].value + dy, to[1].unit) },
+      ];
+    }
+
+    // Dragging the door itself slides it along the wall instead — only the component of
+    // the drag along the wall's own direction matters, the same "off-axis motion does
+    // nothing" shape D-032's outside-attached/flush mechanics already use elsewhere in
+    // this file, just projected onto an arbitrary wall angle instead of an axis-aligned
+    // rect edge.
+    if (!core.isEditable(composite.props.doorAt)) return null;
+    const fx = from[0].value, fy = from[1].value, tx = to[0].value, ty = to[1].value;
+    const wallDx = tx - fx, wallDy = ty - fy;
+    const wallLen = Math.hypot(wallDx, wallDy) || 1;
+    const ux = wallDx / wallLen, uy = wallDy / wallLen;
+    const slide = dx * ux + dy * uy;
+
+    const doorWidth = core.numOf(composite.props.doorWidth);
+    const doorAtProp = composite.props.doorAt;
+    const proposed = doorAtProp.value + slide;
+    const clamped = Math.min(Math.max(proposed, 0), Math.max(0, wallLen - doorWidth));
+    if (clamped !== proposed) warnings.push(`${node.id}: reached the end of the wall`);
+    if (clamped === doorAtProp.value) return [];
+
+    return [{ start: doorAtProp.start, end: doorAtProp.end, text: core.formatNumber(clamped, doorAtProp.unit) }];
+  }
+
   // ---------- Connect / disconnect (with snap) / delete ----------
   // If exactly one side of a connection is a bare point, that side is always the mover on
   // reconnect, whichever of fromId/toId it happens to be — snapping a whole rect onto a
@@ -905,7 +977,7 @@
   function createConnection(fromId, toId) {
     let text = core.sourceEl.value;
     let base;
-    try { base = core.parse(text); } catch (e) { base = null; }
+    try { base = core.parseExpanded(text); } catch (e) { base = null; }
     if (base) {
       const edits = snapEdits(base, fromId, toId);
       if (edits.length) {
@@ -921,7 +993,7 @@
   function removeConnection(fromId, toId) {
     const text = core.sourceEl.value;
     let base;
-    try { base = core.parse(text); } catch (e) { return; }
+    try { base = core.parseExpanded(text); } catch (e) { return; }
     const conn = base.connections.find((c) =>
       (c.from === fromId && c.to === toId) || (c.from === toId && c.to === fromId));
     if (!conn) return;
@@ -933,7 +1005,7 @@
   function deleteElement(nodeId) {
     const text = core.sourceEl.value;
     let base;
-    try { base = core.parse(text); } catch (e) { return; }
+    try { base = core.parseExpanded(text); } catch (e) { return; }
     const node = base.nodesById[nodeId];
     if (!node) return;
     if (!node.parentId) {

@@ -539,18 +539,23 @@ historical.
   closed-form per-axis clamp for the rect/rect case (found necessary after a first
   tangent-slide attempt, reusing D-041's approach, let a child escape right at a corner);
   a polygon parent still falls back to that general, less-validated approach. Scoped
-  narrowly: only a `rect` child with a literal `position`, no `flush` (D-032's other,
-  still-unbuilt half), no corner-refs or other connections. **Since promoted into
-  [docs/](../docs/)'s `interactivity-module.js`** — see "Containment" above.
+  narrowly: only a `rect` child with a literal `position`, no corner-refs or other
+  connections. **Since promoted into [docs/](../docs/)'s `interactivity-module.js`** — see
+  "Containment" above, which now also covers `flush` (D-032's other half, D-071).
 - [Prototypes/17-module-composition/](../Prototypes/17-module-composition/) — tests D-011's
-  third, previously-untried module promise: a module offering a reusable, higher-level
-  building block "composed from Element and Connection" — literally the wall-with-a-door
-  example this document has used illustratively throughout. `wall-with-door-module.js`
-  expands one compact `compose: "wallWithDoor"` element into the same three-piece
-  wall/door/wall structure the shipped `apartment` example writes by hand as four corner
-  elements. Needed exactly one new core hook, `registerBeforeRender`, letting a module
-  inject synthesized child nodes before `render()` runs — rendering itself needed zero
-  composition-specific code once that existed. Confirms the rendering half of this promise;
-  found, not solved, that a synthesized child isn't drag-editable for free (D-012's
-  backward-solving only rewrites literal source text, and a synthesized point was never
-  typed) — see D-046. Not wired into `docs/`.
+  third module promise: a module offering a reusable, higher-level building block
+  "composed from Element and Connection" — literally the wall-with-a-door example this
+  document has used illustratively throughout. `wall-with-door-module.js` expands one
+  compact `compose: "wallWithDoor"` element into the same three-piece wall/door/wall
+  structure the shipped `apartment` example writes by hand as four corner elements. Needed
+  exactly one new core hook, `registerBeforeRender`, letting a module inject synthesized
+  child nodes before `render()` runs — rendering itself needed zero composition-specific
+  code once that existed. **Since promoted into [docs/](../docs/)** (D-071), drag-editability
+  included: dragging a wall segment moves the whole composite (`from`/`to` shift together);
+  dragging the door slides `doorAt` along the wall, clamped to its own span — solved
+  backward into the composite's own parameters, the way D-046 originally flagged as
+  needed but genuinely harder than D-012's existing per-property solving. `docs/`'s own
+  `parse()` had to split into a bare parse and a `parseExpanded` (parse + run every
+  `registerBeforeRender` callback + reindex) — module loading itself depends on a first,
+  un-expanded parse to discover which modules a plan even declares, so expansion can't be
+  folded into parsing itself without a circular dependency.
