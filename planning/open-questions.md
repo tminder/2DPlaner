@@ -117,7 +117,11 @@ Currently a plan's settings are purely textual — turning on `edgeLengths` or `
 
 ## F-016 Context menu: Duplicate and Scale
 
-D-030 built the right-click menu with exactly one action, Delete Element. Two more were requested directly, not designed: **Duplicate** (clone an element and its subtree with a fresh unique id, inserted as a new text block) and **Scale** (a resize gesture distinct from move). Scale in particular raises a real design question before it can be built: for a plain `rect`, "scale" plausibly means adjusting `size` — but for a corner-reference-built polygon/polyline (D-018), scaling would mean moving every referenced corner outward from some pivot, not editing a single property, which is a materially different mechanism than anything currently built.
+D-030 built the right-click menu with exactly one action, Delete Element. Two more were requested directly, not designed: **Duplicate** (clone an element and its subtree with a fresh unique id, inserted as a new text block) and **Scale** (a resize gesture distinct from move).
+
+**Duplicate is built — [decisions.md D-074](decisions.md#d-074-f-016-duplicate--scale-kept-as-its-own-follow-up-not-bundled-in).** Clones the clicked element's whole subtree with every id renamed (collision-retried), corner-refs inside the subtree repointed at their new counterparts while ones pointing outside stay on the original, and internal (both-ends-inside) connections duplicated too. Found and fixed a real gap along the way: a corner-ref never had its own source span tracked at all, needed to actually rewrite one in place — a small, purely additive parser change.
+
+**Scale remains open, deliberately not bundled into the same batch — asked directly which to do first.** It raises a real design question Duplicate didn't have: for a plain `rect`, "scale" plausibly means adjusting `size` — but for a corner-reference-built polygon/polyline (D-018), scaling would mean moving every referenced corner outward from some pivot, not editing a single property, a materially different mechanism than anything currently built. It also has no existing gesture to hang off of (unlike a move-drag or the outside-attached/flush slide mechanics) — grabbing "scale" as a gesture distinct from "move" likely needs new resize-handle UI, shown only once an element is selected, which is itself new interaction surface this app doesn't have yet.
 
 ## F-017 Undo/redo
 

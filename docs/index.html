@@ -559,7 +559,15 @@ function parse(src) {
       const t = next();
       return { type: "num", value: t.value, unit: t.unit, start: t.start, end: t.end };
     }
-    if (peek().type === "IDENT") return { type: "path", segments: parsePath() };
+    if (peek().type === "IDENT") {
+      // start/end weren't needed until Duplicate (F-016) had to find and rewrite a
+      // corner-ref's own identifier in the source text — every other editable value
+      // already tracked its span (D-009 onward), a bare path reference never had to.
+      const startTok = peek();
+      const segments = parsePath();
+      const endTok = tokens[pos - 1];
+      return { type: "path", segments, start: startTok.start, end: endTok.end };
+    }
     throw new Error(`Expected a value, got ${peek().type}`);
   }
 

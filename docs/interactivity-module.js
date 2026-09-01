@@ -1004,6 +1004,133 @@
     core.commitUndoStep();
   }
 
+  // ---------- Duplicate (F-016) ----------
+  // Locates the identifier token immediately following the `element` keyword at a known
+  // declaration start — node.start already points there (D-030), but only covers the
+  // *whole* `element id { ... }` span, never the bare id's own start/end.
+  function findElementIdSpan(text, elementStart, id) {
+    const m = /^element\s+(\w+)/.exec(text.slice(elementStart));
+    if (!m || m[1] !== id) return null; // malformed/unexpected — caller skips this rename rather than corrupt the text
+    const idStart = elementStart + m[0].length - m[1].length;
+    return { start: idStart, end: idStart + m[1].length };
+  }
+
+  function uniqueId(base, usedIds) {
+    if (!usedIds.has(base)) return base;
+    let n = 2;
+    while (usedIds.has(`${base}${n}`)) n++;
+    return `${base}${n}`;
+  }
+
+  function collectSubtreeIds(node, out) {
+    out.push(node.id);
+    for (const child of node.children) collectSubtreeIds(child, out);
+  }
+
+  // Every corner-ref anywhere in the subtree (the node's own points, and every
+  // descendant's) — returns the underlying AST node each one carries (D-018's
+  // `fn.ast`/`fn.cornerRef`), which is what actually has a source span to rewrite.
+  function collectCornerRefAsts(node, out) {
+    if (node.props.points) {
+      for (const pt of node.props.points) {
+        if (typeof pt === "function" && pt.cornerRef) out.push(pt.ast);
+      }
+    }
+    for (const child of node.children) collectCornerRefAsts(child, out);
+  }
+
+  // Clones an element and its whole subtree (F-016) as a new sibling, with a fresh id for
+  // every node in it (checked against the *entire* plan, not just this subtree, so the
+  // clone can't collide with something unrelated either) — retried with a numeric suffix
+  // on collision, the same pattern this project already uses for a fresh id elsewhere
+  // (e.g. the registration service's own username-collision retry).
+  //
+  // A corner-ref *inside* the subtree gets rewritten to its new counterpart; one pointing
+  // *outside* it is left exactly as it was — a duplicated wall segment anchored to an
+  // existing shared corner should still touch that exact corner, the same way the
+  // original does. A `connection` where both ends are inside the subtree is duplicated
+  // too (both ids rewritten); one where only one end is inside is deliberately left
+  // alone — duplicating it would silently connect the new copy to whatever the original
+  // was connected to, which is a relationship nobody asked for.
+  function duplicateElement(nodeId) {
+    const text = core.sourceEl.value;
+    let base;
+    try { base = core.parseExpanded(text); } catch (e) { return; }
+    const node = base.nodesById[nodeId];
+    if (!node) return;
+    if (!node.parentId) {
+      core.dragmsgEl.textContent = `${nodeId}: can't duplicate the plan's root element.`;
+      return;
+    }
+
+    const subtreeIds = [];
+    collectSubtreeIds(node, subtreeIds);
+    const subtreeIdSet = new Set(subtreeIds);
+    const usedIds = new Set(Object.keys(base.nodesById));
+    const idMap = new Map();
+    for (const id of subtreeIds) {
+      const fresh = uniqueId(`${id}_copy`, usedIds);
+      usedIds.add(fresh);
+      idMap.set(id, fresh);
+    }
+
+    // Every edit below is computed against absolute source positions, then converted to
+    // be relative to node.start once collected — the splice itself runs against the
+    // *extracted* subtree text, not the full source, so descendant declarations' own
+    // start/end (also absolute) need the same conversion.
+    const edits = [];
+    (function walkDecls(n) {
+      const idSpan = findElementIdSpan(text, n.start, n.id);
+      if (idSpan) edits.push({ start: idSpan.start - node.start, end: idSpan.end - node.start, text: idMap.get(n.id) });
+      for (const child of n.children) walkDecls(child);
+    })(node);
+
+    const cornerRefAsts = [];
+    collectCornerRefAsts(node, cornerRefAsts);
+    for (const ast of cornerRefAsts) {
+      if (typeof ast.start !== "number") continue; // defensive; always set now (parser change alongside this feature)
+      const refId = ast.segments[0];
+      if (subtreeIdSet.has(refId)) {
+        edits.push({ start: ast.start - node.start, end: ast.end - node.start, text: idMap.get(refId) });
+      }
+    }
+
+    // The clone gets a small position offset so it doesn't land exactly on top of the
+    // original — only for plain literals; an expression-backed position is left
+    // untouched rather than guessed at (same judgment call D-012's own solve-backward
+    // machinery makes elsewhere: don't be clever about what isn't a simple literal).
+    const OFFSET = 0.3;
+    if (node.props.position && core.isEditable(node.props.position[0]) && core.isEditable(node.props.position[1])) {
+      const [x, y] = node.props.position;
+      edits.push({ start: x.start - node.start, end: x.end - node.start, text: core.formatNumber(x.value + OFFSET, x.unit) });
+      edits.push({ start: y.start - node.start, end: y.end - node.start, text: core.formatNumber(y.value + OFFSET, y.unit) });
+    } else if (node.props.points) {
+      for (const pt of node.props.points) {
+        if (!Array.isArray(pt)) continue;
+        const [x, y] = pt;
+        if (core.isEditable(x)) edits.push({ start: x.start - node.start, end: x.end - node.start, text: core.formatNumber(x.value + OFFSET, x.unit) });
+        if (core.isEditable(y)) edits.push({ start: y.start - node.start, end: y.end - node.start, text: core.formatNumber(y.value + OFFSET, y.unit) });
+      }
+    }
+
+    let clone = text.slice(node.start, node.end);
+    edits.sort((a, b) => b.start - a.start);
+    for (const ed of edits) clone = clone.slice(0, ed.start) + ed.text + clone.slice(ed.end);
+
+    const newConnections = base.connections
+      .filter((c) => subtreeIdSet.has(c.from) && subtreeIdSet.has(c.to))
+      .map((c) => `connection ${idMap.get(c.from)} ${idMap.get(c.to)}\n`)
+      .join("");
+
+    let newText = text.slice(0, node.end) + "\n" + clone + text.slice(node.end);
+    if (newConnections) newText = newText.trimEnd() + "\n" + newConnections;
+
+    core.sourceEl.value = newText;
+    core.dragmsgEl.textContent = `Duplicated '${nodeId}' as '${idMap.get(nodeId)}'.`;
+    core.rerender();
+    core.commitUndoStep();
+  }
+
   function deleteElement(nodeId) {
     const text = core.sourceEl.value;
     let base;
@@ -1033,6 +1160,7 @@
   // ---------- Context menu ----------
   function openContextMenu(nodeId, x, y) {
     contextMenuItems = [
+      { label: "Duplicate", action: () => duplicateElement(nodeId) },
       { label: "Delete Element", danger: true, action: () => deleteElement(nodeId) },
     ];
     contextMenuEl.innerHTML = contextMenuItems.map((item, i) =>
