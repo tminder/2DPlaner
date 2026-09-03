@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Six Bugs We Found by Trying to Break Planagonia — Blog</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="favicon.ico">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="description" content="We built a camper van in Planagonia, then had another AI build one too, and compared notes on purpose. Here's what that turned up, and what we already fixed.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: light;
+    --paper: #f7f4ee;
+    --paper-raised: #ffffff;
+    --ink: #221f1c;
+    --ink-soft: #5b5650;
+    --line: #d8d2c6;
+    --blue: #2c5f7c;
+    --blue-deep: #1e4457;
+    --amber: #b9791f;
+    --amber-soft: #f2dfb8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --paper: #191715; --paper-raised: #221f1c; --ink: #f1ece2; --ink-soft: #b5ada0;
+      --line: #3a352c; --blue: #6fa6c4; --blue-deep: #8fbfda; --amber: #e0ab53; --amber-soft: #4a3c22;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --paper: #191715; --paper-raised: #221f1c; --ink: #f1ece2; --ink-soft: #b5ada0;
+    --line: #3a352c; --blue: #6fa6c4; --blue-deep: #8fbfda; --amber: #e0ab53; --amber-soft: #4a3c22;
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font-family: "IBM Plex Sans", system-ui, sans-serif; line-height: 1.6; }
+  h1, h2, .wordmark { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+  h1, h2 { text-wrap: balance; letter-spacing: -0.01em; }
+  a { color: var(--blue-deep); }
+  .wrap { max-width: 680px; margin: 0 auto; padding: 0 1.5rem; }
+  .wrap-chrome { max-width: 1080px; margin: 0 auto; padding: 0 1.5rem; }
+
+  header.site { display: flex; align-items: center; justify-content: space-between; padding: 1.4rem 0; }
+  .wordmark { font-size: 1.05rem; font-weight: 600; color: var(--ink); text-decoration: none; display: flex; align-items: center; gap: 0.5rem; }
+  .wordmark .dot { color: var(--amber); }
+  nav.site a { color: var(--ink-soft); text-decoration: none; font-size: 0.92rem; margin-left: 1.75rem; }
+  nav.site a:hover { color: var(--ink); }
+  .nav-toggle { display: none; }
+
+  main { padding: 1rem 0 4rem; }
+  .eyebrow {
+    font-family: "IBM Plex Mono", monospace; font-size: 0.78rem; letter-spacing: 0.09em;
+    text-transform: uppercase; color: var(--amber); margin: 0 0 0.7rem;
+  }
+  .back-link { display: inline-block; margin-bottom: 1.6rem; font-size: 0.88rem; color: var(--ink-soft); text-decoration: none; }
+  .back-link:hover { color: var(--ink); }
+  h1.post-title { font-size: clamp(1.7rem, 4vw, 2.3rem); margin: 0 0 0.6rem; line-height: 1.2; }
+  p.dateline { color: var(--ink-soft); font-size: 0.88rem; margin: 0 0 2.4rem; }
+
+  .post { font-family: "IBM Plex Serif", Georgia, serif; font-size: 1.08rem; }
+  .post p { margin: 0 0 1.3rem; }
+  .post p.lede { font-size: 1.18rem; color: var(--ink-soft); }
+  .post h2 {
+    font-family: "IBM Plex Sans", system-ui, sans-serif; font-size: 1.25rem; font-weight: 600;
+    margin: 2.4rem 0 0.8rem; letter-spacing: -0.005em;
+  }
+  .post ul { margin: 0 0 1.3rem; padding-left: 1.3rem; }
+  .post li { margin-bottom: 0.55rem; }
+  .post strong { color: var(--ink); }
+
+  .callout {
+    background: var(--amber-soft); border-left: 3px solid var(--amber); border-radius: 0 8px 8px 0;
+    padding: 1rem 1.3rem; margin: 2rem 0; font-family: "IBM Plex Sans", system-ui, sans-serif;
+    font-size: 0.95rem;
+  }
+  .callout a { font-weight: 600; }
+
+  footer.site {
+    padding: 2.5rem 0 3rem; color: var(--ink-soft); font-size: 0.86rem;
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.7rem;
+  }
+  footer.site a { color: var(--ink-soft); }
+  footer.site a:hover { color: var(--ink); }
+
+  .cookie-notice {
+    position: fixed; left: 1rem; right: 1rem; bottom: 1rem; z-index: 20;
+    max-width: 640px; margin: 0 auto;
+    background: var(--paper-raised); border: 1px solid var(--line); border-radius: 12px;
+    padding: 1rem 1.2rem; box-shadow: 0 6px 24px rgba(0,0,0,0.18);
+    display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+  }
+  .cookie-notice[hidden] { display: none; }
+  .cookie-notice p { margin: 0; font-size: 0.88rem; color: var(--ink-soft); flex: 1 1 20rem; font-family: "IBM Plex Sans", system-ui, sans-serif; }
+  .cookie-notice button {
+    flex: 0 0 auto; font-family: inherit; cursor: pointer; border: none; border-radius: 7px;
+    background: var(--blue); color: #fff; padding: 0.6rem 1.1rem; font-size: 0.9rem; font-weight: 600;
+  }
+  .cookie-notice button:hover { background: var(--blue-deep); }
+
+  @media (max-width: 640px) {
+    header.site { flex-wrap: wrap; row-gap: 0.7rem; }
+    .nav-toggle {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 2.3rem; height: 2.3rem; border: 1px solid var(--line); border-radius: 7px;
+      background: var(--paper-raised); color: var(--ink); font-size: 1.15rem; cursor: pointer;
+    }
+    nav.site { display: none; flex-basis: 100%; flex-direction: column; gap: 0.9rem; }
+    nav.site.open { display: flex; }
+    nav.site a { margin-left: 0; font-size: 1rem; }
+    footer.site { flex-direction: column; align-items: flex-start; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap-chrome">
+  <header class="site">
+    <a class="wordmark" href="/"><span class="dot">▦</span> Planagonia</a>
+    <button class="nav-toggle" id="nav-toggle" aria-label="Menu" aria-expanded="false" aria-controls="site-nav">☰</button>
+    <nav class="site" id="site-nav">
+      <a href="/app/">Open the app</a>
+      <a href="/docs/">Docs</a>
+      <a href="/blog/">Blog</a>
+      <a href="/profile/">Profile</a>
+    </nav>
+  </header>
+</div>
+<script>
+  (function () {
+    var toggle = document.getElementById("nav-toggle");
+    var nav = document.getElementById("site-nav");
+    toggle.addEventListener("click", function () {
+      var open = nav.classList.toggle("open");
+      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+  })();
+</script>
+
+<div class="wrap">
+  <main>
+    <a class="back-link" href="/blog/">← Back to the blog</a>
+    <p class="eyebrow">Product update</p>
+    <h1 class="post-title">Six Bugs We Found by Trying to Break Planagonia</h1>
+    <p class="dateline">September 3, 2026</p>
+
+    <div class="post">
+      <p class="lede">Most of what we post here is new features. This time it's different: we spent a stretch deliberately trying to find where Planagonia falls short, rather than adding to it — and we found six real problems worth fixing, all six already shipped. Here's the story, and what changed.</p>
+
+      <h2>First, the features we already owed you</h2>
+      <p>A few smaller things that had been "coming soon" for a while are now just... there:</p>
+      <ul>
+        <li>You can now <strong>undo</strong> a mistake — a drag gone wrong, an accidental delete — with Ctrl+Z or a toolbar button, the way you'd expect any editor to work.</li>
+        <li>Right-clicking a piece of furniture now lets you <strong>duplicate</strong> it, instead of retyping the whole thing to add a second identical chair.</li>
+        <li>Windows and doors can now be built directly into a wall, staying flush against it as you slide them along, instead of floating independently over it.</li>
+      </ul>
+
+      <h2>Then we tried something different: testing our own honesty</h2>
+      <p>Planagonia's whole idea is that an AI can write the layout for you, in a small language designed to be easy for one to get right. We'd said that from the start — but we'd never really put it to the test. So we did: we asked ourselves, in complete detail, to design a camper van interior using Planagonia. Then, separately, we asked <em>another</em> AI — one with no connection to this project at all — to do the exact same thing, from the exact same instructions.</p>
+      <p>The point wasn't to see who "won." It was to see where two honest, independent attempts at the same real task would trip over the same rough edges — the kind of thing you only find by actually using a tool for something real, not by reading its own documentation and assuming it holds up.</p>
+      <p>It worked. Between the two attempts, and a close look at the results, we turned up real problems — several of them the kind that don't just look wrong, they quietly do the wrong thing without ever telling you.</p>
+
+      <h2>What we found, and already fixed</h2>
+      <ul>
+        <li><strong>Overlapping furniture went unflagged.</strong> Planagonia can already warn you when two things you drag on top of each other shouldn't overlap — but it turned out that warning only ever kicked in <em>while you were dragging something</em>. A plan that had overlapping furniture baked in from the start, and never touched again, sailed through with no warning at all. Now every plan is checked the moment it loads, not only while you're actively moving something.</li>
+        <li><strong>Reusing a name could silently move the wrong object.</strong> This was the one that worried us most. If two pieces of furniture accidentally ended up with the same internal name, dragging one on screen could silently edit the position of the <em>other</em> one instead — no error, nothing to tell you it happened. That's about as bad as a bug gets in a tool built on the idea that what you see is what you're actually editing. It's now caught and flagged the instant it happens.</li>
+        <li><strong>A cabinet full of appliances became unclickable.</strong> Build a kitchen counter with a sink and a stove set into it — completely ordinary — and the counter itself became impossible to grab, because whatever was drawn on top of it always intercepted your click. You can now click the same spot again to reach whatever's underneath, cycling through everything stacked there.</li>
+        <li><strong>"Keep this inside the van" didn't reach everything inside the van.</strong> Setting a room (or a van) to keep its contents inside its own walls only checked its <em>direct</em> contents — anything nested a level deeper, like an appliance inside a counter inside the van, could be dragged clean outside the vehicle with no resistance at all. Fixed — the rule now reaches every level down, not just the first.</li>
+        <li><strong>Labels could land right on top of each other.</strong> Two always-visible labels placed near each other — a room's own name and a piece of furniture's dimensions, say — could render directly on top of one another, unreadable. They now automatically nudge apart just enough to both stay legible.</li>
+      </ul>
+
+      <p>None of these were things a quick glance would have caught — every one of them needed an actual, realistic plan pushed through the app for real before it showed itself. That's exactly why we ran the test in the first place.</p>
+
+      <h2>Two smaller things you'll notice</h2>
+      <ul>
+        <li>Planagonia finally has a real <strong>favicon</strong> — that little icon in your browser tab — instead of a blank page icon, designed to match the rest of the site rather than borrowed from anywhere.</li>
+        <li>You can now <strong>export your plan as an image</strong> (PNG or SVG), not just as code — handy for dropping a floor plan straight into a chat, an email, or a document without asking anyone to open the app first.</li>
+      </ul>
+
+      <div class="callout">
+        Want to see any of this yourself? <a href="/app/">Open the app</a> — everything above is already live, no update needed on your end.
+      </div>
+
+      <p>We'll keep testing this way going forward, not just building forward — a tool that's supposed to be trustworthy enough to hand real decisions to should be able to survive someone actually trying to poke holes in it. Thanks for reading, and for sticking with something this new.</p>
+    </div>
+  </main>
+</div>
+
+<div class="wrap-chrome">
+  <footer class="site">
+    <span>Planagonia — a 2D plan generator.</span>
+    <span><a href="/app/">Open the app</a> · <a href="/docs/">Docs</a> · <a href="/blog/">Blog</a> · <a href="/profile/">Profile</a> · <a href="/impressum/">Impressum</a></span>
+  </footer>
+</div>
+
+<div id="cookie-notice" class="cookie-notice" hidden>
+  <p>This site saves your plans and sign-in state using your browser's own local storage — no tracking, no third-party cookies.</p>
+  <button id="cookie-notice-dismiss">Got it</button>
+</div>
+<script>
+  (function () {
+    var KEY = "planagonia:cookieNoticeDismissed";
+    var el = document.getElementById("cookie-notice");
+    try { if (!localStorage.getItem(KEY)) el.hidden = false; } catch (e) { el.hidden = false; }
+    document.getElementById("cookie-notice-dismiss").addEventListener("click", function () {
+      el.hidden = true;
+      try { localStorage.setItem(KEY, "1"); } catch (e) { /* private mode — not fatal */ }
+    });
+  })();
+</script>
+
+</body>
+</html>
