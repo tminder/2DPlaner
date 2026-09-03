@@ -479,12 +479,30 @@
   // this version fixes that by tracking the child's own corners, but the tangent-slide part
   // of the algorithm carries the same unproven-generality caveat D-041's fallback does).
 
-  // A child's own `placement` overrides its parent's `childPlacement` default — same
-  // override shape as D-038/D-041's element-vs-settings pattern (D-032).
-  function placementFor(node, parent) {
-    if (typeof node.props.placement === "string") return node.props.placement;
-    if (parent && typeof parent.props.childPlacement === "string") return parent.props.childPlacement;
+  // F-020: an inherited `childPlacement` used to only ever check a node's *immediate*
+  // parent — "keep everything inside the van" (set once, on the outermost container) never
+  // actually applied to anything nested two levels deep, since a `kitchen` sitting between
+  // `van` and `stove` never set `childPlacement` itself. Walks upward from `parent` for the
+  // nearest ancestor that actually made a claim about its descendants' containment, rather
+  // than assuming "no claim on the immediate parent" means "no claim at all".
+  function nearestChildPlacementAncestor(parent, base) {
+    let cur = parent;
+    while (cur) {
+      if (typeof cur.props.childPlacement === "string") return cur;
+      cur = cur.parentId ? base.nodesById[cur.parentId] : null;
+    }
     return null;
+  }
+
+  // A child's own explicit `placement` always names its *own* immediate parent as the
+  // container (unchanged from before — D-032's own scope, a node stating its own
+  // relationship to whatever textually contains it). Only the *inherited* case (no
+  // explicit override) now searches upward via nearestChildPlacementAncestor above, so
+  // "container" and "immediate parent" are no longer assumed to be the same node.
+  function resolveContainer(node, parent, base) {
+    if (typeof node.props.placement === "string") return { container: parent, placement: node.props.placement };
+    const ancestor = parent ? nearestChildPlacementAncestor(parent, base) : null;
+    return ancestor ? { container: ancestor, placement: ancestor.props.childPlacement } : { container: null, placement: null };
   }
 
   // The parent's own boundary as a corner list — scoped to rect/polygon, the only shapes
@@ -628,14 +646,16 @@
     return [newX - x, newY - y];
   }
 
-  // Entry point, mirroring clampToNoCollision's shape. Silently no-ops (no warning) for a
-  // node that merely *inherited* "inside" from its parent's childPlacement default but
-  // isn't a rect — e.g. a corner-ref wall or a circle side table sitting in a room with
-  // childPlacement: "inside" set for its furniture — since that default was never a
-  // specific promise about every child. An *explicit* placement: "inside" on an
-  // unsupported shape does warn, since that one was a direct, unmet request.
-  function clampToContainment(node, parent, dx, dy, positions, warnings) {
-    const placement = placementFor(node, parent);
+  // Entry point, mirroring clampToNoCollision's shape. `container` (F-020) is whichever
+  // ancestor's boundary actually applies — the immediate parent for an explicit `placement`,
+  // or the nearest ancestor up the chain that set `childPlacement`, which may be several
+  // levels up. Silently no-ops (no warning) for a node that merely *inherited* "inside" but
+  // isn't a rect — e.g. a corner-ref wall or a circle side table sitting somewhere under a
+  // childPlacement: "inside" ancestor — since that default was never a specific promise
+  // about every descendant. An *explicit* placement: "inside" on an unsupported shape does
+  // warn, since that one was a direct, unmet request.
+  function clampToContainment(node, parent, dx, dy, positions, warnings, base) {
+    const { container, placement } = resolveContainer(node, parent, base);
     if (placement !== "inside") {
       // Anything explicitly declared but not one of this language's two recognized
       // placement values (D-032: "inside", "outside" — "outside" isn't checked here at
@@ -655,25 +675,25 @@
       }
       return [dx, dy];
     }
-    if (parent.props.shape === "rect" && parent.props.size) {
-      const parentAbs = positions[parent.id];
-      const parentSize = [core.numOf(parent.props.size[0]), core.numOf(parent.props.size[1])];
+    if (container.props.shape === "rect" && container.props.size) {
+      const containerAbs = positions[container.id];
+      const containerSize = [core.numOf(container.props.size[0]), core.numOf(container.props.size[1])];
       const childSize = [core.numOf(node.props.size[0]), core.numOf(node.props.size[1])];
       const [newDx, newDy] = flush
-        ? clampFlushInsideRect(node.id, dx, dy, positions, parentAbs, parentSize, childSize, warnings)
-        : clampRectToStayInsideRect(node.id, dx, dy, positions, parentAbs, parentSize, childSize);
-      if (newDx !== dx || newDy !== dy) warnings.push(`${node.id}: stays inside '${parent.id}'`);
+        ? clampFlushInsideRect(node.id, dx, dy, positions, containerAbs, containerSize, childSize, warnings)
+        : clampRectToStayInsideRect(node.id, dx, dy, positions, containerAbs, containerSize, childSize);
+      if (newDx !== dx || newDy !== dy) warnings.push(`${node.id}: stays inside '${container.id}'`);
       return [newDx, newDy];
     }
     if (flush) {
       warnings.push(`${node.id}: flush only checked for a rect parent (D-032 scope), not enforced here`);
     }
-    const parentPoly = parentBoundaryPolygon(parent, positions);
-    if (!parentPoly) {
-      warnings.push(`${parent.id}: not a rect/polygon, containment not checked (D-032 scope)`);
+    const containerPoly = parentBoundaryPolygon(container, positions);
+    if (!containerPoly) {
+      warnings.push(`${container.id}: not a rect/polygon, containment not checked (D-032 scope)`);
       return [dx, dy];
     }
-    return clampToStayInside(node, parentPoly, dx, dy, positions, warnings);
+    return clampToStayInside(node, containerPoly, dx, dy, positions, warnings);
   }
 
   // ---------- Load-time / static validation (F-022, F-028) ----------
@@ -724,13 +744,16 @@
     for (const node of collectAllNodes(base.root, [])) {
       if (!node.parentId) continue;
       const parent = base.nodesById[node.parentId];
-      if (placementFor(node, parent) !== "inside") continue;
+      // F-020: resolveContainer, not the immediate parent alone — an inherited
+      // childPlacement may name an ancestor several levels up as the actual container.
+      const { container, placement } = resolveContainer(node, parent, base);
+      if (placement !== "inside" || !container) continue;
       if (node.props.shape !== "rect" || !node.props.size) continue;
-      const parentPoly = parentBoundaryPolygon(parent, positions);
-      if (!parentPoly) continue;
+      const containerPoly = parentBoundaryPolygon(container, positions);
+      if (!containerPoly) continue;
       const childCorners = childRectCornersAt(node, 0, 0, positions);
-      if (!isContained(childCorners, parentPoly)) {
-        violations.push({ type: "containment", message: `'${node.id}' is placed "inside" '${parent.id}' but isn't actually inside it` });
+      if (!isContained(childCorners, containerPoly)) {
+        violations.push({ type: "containment", message: `'${node.id}' is placed "inside" '${container.id}' but isn't actually inside it` });
       }
     }
   }
@@ -908,7 +931,7 @@
       const positionsForConstraints = {};
       core.computePositions(base.root, null, [0, 0], positionsForConstraints);
       [dx, dy] = clampToNoCollision(node, parent, dx, dy, base, positionsForConstraints, warnings);
-      [dx, dy] = clampToContainment(node, parent, dx, dy, positionsForConstraints, warnings);
+      [dx, dy] = clampToContainment(node, parent, dx, dy, positionsForConstraints, warnings, base);
     }
 
     // A connected point resting on a rect's edge slides along that edge instead of
