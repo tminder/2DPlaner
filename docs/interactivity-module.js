@@ -56,6 +56,17 @@
         font: inherit; font-size: 0.8rem; padding: 0.3rem 0.6rem; border: 1px solid #ccc;
         border-radius: 5px; background: rgba(255,255,255,0.9); cursor: pointer; }
       #interactivity-fit-btn:hover { background: #fff; }
+
+      #interactivity-validation-panel { position: absolute; left: 10px; top: 10px; z-index: 1;
+        max-width: min(280px, calc(100% - 20px)); max-height: calc(100% - 20px);
+        overflow-y: auto; font-family: system-ui, sans-serif;
+        font-size: 12px; line-height: 1.4; background: rgba(255,248,230,0.95);
+        border: 1px solid #e0b84a; border-radius: 6px; padding: 6px 10px 7px; color: #6b4e00; }
+      #interactivity-validation-panel[hidden] { display: none; }
+      #interactivity-validation-panel .validation-title { font-weight: 600; margin-bottom: 2px;
+        position: sticky; top: -6px; background: inherit; padding-top: 6px; margin-top: -6px; }
+      #interactivity-validation-panel ul { margin: 0; padding-left: 16px; }
+      #interactivity-validation-panel li { margin: 2px 0; }
     `;
   }
 
@@ -70,6 +81,7 @@
   document.getElementById("interactivity-module-style")?.remove();
   document.getElementById("interactivity-scale-bar")?.remove();
   document.getElementById("interactivity-fit-btn")?.remove();
+  document.getElementById("interactivity-validation-panel")?.remove();
 
   const styleEl = document.createElement("style");
   styleEl.id = "interactivity-module-style";
@@ -95,6 +107,11 @@
   fitBtnEl.textContent = "Fit";
   fitBtnEl.title = "Reset zoom and pan";
   core.rootEl.appendChild(fitBtnEl);
+
+  const validationPanelEl = document.createElement("div");
+  validationPanelEl.id = "interactivity-validation-panel";
+  validationPanelEl.hidden = true;
+  core.rootEl.appendChild(validationPanelEl);
 
   // ---------- Module-owned state — core has none of this. ----------
   let program = null;
@@ -480,8 +497,25 @@
     return rectCorners({ left: x + dx, top: y + dy, right: x + dx + w, bottom: y + dy + h });
   }
 
+  // A corner exactly on the parent boundary (the ordinary, intended state for a `flush`
+  // child — D-071) is genuinely ambiguous for plain ray-casting: ((yi > pt[1]) !== (yj >
+  // pt[1])) never counts a horizontal edge lying exactly at pt[1] as a crossing at all, so
+  // a point sitting precisely on that edge can come out classified as outside depending on
+  // the polygon's other edges — found by checkContainment (F-022) flagging a legitimately
+  // flush wardrobe as a false-positive violation. Same tolerance-for-flush-touching
+  // principle the collision check above already applies deliberately (a shape resting
+  // exactly flush against another already reads as non-colliding); this is that same
+  // principle's containment counterpart, not a new one.
+  const CONTAINMENT_EPS = 0.001;
   function isContained(childCorners, parentPoly) {
-    return childCorners.every((p) => pointInPolygon(p, parentPoly));
+    return childCorners.every((p) => {
+      if (pointInPolygon(p, parentPoly)) return true;
+      for (let i = 0; i < parentPoly.length; i++) {
+        const a = parentPoly[i], b = parentPoly[(i + 1) % parentPoly.length];
+        if (pointToSegmentDistance(p, a, b) <= CONTAINMENT_EPS) return true;
+      }
+      return false;
+    });
   }
 
   // Nearest-edge normal of the parent boundary, used only to build the sliding tangent
@@ -634,6 +668,102 @@
       return [dx, dy];
     }
     return clampToStayInside(node, parentPoly, dx, dy, positions, warnings);
+  }
+
+  // ---------- Load-time / static validation (F-022, F-028) ----------
+  // Everything above (clampToNoCollision, clampToContainment) only ever runs mid-drag,
+  // against an attempted delta — nothing has ever checked a plan's own initial, as-authored
+  // layout, which is exactly how a real comparison plan (F-022's own finding: an
+  // independently-AI-generated campervan plan with `allowCollisions: false` set) shipped an
+  // unflagged overlapping rug and two identically-positioned doors. This walks the whole
+  // tree once per render and reports what it finds, reusing the same geometry/permission
+  // primitives the drag-time checks already use rather than duplicating their logic —
+  // this is a second call site for known-correct code, not a new mechanism.
+  function collectAllNodes(node, out) {
+    out.push(node);
+    for (const child of node.children) collectAllNodes(child, out);
+    return out;
+  }
+
+  // Same pairwise rule clampToNoCollision/firstCollidingSibling already apply mid-drag:
+  // either shape opting itself out via its own allowCollisions is enough to suppress the
+  // pair — a node's own allowCollisions means "I don't mind being overlapped", not "only
+  // *my own* moves ignore it" — so a violation is only reported when neither side opted
+  // out, matching drag-time behavior exactly rather than approximating it.
+  function checkCollisions(base, positions, violations) {
+    for (const parent of collectAllNodes(base.root, [])) {
+      const kids = parent.children;
+      for (let i = 0; i < kids.length; i++) {
+        const a = kids[i];
+        if (collisionsAllowedFor(a, base.settings)) continue;
+        const geomA = solidGeometryFor(a, positions);
+        if (!geomA) continue;
+        for (let j = i + 1; j < kids.length; j++) {
+          const b = kids[j];
+          if (collisionsAllowedFor(b, base.settings)) continue;
+          const geomB = solidGeometryFor(b, positions);
+          if (geomB && shapesOverlap(geomA, geomB)) {
+            violations.push({ type: "collision", message: `'${a.id}' and '${b.id}' overlap` });
+          }
+        }
+      }
+    }
+  }
+
+  // Reuses clampToContainment's own scope exactly (rect child, D-032) rather than a looser
+  // check — an element this narrow can't clamp doesn't get flagged as "wrong" either,
+  // since it was never actually enforced for it in the first place (same "not enforced
+  // here" reasoning as clampToContainment's own warnings).
+  function checkContainment(base, positions, violations) {
+    for (const node of collectAllNodes(base.root, [])) {
+      if (!node.parentId) continue;
+      const parent = base.nodesById[node.parentId];
+      if (placementFor(node, parent) !== "inside") continue;
+      if (node.props.shape !== "rect" || !node.props.size) continue;
+      const parentPoly = parentBoundaryPolygon(parent, positions);
+      if (!parentPoly) continue;
+      const childCorners = childRectCornersAt(node, 0, 0, positions);
+      if (!isContained(childCorners, parentPoly)) {
+        violations.push({ type: "containment", message: `'${node.id}' is placed "inside" '${parent.id}' but isn't actually inside it` });
+      }
+    }
+  }
+
+  // F-028: two elements sharing an id doesn't error anywhere today, but silently corrupts
+  // drag targeting (nodesById[id] = node last-writer-wins during parsing) — reported once
+  // per duplicated id, not once per extra occurrence, since the fix is the same either way
+  // (rename one of them).
+  function checkDuplicateIds(base, violations) {
+    const counts = new Map();
+    for (const node of collectAllNodes(base.root, [])) {
+      if (!node.id) continue;
+      counts.set(node.id, (counts.get(node.id) || 0) + 1);
+    }
+    for (const [id, count] of counts) {
+      if (count > 1) {
+        violations.push({ type: "duplicate-id", message: `id '${id}' is declared ${count} times — dragging one may silently move a different one instead` });
+      }
+    }
+  }
+
+  function checkPlanValidity(base, positions) {
+    const violations = [];
+    checkDuplicateIds(base, violations);
+    checkCollisions(base, positions, violations);
+    checkContainment(base, positions, violations);
+    return violations;
+  }
+
+  function renderValidationPanel(violations) {
+    if (!violations.length) {
+      validationPanelEl.hidden = true;
+      validationPanelEl.innerHTML = "";
+      return;
+    }
+    validationPanelEl.hidden = false;
+    validationPanelEl.innerHTML =
+      `<div class="validation-title">${violations.length} issue${violations.length === 1 ? "" : "s"} found</div>` +
+      `<ul>${violations.map((v) => `<li>${escapeHtml(v.message)}</li>`).join("")}</ul>`;
   }
 
   // ---------- Text-splice helpers ----------
@@ -1196,6 +1326,8 @@
     // already-existing node rather than erroring, so this is safe to call unconditionally.
     core.rootEl.appendChild(scaleBarEl);
     core.rootEl.appendChild(fitBtnEl);
+    core.rootEl.appendChild(validationPanelEl);
+    renderValidationPanel(checkPlanValidity(prog, positions));
 
     // core just replaced #plan-root's innerHTML, so svgEl's viewBox is core's own fresh
     // fit-to-content box, not yet touched by any zoom/pan — capture it before applying
