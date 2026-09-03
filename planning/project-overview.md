@@ -1,14 +1,17 @@
 # Project Overview
 
-**Snapshot as of 2026-08-30 — a point-in-time status summary, not a living document.**
+**Snapshot as of 2026-09-03 — a point-in-time status summary, not a living document.**
 Unlike [core-aims.md](core-aims.md), [decisions.md](decisions.md), and
 [open-questions.md](open-questions.md), which are kept continuously in sync with the
 project, this file describes where things stood when it was written and will drift out of
-date. This revision replaces the previous one (which asked narrowly "are we ready for a
-backend prototype?") with a broader pass: a full project overview plus an independent risk
-assessment, requested directly rather than assumed. Prefer `decisions.md`/`open-questions.md`
-for current state; treat the risk section below as a snapshot of concerns to re-check, not a
-standing to-do list that updates itself.
+date. Supersedes the 2026-08-30 revision: since then the site fully launched (registration,
+rate limiting, mobile pass, blog, legal page), all three of F-001's placement modes and
+both of F-002's promised module capabilities closed out, undo/redo and Duplicate shipped,
+and a deliberate independent review of the plan *language itself* — not just its
+implementation — surfaced fourteen new open questions (F-018–F-031), several confirmed live
+rather than just reasoned about. Prefer `decisions.md`/`open-questions.md` for current
+state; treat this file as a snapshot of where things stand and what's worth doing next, not
+a standing to-do list that updates itself.
 
 ## What the project is
 
@@ -27,230 +30,181 @@ token-efficient generation over hand-typing ergonomics (D-017).
 
 ## What's actually built and live
 
-**Live:** [tminder.github.io/2DPlaner](https://tminder.github.io/2DPlaner/) — still
-static files, `localStorage` as the default, no forced accounts. `docs/` now has a
-minimal, optional connection to the backend (D-050, confirmed working in a real browser):
-sign in, explicitly save/load the active plan to the cloud via a third group in the
-existing plan-switcher — not automatic cross-device sync, not a replacement for
-`localStorage`.
+**The whole site is live and public**, not just the App:
+[planagonia.com](https://www.planagonia.com/) — homepage, `/app/` (the editor itself,
+now indexed and in the sitemap, D-062), `/docs/` (human-audience documentation, D-055),
+`/profile/` (self-service sign-up/sign-in, D-058, in plain "username/password" terms
+rather than raw WordPress language, D-060), `/blog/` (launched this session, D-070, first
+post a non-technical rewrite of the project's own changelog), and `/impressum/` (D-063).
+A cookie/local-storage notice states plainly what the site actually does (D-064); a "Beta"
+badge marks the App specifically (D-065); the backend enforces rate limiting (D-056).
+Every page was checked in a real narrow viewport this session, not just eyeballed — a
+hamburger menu, code/viewer tabs, and a decluttered toolbar on mobile (D-067/D-068), desktop
+styling left untouched throughout.
 
-- **Language** (`documentation/language.md`, 517 lines): two primitives, Element and
-  Connection (D-013); real-world units (D-005); expressions with backward-solving on drag
-  (D-008, D-012); shared corners via sibling-element references in `points` (D-018),
-  "literal by default, corner-reference only for genuine sharing"; a `settings { }`
-  preamble (`allowCollisions`, `allowSelfIntersectingPolygons`, `edgeLengths`); per-element
-  `label`/`dimensions`/`edgeLengths` (D-026, D-038); parent-child containment via
-  `placement`/`childPlacement` (D-032, D-044).
-- **Rendering:** SVG-based; core parses and renders geometry only (D-039's split) — every
-  other visible thing (drag, selection, annotations, syntax highlighting) is module-owned.
-- **Interactivity** (`docs/interactivity-module.js`, 1246 lines): drag-and-drop with
-  solve-backward for expression-backed values (D-012), rigid propagation across
-  `connection`s (D-014), edge-sliding for a point attached to a connected rect's wall
-  (D-032 mode 2), collision avoidance (D-041), containment (D-044), self-intersection
-  checking (F-004). Five independently-clamped drag constraints now stack on every drag —
-  see the risk section below.
-- **Multiple named plans, client-side** (D-043): a list of `{id, name, text, updatedAt}`
-  plans in `localStorage` with a plan-switcher UI, replacing the old single-current-plan
-  model.
-- **Architecture** (`documentation/modules.md`): core (`docs/index.html`, 1037 lines: parser,
-  renderer, toolbar, persistence, all in one file) plus three shipped modules (D-031) —
-  `interactivity-module.js`, `annotations-module.js` (D-039), `code-highlight-module.js`
-  (D-042) — all auto-injected into every plan.
-- **17 throwaway prototypes** (`Prototypes/01`–`16`) validated individual pieces before
-  promotion into the real product.
-- **Zero automated tests, zero CI, zero build step** anywhere in the repo — a deliberate
-  choice (D-034: "zero dependencies, plain static files") for the build-step/dependency
-  part; the absence of any test suite was never a decision, just never come up.
-- **Backend, live and tested, independent of `docs/`** (D-047–D-049): a self-hosted
-  WordPress instance (`auth.planagonia.com`, core only — its two stock plugins deleted,
-  not just deactivated) verifies credentials via WP Application Passwords over its REST
-  API; a PHP/MySQL storage service (`storage-service-php/`, `test.planagonia.com`) issues
-  its own signed session tokens and provides CRUD for plan text scoped per user. Both
-  exercised over real HTTPS, including a direct cross-user isolation check (a second
-  account confirmed unable to see, read, or delete the first account's plan) — not just
-  hand-traced. The originally-written Node.js storage service (`storage-service/`)
-  couldn't run on this specific hosting at all (its SSH shell has no `libc.so.6`) and
-  stays only as a design reference for a future VPS scenario.
-- **`docs/` wired to that backend, minimally (D-050), confirmed working in a real
-  browser** — Sign in/Save to Cloud/Sign out controls, a third "Cloud" group in the
-  plan-switcher. `localStorage` remains the default; this is an explicit, optional
-  action, not automatic sync. This closes out the entire D-019/D-021/D-050 backend arc —
-  every piece, server-side and frontend, is now both built and genuinely tested.
+- **Language** (`documentation/language.md`): two primitives, Element and Connection
+  (D-013); real-world metric units (D-005); expressions with backward-solving on drag
+  (D-008, D-012); shared corners via sibling-element references in `points` (D-018); a
+  `settings { }` preamble; per-element `label`/`dimensions`/`edgeLengths`; parent-child
+  containment via `placement`/`childPlacement`, now with **all three placement modes
+  built**: free (default), outside-attached, and inside-flush (D-071 closed the last of
+  the three this session).
+- **Rendering:** SVG-based; core parses and renders geometry only — every other visible
+  thing (drag, selection, annotations, syntax highlighting) is module-owned.
+- **Interactivity** (`docs/interactivity-module.js`): drag-and-drop with solve-backward for
+  expression-backed values, rigid propagation across `connection`s, edge-sliding, collision
+  avoidance, containment, self-intersection checking. **Undo/redo shipped this session**
+  (D-073) — a small app-level history (full-text snapshots, not diff-based), toolbar
+  buttons and Ctrl+Z/Ctrl+Shift+Z, deliberately not layered on the textarea's native undo
+  stack (that would require focusing the field on every programmatic edit, popping the
+  on-screen keyboard on touch devices — checked directly, not assumed). **Duplicate
+  shipped this session too** (D-074): clones an element's subtree with ids renamed,
+  internal corner-references and connections repointed correctly. Scale, requested
+  alongside Duplicate, was deliberately deferred as its own follow-up (F-016) — it raises
+  real unresolved design questions (what "scale" means for a corner-reference-built
+  polygon, no existing gesture to hang a resize handle off of) rather than being simply
+  unbuilt.
+- **Module composition, both halves now proven live** (F-002 closed out this session):
+  `core.registerBeforeRender(cb)` lets a module inject synthesized structure into the
+  parsed tree before rendering; **drag-editability of a composite's own generated pieces**
+  — the part D-046 explicitly left untried — is now built too (D-072): dragging a
+  composite's wall segment moves the whole thing, dragging its door slides along the wall.
+  Deliberately a per-composition-type mechanism, not a general one; untested whether it
+  generalizes past the one composition type (`wallWithDoor`) it's been built for.
+- **Multiple named plans, client-side**, plus an optional, explicit (not automatic)
+  connection to the backend: sign in, save/load the active plan to the cloud from a third
+  group in the plan-switcher. `localStorage` remains the default.
+- **Backend, live and tested, independent of `docs/`**: a self-hosted WordPress instance
+  verifies credentials via WP Application Passwords; a PHP/MySQL storage service issues
+  its own signed session tokens and provides CRUD for plan text scoped per user, with a
+  direct cross-user isolation check confirmed working, not just hand-traced.
+- **A real, independent review of the plan language itself happened this session** — not
+  a bug hunt, a deliberate step back to ask whether the language design is actually good,
+  using criteria chosen independently of the project's own stated goals (domain coverage,
+  semantic determinism, whether the parser is the only spec, extension-point leakage,
+  versioning, failure-mode consistency). Concretely tested by authoring a real Fiat Ducato
+  campervan plan by hand and comparing it against one an independent AI (ChatGPT) produced
+  from the same prompt — this comparison, plus a raster/grid-architecture thought
+  experiment prompted by a real spreadsheet-based layout example, is what surfaced most of
+  F-018 through F-031 below, several confirmed by actually dragging things in a real
+  browser rather than just reading the code.
+- **Zero automated tests, zero CI, zero build step** anywhere in the repo — still a
+  deliberate choice (D-034), unchanged this session. Playwright + headless Chromium,
+  installed into this working session specifically, remains the substitute: every
+  interactive fix and every language-review finding this session was confirmed by actually
+  opening `docs/index.html` and dragging things, not by hand-tracing alone.
 
 ## What's decided but not built
 
-- **D-025** — deployment topology, as originally scoped (WordPress and the storage
-  service "on the same server/domain"). Partially overtaken by what actually happened:
-  WordPress and the storage service ended up on separate subdomains of the same shared
-  hosting account (`auth.planagonia.com`, `test.planagonia.com`) rather than sharing one
-  domain — not written up as a formal decision update yet.
+- **D-025** — deployment topology as originally scoped ("WordPress and the storage service
+  on the same server/domain") was overtaken by what actually happened (separate
+  subdomains of the same shared-hosting account) — still not written up as a formal
+  decision update.
+- **F-016's Scale** — explicitly deferred by choice, not by neglect (see above).
 
-## Independent risk assessment
+## Open questions: fourteen new findings from this session's language review
 
-Asked for directly, as an outside read rather than the project's own running self-
-assessment. Ordered by how much it would actually hurt if it went wrong, not by how often
-it's been discussed — some of these (F-009, F-001/F-002) are already named as open
-questions in `open-questions.md`; what's added here is a judgment about *urgency*, which
-that file deliberately doesn't rank.
+`open-questions.md` now runs to F-031. The eighteen entries predating this session
+(F-001–F-017) are in the state described above — F-001, F-002, F-016 (partially), and
+F-017 all moved from open to built this session. What's new is F-018 through F-031, all
+from the language-design review, grouped here by what they actually are rather than by
+number:
 
-### Worth fixing before adding more features
+**Confirmed live, not just reasoned about — the highest-severity findings:**
+- **F-028**, duplicate element ids: two elements sharing an `id` — dragging the
+  *first*-declared one on screen silently rewrites the *second*-declared one's position in
+  the source instead, confirmed by actually doing it. No error, no warning, anywhere. This
+  is a real data-corruption risk in a tool whose entire premise is that the code pane can
+  be trusted to reflect what you did.
+- **F-022**, collision/containment checks only ever run *during* a drag, never against a
+  plan's own initial, as-authored layout — confirmed the concrete way, via the ChatGPT
+  comparison plan, which had `allowCollisions: false` set and still shipped an
+  unflagged overlapping rug and two identically-positioned doors.
+- **F-019**, a container fully covered by its own children (an ordinary case — a counter
+  with a sink and stove inset into it) becomes unclickable as a unit, since children paint
+  over their parent and `elementFromPoint` always resolves to whichever child is on top —
+  confirmed by trying to drag "the kitchen" in the campervan test plan and grabbing the
+  stove instead, every time.
+- **F-020**, `childPlacement` only checks a node's *immediate* parent, not any more distant
+  ancestor — confirmed by dragging a grandchild ~700px outside its grandparent's declared
+  bounds with no clamp at all.
+- **F-027**, the natural-looking `style: { fill: otherElement.style.fill }` parses with
+  zero error and renders the literal unevaluated expression source into the SVG — confirmed
+  live, not assumed; `style` was simply never wired to invoke expression values the way
+  `position`/`size` already are.
+- **F-023**, no formal grammar or property schema anywhere — the hand-rolled parser is the
+  only precise spec that exists. Confirmed with three separate live examples of the same
+  underlying gap: an unrecognized `shape` renders as a silent invisible point,
+  `rotation: 45` on a `rect` (F-024: rotation doesn't exist at all) silently does nothing,
+  and `flush: true` without its required `placement: "inside"` silently does nothing
+  either.
 
-**1. Nothing in this codebase has ever actually run in a browser.** Every fix and feature
-this entire project — collision clamping, containment, corner-reference dragging,
-self-intersection checking, connection propagation, expression solve-backward, the
-plan-switcher, all of it — was verified by hand-tracing source code, never by opening the
-page and clicking. That's a reasonable way to *design* correctly, but it is not a
-substitute for execution, and the number of interacting systems has grown past the point
-where hand-tracing alone catches everything: a single drag on a connected, corner-
-referenced, collision-checked, containment-checked element now runs through five
-independent pieces of logic in sequence (see #3 below), each individually traced
-correctly in isolation, with the actual *combination* never observed running. This is the
-single highest-leverage thing to do next, before any more feature work: open `docs/` in a
-real browser and actually drag things around, ideally with a systematic pass through the
-shipped examples rather than a spot check. If that's not feasible in this environment,
-it's worth explicitly deciding to accept that risk rather than continuing to build on an
-unverified base by default.
+**Real, but design questions rather than confirmed bugs:**
+- F-021 (no way to reach whatever's underneath a stacked/overlapping element — the general
+  case F-019 is one specific instance of), F-025 (no version marker on the plan format,
+  despite the language already having changed shape twice this project), F-026 (the
+  "pinned to an edge, slides, clamps, warns" mechanism independently rebuilt four times now
+  with no shared code), F-029 (no multi-select for bulk actions).
 
-**Update, 2026-08-30: done, partially.** A real-browser pass happened — reported back as
-"pretty good," with some minor unspecified issues noted but not detailed yet (deliberately
-set aside for later rather than dropped). This substantially de-risks the "never run at
-all" concern above; it doesn't yet close it fully, since a spot-check isn't the same as
-the systematic pass through every shipped example this note originally asked for, and
-whatever the noted minor issues are hasn't been triaged.
+**Real, explicitly deferred at the user's own request rather than designed yet:**
+- F-030 (a reusable component/sub-plan concept, broader than F-027's style-preset idea),
+  F-031 (discrete/grid-snapped drag positions, paired with F-014's still-unbuilt visual
+  grid).
 
-**2. External modules execute with zero sandboxing, and the trust model doesn't match how
-plans actually arrive.** `docs/index.html`'s module loader (`loadExternalScript`) injects
-any `module "https://..."` URL a plan declares as a live `<script src>` tag — full page
-access, no confirmation, no allowlist, no CSP restricting it. `open-questions.md` already
-tracks this as F-009, framed as an open design question ("does the trust model need
-revisiting"); on the ground, though, it's not hypothetical — it's a live capability on a
-public, indexed URL today. The stated core workflow (D-003/D-023) is a human pasting
-AI-generated plan text from a separate conversation directly into the code pane and
-trusting it enough to run — exactly the path where a malicious or hallucinated module URL
-would execute silently. This doesn't need solving before every other feature, but it
-should move from "open question" to "flagged risk with an owner" rather than sitting
-alongside F-013's metric/imperial toggle in priority.
-
-**Update, 2026-08-30: a first mitigation shipped (D-045).** Loading anything URL-like that
-isn't one of the three modules this app ships itself now shows a native `confirm()` naming
-the exact URL before fetching/running it; declining stops the plan from rendering rather
-than silently loading. This is real, not cosmetic — it closes the "happens automatically,
-no confirmation at all" framing above — but it's still not a sandbox: accepted code still
-runs with full, unrestricted page access, same as before. The risk moves from "silent" to
-"one click past silent," which is the honest extent of what this closes.
-
-**3. Drag-time constraints are accumulating as independently-sequenced heuristic clamps,
-with no unified model and no test of their combinations.** Collision (D-041), containment
-(D-044), connection propagation (D-014), wall-sliding (D-032 mode 2), and
-self-intersection checking (F-004) each clamp or reject the same `(dx, dy)` in sequence
-inside `applyDrag`, and each was added with an explicit, honest note that it's "not a
-jointly-solved optimum" — true and fine for two constraints, but this is now five, and
-every future constraint (F-016's Scale, F-017's undo, D-032's still-unbuilt `flush`) is a
-candidate to stack on top of the same function. Nothing is wrong today, but the
-architecture has no answer for what happens when a collision-blocked, containment-clamped,
-connection-propagated element also needs to self-intersection-check — each piece assumes
-it's reasoning about a delta already validated by everything before it, and that chain
-keeps getting longer. Worth a deliberate check-in the next time a constraint is added:
-either accept this is permanently sequential-heuristic by design (a real, defensible
-choice — document it as one), or decide what "enough constraints" looks like before
-reaching for a real solve.
-
-### Real, but not urgent
-
-**4. The plan language has no version field and has already changed shape twice
-mid-project** (D-018's shared-corner default flipped; D-032's placement syntax moved from
-a connection property to an element property, after being built and shipped once already).
-This is currently harmless — nothing persists a plan anywhere but the authoring browser's
-own `localStorage`, and a stale plan just gets edited forward. It stops being harmless the
-moment plans are shared between people, exported for long-term storage, or backed by
-D-021's storage service — at that point, an old plan referencing dropped syntax silently
-breaks with no migration path and no way to detect which version it's written against.
-Cheap to add now (a `settings { languageVersion: 1 }` or similar, ignored until it's
-needed); expensive to retrofit once real saved plans exist outside this session's control.
-
-**5. Two large, single-file, untested modules.** `docs/index.html` (1037 lines: tokenizer,
-parser, renderer, toolbar, and the new multi-plan persistence layer all in one `<script>`
-block) and `interactivity-module.js` (1246 lines) are both large enough that a small,
-wrong edit could plausibly regress something in an unrelated part of the file with nothing
-to catch it — the project's own standing practice (hand-trace, then ask the user to click
-around) is the only check that exists. This isn't a call to add a build step — D-034's
-"zero dependencies, plain static files" choice is sound and doesn't need reversing — but
-core's own several concerns (parser, renderer, toolbar/persistence) could split into
-separate plain `<script src>` files today, no bundler required, the same way the module
-system already splits interactivity/annotations/highlighting out. Would make each piece
-individually smaller to hold in mind while editing it.
-
-**6. The core value proposition still has a manual hop in it.** D-003 recasts the AI as
-the plan's primary author, but F-008 confirms the actual mechanism is still copy-paste
-from a separate AI conversation into the code pane (D-023) — there's no live integration.
-That's a reasonable place to have stopped for a frontend-only prototype, but it means the
-tool's central differentiator (code and view always in sync, AI-authored) is currently
-demonstrated only in the "code edited by hand, view follows" direction, not the "AI writes,
-human reviews in place" direction the whole language design (D-017's low-ambiguity,
-token-efficient goals) was optimized for. Worth remembering this is still unproven in its
-own primary use case, not just an F-numbered nice-to-have.
-
-### Worth tracking, not action items yet
-
-**7. Performance hasn't been re-measured since the constraint-stacking work started.**
-F-007's one benchmark (full reparse + full DOM replacement on every `pointermove`, fine to
-~800 objects, over budget by ~2000) predates collision checking, containment, and the
-corner-reference drag fix — each of which adds its own `computePositions`/bbox pass per
-drag frame on top of the baseline cost that was already measured. Not a problem at today's
-scale (one room, one property boundary), but the ceiling is almost certainly lower than
-F-007's number now, and nothing has re-checked by how much.
-
-**8. Planning documentation has grown large enough to be its own maintenance cost.**
-`decisions.md` is ~600 lines across 44 entries, several with multi-paragraph "here's what
-we tried, here's why it was wrong, here's the correction" histories preserved in full.
-That traceability is genuinely valuable and has caught real regressions in this project
-before — but it also means picking this project back up cold (a new session, a different
-person) now costs real time and tokens before touching any code, and a single feature
-(e.g. D-032's containment) already has its status recorded in four separate places
-(`decisions.md` D-032 and D-044, `language.md`, `open-questions.md` F-001) that all have
-to be individually kept in sync going forward. Not broken yet, but worth a deliberate
-prune-or-archive pass (e.g. collapsing fully-resolved, no-longer-contested decisions into
-shorter final-state summaries, keeping the full back-and-forth recoverable from git history
-rather than in the living document) before it grows past this size again.
-
-**9. No LICENSE file on a public, live site.** Not a functional risk, but currently an
-un-made decision rather than an intentional one — worth a deliberate choice (even
-"all rights reserved, source visible for review only") rather than leaving it to whatever
-the absence of a license implicitly means on GitHub.
+**A concrete direction sketched, not yet built:**
+- F-027 also proposes a specific fix shape — a named `styles: {}` preset registry in
+  `settings`, referenced by string rather than routed through the (proven broken, for this
+  case) expression system.
 
 ## What's going well, for balance
 
-The pattern of throwaway prototypes validating one question each before anything touches
-`docs/` (17 of them so far) has consistently caught real bugs before they reached the live
-product — the viewBox fit-box bug and the corner-tangent instability bug were both found
-this way. Decisions that turned out wrong in practice (D-032's connection-based syntax,
-D-041's tangent-slide collision) were reversed once real use disagreed with the design,
-rather than defended past the point of being right. That combination — cheap experiments,
-and a real willingness to undo a decision once it's tested and found wanting — is a good
-sign for a project whose core mechanism (a novel language, primarily AI-authored) is still
-this actively being discovered.
+The pattern that's carried this whole project — cheap, throwaway experiments before
+anything touches the real product, and a real willingness to test a decision against
+reality rather than defend it once made — held up again this session in a new form: instead
+of only testing code changes in a browser (which also kept happening, on every single fix),
+the language *design itself* got put through the same discipline. Rather than accepting
+"the language is fine, we designed it carefully," it got tested against independently-
+chosen critique criteria, an actual authored example, a second AI's independent attempt at
+the same brief, and a real-world reference photo — and every uncomfortable finding that
+came out of that (F-019, F-022, F-023, F-027, F-028) got written down precisely rather than
+smoothed over. That's the harder, more valuable version of the same habit this project has
+shown throughout: three good syntax proposals (a `transform: {}` wrapper, "innovative"
+alternative syntax, a full raster architecture) were each seriously considered and then
+honestly rejected once checked against the language's own real precedent and use cases,
+rather than adopted just for novelty's sake.
 
 ## Recommendation
 
-Superseded by events twice over, kept for the record rather than rewritten each time: the
-two most urgent items this originally called out (a real-browser pass, an explicit
-decision on external-module trust) were closed (D-045), which cleared the way to test
-F-002's own last untested promise (D-046) — meaning both of `open-questions.md`'s standing
-top-priority items (F-001, F-002) had concrete answers, not just design intent. That was
-this project's own stated precondition for backend work (D-019's original "sequencing
-note"), and it held: a first backend prototype followed (D-047), and — after a real,
-substantive detour when the planned Node.js stack turned out undeployable on the actual
-target hosting — both halves of the originally-designed backend (D-019 auth, D-021
-storage) are now genuinely live and tested (D-048, D-049), not just prototyped.
+**Build F-022 (a load-time validation pass) with F-028 (duplicate-id detection) folded in
+as part of the same first pass — not F-016's Scale, and not any of the remaining language-
+2.0 design questions yet.**
 
-**What's actually next, now that both the core product questions and the backend exist
-and work:** `docs/` itself still has no path to using any of this — no login UI, no
-account concept in the app, no call from the frontend to the storage service at all. That
-gap (not any further backend work) is what stands between where things are now and an
-actual "save your plan across devices" feature a person could use. Whether that's worth
-building yet is the same question this file already asked once (project-overview.md's own
-D-048 entry): nobody has concretely needed cross-device sync so far, so this is worth
-raising explicitly rather than assumed as the obvious next step just because the
-infrastructure now exists to support it. The remaining lower-priority items on this list
-(constraint-stacking, language versioning, file size, documentation volume) are still real
-but not urgent, independent of whichever direction is chosen next.
+Reasoning, in order of how much it matters:
+
+1. **These are the two highest-severity findings this session actually produced**, and
+   both are the same *kind* of problem: something silently wrong, discoverable only by
+   accident (dragging the exact right element, or eyeballing a rendered overlap), in a tool
+   whose entire premise (D-003, D-017) is that the code pane can be trusted as the single
+   source of truth for what a plan actually is. F-028 in particular — a drag on one visible
+   element silently corrupting a *different* element's position in the source — is about as
+   bad as a bug gets under that premise specifically.
+2. **It needs no new mechanism, only a new call site.** `clampToNoCollision` and
+   `clampToContainment` already exist, are already known-correct (D-041/D-044/D-071), and
+   currently only ever run from inside `applyDrag`. F-022 is exactly the ask to run that
+   same logic once against a freshly loaded/parsed plan and surface whatever it finds — a
+   genuinely small addition, not a new subsystem. Detecting a duplicate id (F-028) is a
+   single pass over `nodesById`'s declaration order, cheap to add to the same sweep.
+3. **It's a natural, low-commitment seed for F-023's much bigger, still-undesigned question**
+   (should there be a real schema at all) without having to answer that question now — a
+   validation pass that reports "here's everything wrong with this plan as loaded" is useful
+   on its own, and later becomes the obvious place to add more checks (an unrecognized
+   `shape`, an orphaned `flush`) if F-023 is ever picked up, rather than a separate effort.
+4. **Everything else waiting in the queue is either explicitly deferred by your own choice**
+   (F-016's Scale, F-030, F-031) **or a genuine design question with no clear shape yet**
+   (F-021, F-023 in full, F-026's refactor, F-029) — none of those are blocked by anything,
+   they just aren't as concretely ready to build as this one is, and none carry the same
+   "silently wrong" severity.
+
+The main open design question if this is picked up: how results surface for more than one
+violation at once — today's single-gesture `dragmsg` line isn't built for a list. Worth
+settling before writing code, not a blocker to deciding whether to proceed at all.
