@@ -169,6 +169,8 @@
     <button id="delete-btn" title="Delete the current plan">Delete</button>
     <button id="open-btn">Import…</button>
     <button id="save-btn">Export…</button>
+    <button id="export-png-btn" title="Save the current plan as a PNG image">Export PNG…</button>
+    <button id="export-svg-btn" title="Save the current plan as an SVG image">Export SVG…</button>
     <input type="file" id="file-input" accept=".planagon,.2dplan,.txt,text/plain">
     <button id="cloud-signin-btn" title="Sign in to save/load plans in the cloud">Sign in…</button>
     <span id="cloud-status" style="font-size: 0.8rem; color: #888;"></span>
@@ -1517,6 +1519,100 @@ document.getElementById("save-btn").addEventListener("click", () => {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+});
+
+// ---------- Export as image (F-033) ----------
+// The code-export above hands back the plan's *source*; this hands back a picture of it —
+// a flattened PNG/SVG a person can drop straight into a document or chat, no editor needed
+// to open it. Client-side only, same Blob+temporary-<a> download pattern as save-btn above.
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function exportFilename(ext) {
+  const p = activePlan();
+  return `${(p ? p.name : "plan").replace(/[\\/:*?"<>|]+/g, "_")}.${ext}`;
+}
+
+// A clone of the live SVG, not core's own bare render() — the live one already has
+// annotations-module's labels/dimensions baked in (real plan content, belongs in an
+// export) via its own onRendered hook, which a fresh render() call wouldn't have without
+// re-running every module's render pass by hand. What gets stripped is specifically
+// editor-only chrome a module added on top: the connect/disconnect icon buttons
+// (interactivity-module, matched by their own data-action attribute) and interaction-state
+// classes (selected/connected-highlight/corner-preview) — an export is a picture of the
+// plan, not a screenshot of whatever happens to be selected or hovered in the editor right
+// now. The scale bar, Fit button, and F-022's validation panel need no such stripping at
+// all: they're plain HTML siblings of the <svg> inside #plan-root, never part of it.
+function cleanSvgClone() {
+  const liveSvg = rootEl.querySelector("svg");
+  if (!liveSvg) return null;
+  const clone = liveSvg.cloneNode(true);
+  clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  // Reset to the natural full-content fit regardless of whatever pan/zoom the live view
+  // currently has applied (interactivity-module's own viewState overwrites the SVG's own
+  // viewBox attribute for on-screen panning) — an export shows the whole plan, not
+  // whichever fraction of it the editor's camera currently happens to be scrolled to.
+  if (fixedViewBox) {
+    const { minX, minY, vw, vh } = fixedViewBox;
+    clone.setAttribute("viewBox", `${minX * M} ${minY * M} ${vw} ${vh}`);
+    clone.setAttribute("width", vw);
+    clone.setAttribute("height", vh);
+  }
+  clone.querySelectorAll("[data-action]").forEach((el) => el.remove());
+  clone.querySelectorAll(".selected, .connected-highlight, .corner-preview")
+    .forEach((el) => el.classList.remove("selected", "connected-highlight", "corner-preview"));
+  // A "hover" annotation reads as invisible live only because the page's own stylesheet
+  // (`.annotation[data-show="hover"] { opacity: 0 }`) says so — that rule lives in the
+  // page's <style>, not in the SVG itself, so it has nothing to say once this clone is
+  // serialized on its own and opened somewhere else. Found by actually opening an export
+  // and seeing every hover label rendered at once, all overlapping — removed outright
+  // (not just hidden via an inline style) rather than shipping invisible dead weight into
+  // a file that has no hover interaction to reveal them with anyway.
+  clone.querySelectorAll('.annotation[data-show="hover"]').forEach((el) => el.remove());
+  return clone;
+}
+
+document.getElementById("export-svg-btn").addEventListener("click", () => {
+  const clone = cleanSvgClone();
+  if (!clone) return;
+  const blob = new Blob([new XMLSerializer().serializeToString(clone)], { type: "image/svg+xml" });
+  downloadBlob(blob, exportFilename("svg"));
+});
+
+document.getElementById("export-png-btn").addEventListener("click", () => {
+  const clone = cleanSvgClone();
+  if (!clone) return;
+  const w = Number(clone.getAttribute("width")), h = Number(clone.getAttribute("height"));
+  // A plain 1x raster of the SVG's own viewBox units tends to look soft once actually
+  // opened at real size; 2x gives a noticeably crisper default without exposing a whole
+  // resolution picker for a first cut of this feature.
+  const SCALE = 2;
+  const svgUrl = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(clone)], { type: "image/svg+xml" }));
+  const img = new Image();
+  img.onload = () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = w * SCALE;
+    canvas.height = h * SCALE;
+    const ctx = canvas.getContext("2d");
+    // A plan can have transparent gaps outside its own shapes (e.g. a polygon-only plan
+    // with nothing covering its own bounding box) — a white backing matches how it already
+    // reads inside the app's own light page background, rather than exporting a punch-hole
+    // PNG that looks broken on a dark viewer elsewhere.
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    URL.revokeObjectURL(svgUrl);
+    canvas.toBlob((blob) => downloadBlob(blob, exportFilename("png")), "image/png");
+  };
+  img.src = svgUrl;
 });
 
 const fileInput = document.getElementById("file-input");
