@@ -119,6 +119,12 @@
   let selectedId = null;
   let drag = null;
   let contextMenuItems = [];
+  // F-019/F-021: the point and chosen id of the last plain click (not a drag) that landed
+  // on more than one stacked element — lets a *repeated* click at the same spot step to the
+  // next thing underneath, rather than always re-grabbing whatever's on top. Set in
+  // handlePointerUp, read in handlePointerDown; see candidateIdsAtPoint below.
+  let clickCycle = null;
+  const CLICK_CYCLE_TOLERANCE_PX = 4;
 
   // ---------- Pan/zoom state ----------
   // viewState: the viewBox {x,y,width,height} currently applied on top of whatever core
@@ -1385,6 +1391,22 @@
   }
   const unregisterOnRendered = core.onRendered(handleRendered);
 
+  // ---------- Click-cycling through stacked elements (F-019, F-021) ----------
+  // Every element actually painted at (clientX, clientY), nearest-first — deliberately not
+  // reasoning about the tree (parent/child) at all, unlike an ancestor-walking approach
+  // would: elementsFromPoint reflects real paint order, so it uniformly covers a container
+  // fully hidden by its own children (F-019's own finding) *and* two unrelated siblings
+  // that merely happen to overlap (F-021's broader case) with the same one mechanism,
+  // rather than needing a second, different one later for the case this doesn't reach.
+  function candidateIdsAtPoint(clientX, clientY) {
+    const ids = [];
+    for (const el of document.elementsFromPoint(clientX, clientY)) {
+      const id = el.closest?.("[data-id]")?.dataset.id;
+      if (id && program.nodesById[id] && !ids.includes(id)) ids.push(id);
+    }
+    return ids;
+  }
+
   // ---------- Event wiring — named functions so registerModuleCleanup can remove exactly
   // what was added. ----------
   function handlePointerDown(e) {
@@ -1420,12 +1442,23 @@
         startView: viewState || lastCoreFit };
       return;
     }
-    const node = program.nodesById[el.dataset.id];
+    // Which element a click actually targets: normally whatever's topmost at this pixel
+    // (el.dataset.id, same as before) — unless this click lands within tolerance of the
+    // *previous* plain click's own point, in which case it steps to whatever was one layer
+    // further down that same stack last time, wrapping back to the top once exhausted.
+    let chosenId = el.dataset.id;
+    if (clickCycle && Math.hypot(e.clientX - clickCycle.x, e.clientY - clickCycle.y) <= CLICK_CYCLE_TOLERANCE_PX) {
+      const candidates = candidateIdsAtPoint(e.clientX, e.clientY);
+      const idx = candidates.indexOf(clickCycle.lastId);
+      if (idx !== -1 && candidates.length > 1) chosenId = candidates[(idx + 1) % candidates.length];
+    }
+
+    const node = program.nodesById[chosenId];
     if (!node.props.position && !node.props.points) {
       core.dragmsgEl.textContent = `${node.id}: has no explicit position/points in source, nothing to drag`;
       return;
     }
-    drag = { id: node.id, baseText: core.sourceEl.value, clientX: e.clientX, clientY: e.clientY, singleOnly: e.shiftKey };
+    drag = { id: node.id, baseText: core.sourceEl.value, clientX: e.clientX, clientY: e.clientY, moved: false, singleOnly: e.shiftKey };
     core.rootEl.classList.add("dragging");
   }
 
@@ -1539,6 +1572,10 @@
       return;
     }
     if (!drag) return;
+    // Same 3px-of-slop threshold canvasDrag already uses to tell a pan from a plain click —
+    // reused here so a click-cycle (see candidateIdsAtPoint) only ever advances on a genuine
+    // click-in-place, never gets reset by the sub-pixel jitter of a real drag's first frame.
+    if (!drag.moved && Math.hypot(e.clientX - drag.clientX, e.clientY - drag.clientY) > 3) drag.moved = true;
     const pxPerMeter = currentPxPerMeter();
     const dx = (e.clientX - drag.clientX) / pxPerMeter;
     const dy = (e.clientY - drag.clientY) / pxPerMeter;
@@ -1555,6 +1592,10 @@
     }
     if (drag) {
       selectedId = drag.id; // click or drag-and-release both select the element
+      // A plain click (never moved) remembers its own point + chosen id, so a repeated
+      // click right there can step to the next thing underneath next time; an actual drag
+      // invalidates it — dragging is a deliberate move, not "try again at this spot".
+      clickCycle = drag.moved ? null : { x: drag.clientX, y: drag.clientY, lastId: drag.id };
       drag = null;
       core.rerender({ preserveViewBox: true });
       // Once per gesture, not once per pointermove frame (applyDrag runs on every one of
