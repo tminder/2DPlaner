@@ -93,7 +93,12 @@
     ).join("");
     // One show mode per element governs label, dimensions, and edge lengths together
     // (D-026/D-038) — a single group, rather than a second independent visibility axis.
-    return `<g class="annotation" data-show="${showMode}">${textEls}${edgeTextEls}</g>`;
+    // Label/dimensions get their own nested group (F-018) so nudgeApartAlwaysAnnotations
+    // below can move just that text to avoid another element's label — without an inner
+    // group, nudging the whole thing would drag each edge-length label away from the edge
+    // it's actually describing too, for a conflict that was never about them.
+    const labelGroup = textEls ? `<g class="annotation-label">${textEls}</g>` : "";
+    return `<g class="annotation" data-show="${showMode}">${labelGroup}${edgeTextEls}</g>`;
   }
 
   // Mirrors core's own renderShape branching exactly (same shape/style conditions, same
@@ -141,12 +146,70 @@
     for (const child of node.children) insertAnnotations(child, positions, settings, svgEl);
   }
 
+  // F-018: two `show: "always"` labels near each other (e.g. a room's own name and a piece
+  // of furniture's dimension text) used to render directly on top of one another, illegible
+  // — nothing nudged them apart, since each element's own annotation was positioned purely
+  // from its own geometry, with no awareness of any other element's. `"hover"` never hit
+  // this (only ever one shown at a time, whatever's under the cursor), which is why every
+  // shipped example uses it almost everywhere and happened to avoid the problem entirely.
+  //
+  // Deliberately scoped to the label+dimensions group only, not the (much more numerous)
+  // per-edge length labels edgeLengths already draws — those are meant to sit right on the
+  // edge they describe; nudging them off it would make them ambiguous about which edge is
+  // theirs, a different problem this doesn't attempt to solve.
+  //
+  // A small iterative pairwise separation, not a real global layout solver: repeatedly find
+  // any two overlapping boxes and push both away from each other along whichever axis needs
+  // the smaller nudge, a handful of times. Real bounding boxes via getBBox() on the actual
+  // rendered <text> elements — measuring the DOM directly rather than estimating text width
+  // from character count, since this already runs after core's own render, in a real <svg>.
+  const NUDGE_PADDING = 2; // svg px of breathing room once two labels no longer touch
+  const NUDGE_ITERATIONS = 6;
+  function nudgeApartAlwaysAnnotations(svgEl) {
+    const boxes = [];
+    for (const g of svgEl.querySelectorAll('.annotation[data-show="always"] > .annotation-label')) {
+      let bbox;
+      try { bbox = g.getBBox(); } catch { continue; } // detached/not-yet-laid-out — skip, not fatal
+      if (bbox.width === 0 && bbox.height === 0) continue; // an empty group (nothing to show)
+      boxes.push({ el: g, x: bbox.x, y: bbox.y, w: bbox.width, h: bbox.height, dx: 0, dy: 0 });
+    }
+    for (let iter = 0; iter < NUDGE_ITERATIONS; iter++) {
+      let movedAny = false;
+      for (let i = 0; i < boxes.length; i++) {
+        for (let j = i + 1; j < boxes.length; j++) {
+          const a = boxes[i], b = boxes[j];
+          const ax1 = a.x + a.dx, ay1 = a.y + a.dy, ax2 = ax1 + a.w, ay2 = ay1 + a.h;
+          const bx1 = b.x + b.dx, by1 = b.y + b.dy, bx2 = bx1 + b.w, by2 = by1 + b.h;
+          const overlapX = Math.min(ax2, bx2) - Math.max(ax1, bx1);
+          const overlapY = Math.min(ay2, by2) - Math.max(ay1, by1);
+          if (overlapX <= 0 || overlapY <= 0) continue;
+          movedAny = true;
+          const acx = (ax1 + ax2) / 2, acy = (ay1 + ay2) / 2, bcx = (bx1 + bx2) / 2, bcy = (by1 + by2) / 2;
+          if (overlapX < overlapY) {
+            const push = (overlapX + NUDGE_PADDING) / 2;
+            const dir = acx <= bcx ? -1 : 1; // a sits left of (or exactly on) b -> push a further left
+            a.dx += dir * push; b.dx -= dir * push;
+          } else {
+            const push = (overlapY + NUDGE_PADDING) / 2;
+            const dir = acy <= bcy ? -1 : 1;
+            a.dy += dir * push; b.dy -= dir * push;
+          }
+        }
+      }
+      if (!movedAny) break;
+    }
+    for (const b of boxes) {
+      if (b.dx || b.dy) b.el.setAttribute("transform", `translate(${b.dx} ${b.dy})`);
+    }
+  }
+
   function handleRendered(prog, result) {
     const svgEl = core.rootEl.querySelector("svg");
     if (!svgEl) return;
     const positions = {};
     core.computePositions(prog.root, null, [0, 0], positions);
     insertAnnotations(prog.root, positions, prog.settings, svgEl);
+    nudgeApartAlwaysAnnotations(svgEl);
   }
   const unregisterOnRendered = core.onRendered(handleRendered);
 
