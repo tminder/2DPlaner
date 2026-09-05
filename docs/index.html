@@ -1600,8 +1600,8 @@ function cleanSvgClone() {
     clone.setAttribute("height", vh);
   }
   clone.querySelectorAll("[data-action]").forEach((el) => el.remove());
-  clone.querySelectorAll(".selected, .connected-highlight, .corner-preview")
-    .forEach((el) => el.classList.remove("selected", "connected-highlight", "corner-preview"));
+  clone.querySelectorAll(".selected, .connected-highlight, .corner-preview, .stacked-hint")
+    .forEach((el) => el.classList.remove("selected", "connected-highlight", "corner-preview", "stacked-hint"));
   // A "hover" annotation reads as invisible live only because the page's own stylesheet
   // (`.annotation[data-show="hover"] { opacity: 0 }`) says so — that rule lives in the
   // page's <style>, not in the SVG itself, so it has nothing to say once this clone is

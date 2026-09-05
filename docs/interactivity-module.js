@@ -37,6 +37,19 @@
       #plan-root:not(.dragging) svg .icon-btn:hover circle { r: 11; }
       #plan-root:not(.dragging) .anchor-hit:hover { fill: #e33; opacity: 0.7; }
       svg .obj.corner-preview { stroke: #e33 !important; filter: drop-shadow(0 0 2px #e33); }
+      /* F-021's remaining half: discovering a hidden element exists at all, not just
+         reaching it (D-077's click-cycling already covers reaching it). Fading the topmost
+         shape partway on hover — only when handlePointerOver has actually confirmed
+         something else is stacked there, never unconditionally — gives an immediate,
+         literal glimpse of what's underneath, which is more informative than a plain badge
+         alone would be; the badge (below) then names how many and hints at the gesture. */
+      #plan-root:not(.dragging) svg .obj.stacked-hint:hover { opacity: 0.55; }
+      #interactivity-stack-badge { position: fixed; z-index: 1001; pointer-events: none;
+        transform: translate(14px, 14px); display: flex; align-items: center; gap: 0.35em;
+        background: rgba(30,68,87,0.94); color: #fff; font-family: system-ui, sans-serif;
+        font-size: 12px; font-weight: 600; padding: 0.25rem 0.6rem; border-radius: 999px;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.25); white-space: nowrap; }
+      #interactivity-stack-badge[hidden] { display: none; }
       .context-menu { position: fixed; z-index: 1000; margin: 0; padding: 4px 0; min-width: 170px;
         list-style: none; background: #fff; border: 1px solid #ccc; border-radius: 6px;
         box-shadow: 0 4px 14px rgba(0,0,0,0.18); font-family: system-ui, sans-serif; font-size: 13px; }
@@ -82,6 +95,7 @@
   document.getElementById("interactivity-scale-bar")?.remove();
   document.getElementById("interactivity-fit-btn")?.remove();
   document.getElementById("interactivity-validation-panel")?.remove();
+  document.getElementById("interactivity-stack-badge")?.remove();
 
   const styleEl = document.createElement("style");
   styleEl.id = "interactivity-module-style";
@@ -93,6 +107,13 @@
   contextMenuEl.className = "context-menu";
   contextMenuEl.hidden = true;
   document.body.appendChild(contextMenuEl);
+
+  // F-021: fixed-position like contextMenuEl above, for the same reason — it needs to
+  // track the real cursor in screen space, not be constrained by #plan-root's own layout.
+  const stackBadgeEl = document.createElement("div");
+  stackBadgeEl.id = "interactivity-stack-badge";
+  stackBadgeEl.hidden = true;
+  document.body.appendChild(stackBadgeEl);
 
   const scaleBarEl = document.createElement("div");
   scaleBarEl.id = "interactivity-scale-bar";
@@ -1594,7 +1615,15 @@
       svg.setAttribute("viewBox", `${newX} ${newY} ${base.width} ${base.height}`);
       return;
     }
-    if (!drag) return;
+    if (!drag) {
+      // Keeps the F-021 stack badge glued to the actual cursor while it's showing —
+      // handlePointerOver only ever fires once on entering an element, not continuously.
+      if (!stackBadgeEl.hidden) {
+        stackBadgeEl.style.left = `${e.clientX}px`;
+        stackBadgeEl.style.top = `${e.clientY}px`;
+      }
+      return;
+    }
     // Same 3px-of-slop threshold canvasDrag already uses to tell a pan from a plain click —
     // reused here so a click-cycle (see candidateIdsAtPoint) only ever advances on a genuine
     // click-in-place, never gets reset by the sub-pixel jitter of a real drag's first frame.
@@ -1647,6 +1676,30 @@
       el.classList.add("connected-highlight");
       core.rootEl.querySelector(`[data-id="${CSS.escape(partnerId)}"]`)?.classList.add("connected-highlight");
     }
+    // F-021's remaining half: nothing before this ever told a viewer that a point has more
+    // than one element stacked at it at all — only D-077's click-cycling let someone who
+    // already suspected it *reach* the rest. A one-point sample at hover-entry (the same
+    // sampling tradeoff click-cycling itself already makes, not a new one) is enough to
+    // answer "is there more here", even though it can't promise every pixel of a large
+    // shape agrees on the same answer.
+    //
+    // The plan's own root is excluded from the count — found by testing, not assumed safe:
+    // a first version flagged *every* nested element, since a child's own parent is always
+    // geometrically "underneath" it by definition, and the root is always underneath
+    // literally everything in the plan. That's true but never a surprise — the root is
+    // already visible everywhere else on screen as the outer boundary, unlike a genuinely
+    // hidden container (F-019's own case: a mid-tree container fully covered by its own
+    // children, never visible *anywhere*). Excluding it turns this back into a signal for
+    // the second, unexpected case rather than ambient noise on every single element.
+    const candidates = candidateIdsAtPoint(e.clientX, e.clientY).filter((id) => id !== program.root.id);
+    if (candidates.length > 1) {
+      el.classList.add("stacked-hint");
+      const hiddenCount = candidates.length - 1;
+      stackBadgeEl.textContent = `⧉ ${hiddenCount} more here — click again`;
+      stackBadgeEl.style.left = `${e.clientX}px`;
+      stackBadgeEl.style.top = `${e.clientY}px`;
+      stackBadgeEl.hidden = false;
+    }
   }
 
   function handlePointerOut(e) {
@@ -1664,6 +1717,8 @@
       el.classList.remove("connected-highlight");
       core.rootEl.querySelector(`[data-id="${CSS.escape(partnerId)}"]`)?.classList.remove("connected-highlight");
     }
+    el.classList.remove("stacked-hint");
+    stackBadgeEl.hidden = true;
   }
 
   // Not just "reapply the last computed fit box" (that was the whole first bug: dragging
