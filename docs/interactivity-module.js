@@ -66,7 +66,11 @@
         list-style: none; background: #fff; border: 1px solid #ccc; border-radius: 6px;
         box-shadow: 0 4px 14px rgba(0,0,0,0.18); font-family: system-ui, sans-serif; font-size: 13px; }
       .context-menu[hidden] { display: none; }
-      .context-menu li { padding: 6px 16px; cursor: pointer; }
+      /* Auto width (no max-width set anywhere) already grows the menu to fit its widest
+         label — this just stops a long one (e.g. an element with a long custom label
+         property) from wrapping onto a second line inside that width, which read as a
+         layout glitch rather than one continuous line of text. */
+      .context-menu li { padding: 6px 16px; cursor: pointer; white-space: nowrap; }
       .context-menu li:hover { background: #eef2ff; }
       .context-menu li.danger { color: #a11; }
       .context-menu li.disabled { color: #aaa; cursor: default; }
@@ -1706,20 +1710,26 @@
           i: push({ label: `Inside ${displayName(parent)}`, action: () => setPlacementInside(nodeId), checked: ownInside, disabled: ownInside }),
         },
         {
+          // Reported directly as unclear: "Flush against X" leaned on "flush" as jargon
+          // few readers already know in this sense. "Snapped to X's edge" describes the
+          // actual effect in plain terms instead of naming the underlying property.
           i: push({
-            label: `Flush against ${displayName(container ?? parent)}`,
+            label: `Snapped to ${displayName(container ?? parent)}'s edge`,
             action: () => toggleFlush(nodeId),
             checked: ownFlush,
             disabled: resolvedPlacement !== "inside",
           }),
         },
         {
-          // "Free" has no persisted state of its own to reflect (unlike Inside/Flush, it's
-          // never the thing that's "currently set") but stays part of the same checkable
-          // radio-style row visually — an explicit `checked: false` (rather than leaving it
-          // `undefined`, which would now omit the checkmark slot entirely, see the
-          // top-level actions above) keeps its label aligned with its two siblings.
-          i: push({ label: "Free", action: () => clearPlacement(nodeId), checked: false, disabled: !hasOwnPlacementProps || ancestorConstrains }),
+          // Reported directly as unclear: bare "Free" didn't say what it was free *from*.
+          // "No placement (moves freely)" names both the state (no placement/flush
+          // property left on this element) and its consequence in one line. Has no
+          // persisted state of its own to reflect (unlike Inside/Flush, it's never the
+          // thing that's "currently set") but stays part of the same checkable radio-style
+          // row visually — an explicit `checked: false` (rather than leaving it `undefined`,
+          // which would omit the checkmark slot entirely, see the top-level actions above)
+          // keeps its label aligned with its two siblings.
+          i: push({ label: "No placement (moves freely)", action: () => clearPlacement(nodeId), checked: false, disabled: !hasOwnPlacementProps || ancestorConstrains }),
         },
       ];
       renderItems.push({ label: "Placement", group: placementItems });

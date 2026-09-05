@@ -132,16 +132,16 @@ def test_make_flush_then_clear_placement(app_page):
     # Now checked (just placed inside), and Inside itself becomes disabled (already set)
     # -- clicking an already-checked radio-style option would be a no-op.
     assert menu_item_state(app_page, "Inside room") == {"checked": True, "disabled": True}
-    assert menu_item_state(app_page, "Flush against room") == {"checked": False, "disabled": False}
-    click_menu_item(app_page, "Flush against room")
+    assert menu_item_state(app_page, "Snapped to room's edge") == {"checked": False, "disabled": False}
+    click_menu_item(app_page, "Snapped to room's edge")
     assert "flush: true" in source_text(app_page)
 
     open_context_menu(app_page, cx, cy)
-    assert menu_item_state(app_page, "Flush against room") == {"checked": True, "disabled": False}
+    assert menu_item_state(app_page, "Snapped to room's edge") == {"checked": True, "disabled": False}
     # Free is enabled: sofa has its own placement+flush, and room has no childPlacement
     # of its own, so clearing them actually achieves real freedom.
-    assert menu_item_state(app_page, "Free") == {"checked": False, "disabled": False}
-    click_menu_item(app_page, "Free")
+    assert menu_item_state(app_page, "No placement (moves freely)") == {"checked": False, "disabled": False}
+    click_menu_item(app_page, "No placement (moves freely)")
     text = source_text(app_page)
     assert "flush" not in text.split("element sofa")[1]
     assert "placement" not in text.split("element sofa")[1]
@@ -176,10 +176,10 @@ element room {
     open_context_menu(app_page, cx, cy)
     # desk has its own placement to clear, but room's childPlacement would still apply
     # afterward -- Free can't achieve real freedom here, so it must be disabled.
-    assert menu_item_state(app_page, "Free") == {"checked": False, "disabled": True}
+    assert menu_item_state(app_page, "No placement (moves freely)") == {"checked": False, "disabled": True}
 
     before = source_text(app_page)
-    click_menu_item(app_page, "Free")
+    click_menu_item(app_page, "No placement (moves freely)")
     assert source_text(app_page) == before  # disabled item's click is a no-op
 
     # Confirm the *reason* this matters: dragging desk far outside room still clamps it,
