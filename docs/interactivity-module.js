@@ -1579,6 +1579,13 @@
     // candidate list on every render instead, so it reflects selectedId's latest value.
     if (stackHintCandidates && !stackBadgeEl.hidden) {
       stackBadgeEl.innerHTML = stackHintMarkup(stackHintCandidates);
+      // core's rerender() just replaced every shape's DOM node, wiping any .stacked-dim
+      // class along with everything else that wasn't reapplied above — without this, a
+      // stationary click mid-hover would silently lose the dim effect until the mouse
+      // next actually moves.
+      for (const id of stackHintCandidates) {
+        core.rootEl.querySelector(`[data-id="${CSS.escape(id)}"]`)?.classList.add("stacked-dim");
+      }
     }
 
     const icons = [];
@@ -1652,6 +1659,53 @@
     const key = [...filtered].sort().join("|");
     if (!stackOrderCache.has(key)) stackOrderCache.set(key, filtered);
     return stackOrderCache.get(key);
+  }
+
+  // F-021: run continuously from handlePointerMove (not just once on element-entry) — a
+  // single sample at hover-*entry* missed a real case, reported directly: entering a large
+  // element through its own non-overlapping region shows nothing, correctly, but then moving
+  // the mouse — still inside that same element, so pointerover never re-fires — into the
+  // part that actually does overlap something else never re-checked, leaving the hint off
+  // for the rest of that hover even once the cursor is genuinely over a stacked point.
+  function updateStackedHint(clientX, clientY, withinViewer) {
+    const nonRootTrigger = withinViewer ? candidateIdsAtPoint(clientX, clientY).filter((id) => id !== program.root.id) : [];
+    if (nonRootTrigger.length > 1) {
+      // The badge's own list shows every reachable candidate, root included — unlike the
+      // trigger check just above, which stays root-excluded (so hovering an ordinary
+      // element still doesn't fire the hint on every element in the plan). Excluding root
+      // from the list too would let click-cycling (which never excludes it) land on
+      // something this list doesn't even mention, leaving the ">" marker with nothing to
+      // point at — a real bug, found by testing selecting the root via a full cycle.
+      const resolved = resolvedCandidatesAtPoint(clientX, clientY);
+      // Every element in the group dims together, not just whichever one is literally under
+      // the cursor — requested directly: seeing the whole layering at once (each one
+      // partially see-through) is more useful than one layer fading at a time. Only
+      // actually touched when the *set* changes, not every single move tick, since the
+      // group can otherwise stay the same for many consecutive mousemove events in a row.
+      const changed = !stackHintCandidates || stackHintCandidates.length !== resolved.length
+        || !stackHintCandidates.every((id) => resolved.includes(id));
+      if (changed) {
+        if (stackHintCandidates) {
+          for (const id of stackHintCandidates) {
+            core.rootEl.querySelector(`[data-id="${CSS.escape(id)}"]`)?.classList.remove("stacked-dim");
+          }
+        }
+        for (const id of resolved) {
+          core.rootEl.querySelector(`[data-id="${CSS.escape(id)}"]`)?.classList.add("stacked-dim");
+        }
+        stackHintCandidates = resolved;
+      }
+      stackBadgeEl.innerHTML = stackHintMarkup(resolved);
+      stackBadgeEl.style.left = `${clientX}px`;
+      stackBadgeEl.style.top = `${clientY}px`;
+      stackBadgeEl.hidden = false;
+    } else if (stackHintCandidates) {
+      for (const id of stackHintCandidates) {
+        core.rootEl.querySelector(`[data-id="${CSS.escape(id)}"]`)?.classList.remove("stacked-dim");
+      }
+      stackHintCandidates = null;
+      stackBadgeEl.hidden = true;
+    }
   }
 
   // ---------- Event wiring — named functions so registerModuleCleanup can remove exactly
@@ -1838,12 +1892,7 @@
       return;
     }
     if (!drag) {
-      // Keeps the F-021 stack badge glued to the actual cursor while it's showing —
-      // handlePointerOver only ever fires once on entering an element, not continuously.
-      if (!stackBadgeEl.hidden) {
-        stackBadgeEl.style.left = `${e.clientX}px`;
-        stackBadgeEl.style.top = `${e.clientY}px`;
-      }
+      if (program) updateStackedHint(e.clientX, e.clientY, core.rootEl.contains(e.target));
       return;
     }
     // Same 3px-of-slop threshold canvasDrag already uses to tell a pan from a plain click —
@@ -1898,44 +1947,11 @@
       el.classList.add("connected-highlight");
       core.rootEl.querySelector(`[data-id="${CSS.escape(partnerId)}"]`)?.classList.add("connected-highlight");
     }
-    // F-021's remaining half: nothing before this ever told a viewer that a point has more
-    // than one element stacked at it at all — only D-077's click-cycling let someone who
-    // already suspected it *reach* the rest. A one-point sample at hover-entry (the same
-    // sampling tradeoff click-cycling itself already makes, not a new one) is enough to
-    // answer "is there more here", even though it can't promise every pixel of a large
-    // shape agrees on the same answer.
-    //
-    // The plan's own root is excluded from the count — found by testing, not assumed safe:
-    // a first version flagged *every* nested element, since a child's own parent is always
-    // geometrically "underneath" it by definition, and the root is always underneath
-    // literally everything in the plan. That's true but never a surprise — the root is
-    // already visible everywhere else on screen as the outer boundary, unlike a genuinely
-    // hidden container (F-019's own case: a mid-tree container fully covered by its own
-    // children, never visible *anywhere*). Excluding it turns this back into a signal for
-    // the second, unexpected case rather than ambient noise on every single element.
-    const allCandidates = resolvedCandidatesAtPoint(e.clientX, e.clientY);
-    const nonRootCandidates = allCandidates.filter((id) => id !== program.root.id);
-    if (nonRootCandidates.length > 1) {
-      // Every element in the group dims together, not just `el` — requested directly:
-      // seeing the whole layering at once (each one partially see-through) is more useful
-      // than one layer fading at a time, and reduces how much someone needs to already
-      // trust click-cycling/right-click's own targeting before they can even tell what's
-      // there. The badge's own list shows every reachable candidate, root included — unlike
-      // the trigger check just above, which stays root-excluded (so hovering an ordinary
-      // element still doesn't fire the hint on every element in the plan). Excluding root
-      // from the list too would let click-cycling (which never excludes it) land on
-      // something this list doesn't even mention, leaving the ">" marker with nothing to
-      // point at — a real bug, found by testing selecting the root via a full cycle, not
-      // assumed safe.
-      for (const id of allCandidates) {
-        core.rootEl.querySelector(`[data-id="${CSS.escape(id)}"]`)?.classList.add("stacked-dim");
-      }
-      stackHintCandidates = allCandidates;
-      stackBadgeEl.innerHTML = stackHintMarkup(allCandidates);
-      stackBadgeEl.style.left = `${e.clientX}px`;
-      stackBadgeEl.style.top = `${e.clientY}px`;
-      stackBadgeEl.hidden = false;
-    }
+    // The stacked-hint check itself now lives in updateStackedHint, run continuously from
+    // handlePointerMove rather than once here — see that function for why: a single sample
+    // at element-*entry* missed a real case (entering a large element through its own
+    // non-overlapping region, then moving — still inside the same element, no fresh
+    // pointerover — into the part that does overlap something else).
   }
 
   function handlePointerOut(e) {
