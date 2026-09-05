@@ -56,7 +56,7 @@
       #interactivity-stack-badge .stack-line { display: flex; gap: 0.5em; opacity: 0.55; padding: 0.05rem 0; }
       #interactivity-stack-badge .stack-line.current { opacity: 1; }
       #interactivity-stack-badge .stack-marker { width: 0.9em; flex: none; }
-      .context-menu { position: fixed; z-index: 1000; margin: 0; padding: 4px 0; min-width: 170px;
+      .context-menu { position: fixed; z-index: 1002; margin: 0; padding: 4px 0; min-width: 170px;
         list-style: none; background: #fff; border: 1px solid #ccc; border-radius: 6px;
         box-shadow: 0 4px 14px rgba(0,0,0,0.18); font-family: system-ui, sans-serif; font-size: 13px; }
       .context-menu[hidden] { display: none; }
@@ -1644,7 +1644,13 @@
       }
       const item = contextMenuItems[entry.i];
       const classes = [item.danger ? "danger" : "", item.disabled ? "disabled" : ""].filter(Boolean).join(" ");
-      const check = `<span class="menu-check">${item.checked ? "✓" : ""}</span>`;
+      // The checkmark slot is only reserved for items that are actually part of a
+      // checkable set (radio-style options like Placement's own Inside/Flush/Free) —
+      // `checked` is `undefined` for a plain action like Duplicate/Delete, so it renders
+      // with no check span at all rather than an always-empty one, keeping its label
+      // flush with a group header's own (also check-less) left edge instead of sitting
+      // visibly further right than it.
+      const check = item.checked !== undefined ? `<span class="menu-check">${item.checked ? "✓" : ""}</span>` : "";
       return `<li data-i="${entry.i}"${classes ? ` class="${classes}"` : ""}>${check}<span class="menu-label">${escapeHtml(item.label)}</span></li>`;
     }).join("");
   }
@@ -1702,7 +1708,12 @@
           }),
         },
         {
-          i: push({ label: "Free", action: () => clearPlacement(nodeId), disabled: !hasOwnPlacementProps || ancestorConstrains }),
+          // "Free" has no persisted state of its own to reflect (unlike Inside/Flush, it's
+          // never the thing that's "currently set") but stays part of the same checkable
+          // radio-style row visually — an explicit `checked: false` (rather than leaving it
+          // `undefined`, which would now omit the checkmark slot entirely, see the
+          // top-level actions above) keeps its label aligned with its two siblings.
+          i: push({ label: "Free", action: () => clearPlacement(nodeId), checked: false, disabled: !hasOwnPlacementProps || ancestorConstrains }),
         },
       ];
       renderItems.push({ label: "Placement", group: placementItems });
@@ -2010,8 +2021,21 @@
     // acting on the one actually intended. Prefers the current selection whenever it's
     // still genuinely part of the stack at this exact point — a stale selection from
     // somewhere else in the plan is never substituted in for an unrelated right-click.
-    const targetId = selectedId && resolvedCandidatesAtPoint(e.clientX, e.clientY).includes(selectedId)
+    const candidates = resolvedCandidatesAtPoint(e.clientX, e.clientY);
+    const stacked = candidates.length > 1;
+    const targetId = stacked && selectedId && candidates.includes(selectedId)
       ? selectedId : el.dataset.id;
+    // Outside a stacked point, right-clicking a different element also selects it — the
+    // menu then visibly acts on whatever the selection indicator itself is now
+    // highlighting, instead of leaving it pointed at something else entirely. Left off
+    // inside a stacked area on purpose: with no right-click equivalent of click-cycling,
+    // forcing the topmost candidate into the selection there would make it impossible to
+    // right-click a still-covered element without first fighting the stack back into
+    // place via a left-click.
+    if (!stacked && targetId !== selectedId) {
+      selectedId = targetId;
+      core.rerender({ preserveViewBox: true });
+    }
     openContextMenu(targetId, e.clientX, e.clientY);
   }
 
