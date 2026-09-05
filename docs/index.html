@@ -30,47 +30,64 @@
   #file-input { display: none; }
   .mobile-tabs { display: none; }
 
-  /* F-032/D-103: the header's own menu bar (File/View/Account) -- a core-owned rule set,
-     deliberately separate from interactivity-module.js's own .context-menu styles even
-     though the visual language matches on purpose: this chrome has to work with no plan
-     module loaded at all, so it can't depend on one module's runtime-injected CSS just
-     because that module happens to always auto-load (D-034). Same markup and behavior on
-     desktop and mobile -- no separate collapsed shape needed, see the header's own script
-     block below for the click-to-open/close wiring. */
+  /* F-032/D-103/D-104: the header's own menu bar (File/View/Account) -- a core-owned rule
+     set, deliberately separate from interactivity-module.js's own .context-menu styles:
+     this chrome has to work with no plan module loaded at all, so it can't depend on one
+     module's runtime-injected CSS just because that module happens to always auto-load
+     (D-034). Same markup and behavior on desktop and mobile -- see the header's own script
+     block below for the click-to-open/close wiring. The dropdown itself is styled as a
+     small ribbon panel (icon on top, label below, grouped with dividers) rather than a
+     classic vertical list, per D-104's own "modern Word" direction. */
   .menu-bar { display: flex; gap: 0.25rem; position: relative; }
   .menu { position: relative; }
   .menu-trigger { font-size: 0.85rem; }
   .menu-dropdown { display: none; position: absolute; left: 0; top: 100%; margin: 4px 0 0;
-    padding: 4px 0; min-width: 190px; list-style: none; background: #fff; border: 1px solid #ccc;
-    border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,0.18); font-family: system-ui, sans-serif;
-    font-size: 13px; z-index: 20; }
+    background: #fff; border: 1px solid #ccc; border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+    font-family: system-ui, sans-serif; z-index: 20; }
   .menu.menu-right .menu-dropdown { left: auto; right: 0; } /* stays on-screen at a narrow width */
-  .menu.open .menu-dropdown { display: block; }
-  .menu-dropdown li { padding: 0; white-space: nowrap; }
-  .menu-dropdown button { display: flex; align-items: center; width: 100%; padding: 6px 16px;
-    border: none; border-radius: 0; background: none; text-align: left; font-size: 13px; }
+  /* `display: flex` lives here, not on `.ribbon-panel` itself -- both selectors are equal
+     specificity (one class each), so a `.ribbon-panel { display: flex }` rule appearing
+     later in the sheet would otherwise silently win the cascade over `.menu-dropdown`'s own
+     `display: none` above for every CLOSED menu too, showing all three panels at once
+     regardless of which one was actually clicked open (caught immediately, D-104). */
+  .menu.open .menu-dropdown { display: flex; }
+
+  .ribbon-panel { align-items: stretch; flex-wrap: wrap; gap: 2px; padding: 6px;
+    max-width: min(420px, calc(100vw - 20px)); }
+  .ribbon-group { display: flex; gap: 2px; }
+  .ribbon-btn { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 68px;
+    padding: 6px 4px; border: 1px solid transparent; border-radius: 5px; background: none;
+    font-size: 11px; text-align: center; white-space: normal; line-height: 1.2; cursor: pointer;
+    font-family: inherit; color: inherit; position: relative; }
+  .ribbon-icon { font-size: 20px; line-height: 1; opacity: 0.75; }
+  .ribbon-label { font-size: 11px; }
+  .ribbon-btn:hover:not(:disabled) { background: #eef2ff; border-color: #d3ddfa; }
+  /* A pressed/highlighted background marks an active toggle (Grid), matching how a real
+     ribbon shows Bold/Italic as "on" — not a checkmark glyph. */
+  .ribbon-btn.active { background: #d8e4fc; border-color: #9db8e8; }
+  .ribbon-btn.danger { color: #a11; }
   /* The cloud sign-in/out buttons are shown/hidden via the plain `hidden` attribute
-     (updateCloudUi(), unchanged by this menu) -- without this, the more specific rule
-     above would silently override the UA stylesheet's own `[hidden] { display: none }` and
+     (updateCloudUi(), unchanged by this menu) -- `.ribbon-btn`'s own `display: flex` would
+     otherwise silently override the UA stylesheet's own `[hidden] { display: none }` and
      show every cloud button at once regardless of sign-in state. */
-  .menu-dropdown button[hidden] { display: none; }
-  .menu-dropdown button:hover:not(:disabled) { background: #eef2ff; }
-  .menu-dropdown button.danger { color: #a11; }
-  .menu-icon { display: inline-block; width: 1.4em; opacity: 0.7; }
-  .menu-check { display: inline-block; width: 1.4em; }
-  .menu-divider { height: 1px; margin: 4px 8px; background: #e5e5e5; }
-  .menu-static { padding: 6px 16px; font-size: 0.8rem; color: #888; }
-  /* Export's own nested flyout -- same hover-flyout pattern the right-click context menu
+  .ribbon-btn[hidden] { display: none; }
+  .ribbon-divider { width: 1px; align-self: stretch; margin: 2px 4px; background: #e5e5e5; }
+  .ribbon-status { flex-basis: 100%; padding: 4px 6px 0; font-size: 11px; color: #888; }
+
+  /* Export's own three formats stay a plain flyout inside the File ribbon panel, not three
+     more same-sized ribbon buttons — same hover-flyout pattern the right-click context menu
      already established (D-097), independently defined here since this menu doesn't share
      that module's injected stylesheet either. */
-  .menu-dropdown li.has-submenu { position: relative; padding: 6px 16px; cursor: default; }
-  .menu-dropdown li.has-submenu::after { content: "▸"; float: right; opacity: 0.5; margin-left: 12px; }
-  .menu-dropdown .submenu { display: none; position: absolute; top: -5px; left: 100%; margin: 0;
-    padding: 4px 0; min-width: 190px; list-style: none; background: #fff; border: 1px solid #ccc;
-    border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,0.18); }
-  .menu-dropdown li.has-submenu:hover > .submenu { display: block; }
-  .menu-dropdown .submenu li { padding: 0; }
-  .menu-dropdown .submenu button { padding: 6px 16px; }
+  .ribbon-btn.has-submenu { cursor: default; }
+  .ribbon-btn.has-submenu:hover { background: #eef2ff; border-color: #d3ddfa; }
+  .submenu { display: none; position: absolute; top: -7px; left: 100%; margin: 0; padding: 4px 0;
+    min-width: 190px; list-style: none; background: #fff; border: 1px solid #ccc; border-radius: 6px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.18); font-size: 13px; text-align: left; white-space: nowrap; }
+  .ribbon-btn.has-submenu:hover > .submenu { display: block; }
+  .submenu li { padding: 0; }
+  .submenu button { display: block; width: 100%; padding: 6px 16px; border: none; background: none;
+    text-align: left; font: inherit; font-size: 13px; cursor: pointer; }
+  .submenu button:hover { background: #eef2ff; }
 
   /* main/.layout fill exactly the viewport height left after the header — nothing here
      should ever make the page itself scroll. Both panes stretch to that full height;
@@ -192,46 +209,74 @@
   <select id="plan-switcher"></select>
   <button id="undo-btn" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
   <button id="redo-btn" title="Redo (Ctrl+Shift+Z)" aria-label="Redo">↷</button>
-  <!-- F-032/D-103: one menu bar (File/View/Account) instead of a flat button row, same
-       markup and behavior on desktop and mobile -- see docs/index.html's own script for
-       the click-to-open/close wiring and D-103's own writeup for why this replaced
-       D-068's mobile-only "toolbar-more" collapse instead of keeping it alongside this. -->
+  <!-- F-032/D-103/D-104: one menu bar (File/View/Account), small triggers with a
+       ribbon-style panel underneath (icon on top, label below, grouped) -- "modern Word"
+       rather than a classic vertical dropdown list. Same markup and behavior on desktop
+       and mobile -- see docs/index.html's own script for the click-to-open/close wiring. -->
   <nav class="menu-bar">
     <div class="menu">
       <button class="menu-trigger" id="menu-file-btn" aria-haspopup="true" aria-expanded="false">File ▾</button>
-      <ul class="menu-dropdown">
-        <li><button id="rename-btn" title="Rename the current plan"><span class="menu-icon">✎</span>Rename…</button></li>
-        <li><button id="open-btn"><span class="menu-icon">⇩</span>Import…</button></li>
-        <li class="has-submenu"><span class="menu-icon">⇧</span>Export
-          <ul class="submenu">
-            <li><button id="save-btn">Plan file (.planagon)…</button></li>
-            <li><button id="export-png-btn" title="Save the current plan as a PNG image">PNG image…</button></li>
-            <li><button id="export-svg-btn" title="Save the current plan as an SVG image">SVG image…</button></li>
-          </ul>
-        </li>
-        <li class="menu-divider"></li>
-        <li><button id="delete-btn" class="danger" title="Delete the current plan"><span class="menu-icon">✕</span>Delete</button></li>
-      </ul>
+      <div class="menu-dropdown ribbon-panel">
+        <div class="ribbon-group">
+          <button class="ribbon-btn" id="rename-btn" title="Rename the current plan">
+            <span class="ribbon-icon">✎</span><span class="ribbon-label">Rename…</span>
+          </button>
+          <button class="ribbon-btn" id="open-btn">
+            <span class="ribbon-icon">⇩</span><span class="ribbon-label">Import…</span>
+          </button>
+          <!-- Export's own three formats stay a plain flyout, not three more ribbon
+               buttons -- rarely used, and a compact list undersells them less awkwardly
+               than shrinking the ribbon row to fit five same-sized buttons would. -->
+          <div class="ribbon-btn has-submenu">
+            <span class="ribbon-icon">⇧</span><span class="ribbon-label">Export ▸</span>
+            <ul class="submenu">
+              <li><button id="save-btn">Plan file (.planagon)…</button></li>
+              <li><button id="export-png-btn" title="Save the current plan as a PNG image">PNG image…</button></li>
+              <li><button id="export-svg-btn" title="Save the current plan as an SVG image">SVG image…</button></li>
+            </ul>
+          </div>
+        </div>
+        <div class="ribbon-divider"></div>
+        <div class="ribbon-group">
+          <button class="ribbon-btn danger" id="delete-btn" title="Delete the current plan">
+            <span class="ribbon-icon">✕</span><span class="ribbon-label">Delete</span>
+          </button>
+        </div>
+      </div>
     </div>
     <div class="menu">
       <button class="menu-trigger" id="menu-view-btn" aria-haspopup="true" aria-expanded="false">View ▾</button>
-      <ul class="menu-dropdown">
+      <div class="menu-dropdown ribbon-panel">
         <!-- F-042: the one setting with a genuine on/off state today (F-014's grid is
              either present or absent in `settings`) -- see toggleGridSetting()/
              updateGridToggleUi() below. Style presets and the always-injected AUTO_MODULES
              have no real off-state to expose this same way (F-042's own noted caveat), so
-             they're deliberately not offered here. -->
-        <li><button id="grid-toggle-btn"><span class="menu-check" id="grid-toggle-check"></span>Show grid</button></li>
-      </ul>
+             they're deliberately not offered here. A pressed/highlighted background marks
+             the active state (matching Word's own Bold/Italic toggle-button convention),
+             not a checkmark. -->
+        <div class="ribbon-group">
+          <button class="ribbon-btn" id="grid-toggle-btn">
+            <span class="ribbon-icon">⊞</span><span class="ribbon-label">Grid</span>
+          </button>
+        </div>
+      </div>
     </div>
     <div class="menu menu-right">
       <button class="menu-trigger" id="menu-account-btn" aria-haspopup="true" aria-expanded="false">Account ▾</button>
-      <ul class="menu-dropdown">
-        <li><button id="cloud-signin-btn" title="Sign in to save/load plans in the cloud">Sign in…</button></li>
-        <li class="menu-static"><span id="cloud-status"></span></li>
-        <li><button id="cloud-save-btn" title="Save the current plan to the cloud" hidden>Save to Cloud</button></li>
-        <li><button id="cloud-signout-btn" title="Sign out" hidden>Sign out</button></li>
-      </ul>
+      <div class="menu-dropdown ribbon-panel">
+        <div class="ribbon-group">
+          <button class="ribbon-btn" id="cloud-signin-btn" title="Sign in to save/load plans in the cloud">
+            <span class="ribbon-icon">⇥</span><span class="ribbon-label">Sign in…</span>
+          </button>
+          <button class="ribbon-btn" id="cloud-save-btn" title="Save the current plan to the cloud" hidden>
+            <span class="ribbon-icon">☁</span><span class="ribbon-label">Save to Cloud</span>
+          </button>
+          <button class="ribbon-btn" id="cloud-signout-btn" title="Sign out" hidden>
+            <span class="ribbon-icon">⇤</span><span class="ribbon-label">Sign out</span>
+          </button>
+        </div>
+        <div class="ribbon-status" id="cloud-status"></div>
+      </div>
     </div>
   </nav>
   <input type="file" id="file-input" accept=".planagon,.2dplan,.txt,text/plain">
@@ -1719,9 +1764,9 @@ function toggleGridSetting() {
 }
 
 function updateGridToggleUi() {
-  const check = document.getElementById("grid-toggle-check");
-  if (!check) return;
-  check.textContent = program?.settings?.grid !== undefined ? "✓" : "";
+  const btn = document.getElementById("grid-toggle-btn");
+  if (!btn) return;
+  btn.classList.toggle("active", program?.settings?.grid !== undefined);
 }
 
 function newPlanFromExample(key) {
