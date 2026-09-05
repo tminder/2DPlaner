@@ -30,13 +30,15 @@
   #file-input { display: none; }
   .mobile-tabs { display: none; }
 
-  /* F-032/D-103/D-104/D-105: every action sits directly in the header, always visible, in
-     small icon-on-top/label-below groups — no dropdown/trigger layer at all, reported
-     directly after D-104's own click-to-open panels ("keine dropdowns"). A core-owned rule
-     set, deliberately separate from interactivity-module.js's own .context-menu styles:
-     this chrome has to work with no plan module loaded at all, so it can't depend on one
-     module's runtime-injected CSS just because that module happens to always auto-load
-     (D-034). */
+  /* F-032/D-103/D-104/D-105/D-106: every DISTINCT action sits directly in the header,
+     always visible, in small icon-on-top/label-below groups — no dropdown/trigger layer
+     for the sake of tidiness alone (D-105, "keine dropdowns"). D-106 narrowed that: a
+     dropdown is still fine specifically to group one action's own several flavors (Export's
+     three file formats), just not to hide otherwise-unrelated actions behind a click. A
+     core-owned rule set, deliberately separate from interactivity-module.js's own
+     .context-menu styles: this chrome has to work with no plan module loaded at all, so it
+     can't depend on one module's runtime-injected CSS just because that module happens to
+     always auto-load (D-034). */
   .ribbon-group { display: flex; gap: 2px; }
   .ribbon-btn { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 62px;
     padding: 4px 2px; border: 1px solid transparent; border-radius: 5px; background: none;
@@ -57,6 +59,22 @@
   .ribbon-btn[hidden] { display: none; }
   .ribbon-divider { width: 1px; align-self: stretch; margin: 2px 2px; background: #e5e5e5; }
   .ribbon-status { font-size: 10.5px; color: #888; white-space: nowrap; }
+
+  /* D-106: Export's own three formats, grouped back into one flyout -- same hover-flyout
+     pattern the right-click context menu already established (D-097), independently
+     defined here since this menu doesn't share that module's injected stylesheet either. */
+  .ribbon-btn.has-submenu { cursor: default; }
+  .ribbon-btn.has-submenu:hover { background: #eef2ff; border-color: #d3ddfa; }
+  .submenu { display: none; position: absolute; top: -7px; left: 100%; margin: 0; padding: 4px 0;
+    min-width: 190px; list-style: none; background: #fff; border: 1px solid #ccc; border-radius: 6px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.18); font-size: 13px; text-align: left; white-space: nowrap;
+    z-index: 20; } /* without this, a later header sibling (e.g. Grid) paints over it -- there's
+    no wrapping dropdown panel establishing an elevated stacking context anymore (D-105/D-106) */
+  .ribbon-btn.has-submenu:hover > .submenu { display: block; }
+  .submenu li { padding: 0; }
+  .submenu button { display: block; width: 100%; padding: 6px 16px; border: none; background: none;
+    text-align: left; font: inherit; font-size: 13px; cursor: pointer; }
+  .submenu button:hover { background: #eef2ff; }
 
   /* D-105: a real popup instead of native prompt()s for sign-in/registration — same
      fields/copy/endpoints as profile/index.html's own card, ported here rather than
@@ -198,9 +216,11 @@
   <select id="plan-switcher"></select>
   <button id="undo-btn" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
   <button id="redo-btn" title="Redo (Ctrl+Shift+Z)" aria-label="Redo">↷</button>
-  <!-- D-105: every action directly in the header, always visible -- no dropdowns/triggers
-       at all, reported directly right after D-104's click-to-open ribbon panels. Still the
-       same icon-on-top/label-below ribbon-button look, just laid out flat. -->
+  <!-- D-105/D-106: every DISTINCT action sits directly in the header, always visible --
+       no dropdown for the sake of tidiness alone. A dropdown is still fine specifically to
+       group genuinely-the-same action in different flavors (Export's three file formats
+       below) -- unlike Rename/Import/Delete, those aren't separate actions competing for
+       space, they're one action with a choice to make once you've already committed to it. -->
   <div class="ribbon-group">
     <button class="ribbon-btn" id="rename-btn" title="Rename the current plan">
       <span class="ribbon-icon">✎</span><span class="ribbon-label">Rename…</span>
@@ -208,15 +228,14 @@
     <button class="ribbon-btn" id="open-btn">
       <span class="ribbon-icon">⇩</span><span class="ribbon-label">Import…</span>
     </button>
-    <button class="ribbon-btn" id="save-btn">
-      <span class="ribbon-icon">⇧</span><span class="ribbon-label">Export…</span>
-    </button>
-    <button class="ribbon-btn" id="export-png-btn" title="Save the current plan as a PNG image">
-      <span class="ribbon-icon">⇧</span><span class="ribbon-label">PNG…</span>
-    </button>
-    <button class="ribbon-btn" id="export-svg-btn" title="Save the current plan as an SVG image">
-      <span class="ribbon-icon">⇧</span><span class="ribbon-label">SVG…</span>
-    </button>
+    <div class="ribbon-btn has-submenu">
+      <span class="ribbon-icon">⇧</span><span class="ribbon-label">Export ▸</span>
+      <ul class="submenu">
+        <li><button id="save-btn">Plan file (.planagon)…</button></li>
+        <li><button id="export-png-btn" title="Save the current plan as a PNG image">PNG image…</button></li>
+        <li><button id="export-svg-btn" title="Save the current plan as an SVG image">SVG image…</button></li>
+      </ul>
+    </div>
     <button class="ribbon-btn danger" id="delete-btn" title="Delete the current plan">
       <span class="ribbon-icon">✕</span><span class="ribbon-label">Delete</span>
     </button>
