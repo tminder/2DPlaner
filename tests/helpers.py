@@ -46,14 +46,33 @@ def validation_violations(page):
 
 
 def menu_items(page):
-    """Labels of every clickable item currently shown in the right-click context menu,
-    submenu items included by their own real label (e.g. "Inside room"). A non-clickable
-    group header like "Placement" has no data-i and is deliberately excluded -- it isn't
-    an action itself, its children are."""
+    """Labels of every clickable item currently shown in the right-click context menu
+    (its own .menu-label text only -- not the checkmark span), submenu items included by
+    their own real label (e.g. "Inside room"). A non-clickable group header like
+    "Placement" has no data-i and is deliberately excluded -- it isn't an action itself,
+    its children are. Every placement item is now always shown (checked/disabled convey
+    state instead of the item appearing/disappearing) -- use menu_item_state() to inspect
+    checked/disabled for a specific label."""
     return page.evaluate(
         """() => Array.from(
             document.querySelectorAll('#interactivity-context-menu li[data-i]')
-        ).map(li => li.textContent.trim())"""
+        ).map((li) => li.querySelector('.menu-label').textContent.trim())"""
+    )
+
+
+def menu_item_state(page, label):
+    """{'checked': bool, 'disabled': bool} for the item with this exact label."""
+    return page.evaluate(
+        """(label) => {
+            const items = Array.from(document.querySelectorAll('#interactivity-context-menu li[data-i]'));
+            const li = items.find((el) => el.querySelector('.menu-label').textContent.trim() === label);
+            if (!li) return null;
+            return {
+                checked: li.querySelector('.menu-check').textContent.trim() === '✓',
+                disabled: li.classList.contains('disabled'),
+            };
+        }""",
+        label,
     )
 
 
@@ -71,7 +90,7 @@ def click_menu_item(page, label):
     li_data_i = page.evaluate(
         """(label) => {
             const items = Array.from(document.querySelectorAll('#interactivity-context-menu li[data-i]'));
-            const match = items.find((el) => el.textContent.trim() === label);
+            const match = items.find((el) => el.querySelector('.menu-label').textContent.trim() === label);
             return match ? match.dataset.i : null;
         }""",
         label,

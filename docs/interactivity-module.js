@@ -63,6 +63,9 @@
       .context-menu li { padding: 6px 16px; cursor: pointer; }
       .context-menu li:hover { background: #eef2ff; }
       .context-menu li.danger { color: #a11; }
+      .context-menu li.disabled { color: #aaa; cursor: default; }
+      .context-menu li.disabled:hover { background: none; }
+      .context-menu .menu-check { display: inline-block; width: 1.1em; }
       /* A group header (e.g. "Placement") isn't itself clickable — no data-i, see
          handleMenuClick — hovering it reveals the nested list as a flyout to the right,
          the same convention a native app's own hierarchical menu uses. No viewport-edge
@@ -1640,7 +1643,9 @@
         return `<li class="has-submenu">${escapeHtml(entry.label)}<ul class="context-submenu">${renderMenuItems(entry.group)}</ul></li>`;
       }
       const item = contextMenuItems[entry.i];
-      return `<li data-i="${entry.i}"${item.danger ? ' class="danger"' : ""}>${escapeHtml(item.label)}</li>`;
+      const classes = [item.danger ? "danger" : "", item.disabled ? "disabled" : ""].filter(Boolean).join(" ");
+      const check = `<span class="menu-check">${item.checked ? "✓" : ""}</span>`;
+      return `<li data-i="${entry.i}"${classes ? ` class="${classes}"` : ""}>${check}<span class="menu-label">${escapeHtml(item.label)}</span></li>`;
     }).join("");
   }
 
@@ -1673,21 +1678,34 @@
     // now would silently do nothing for the common case of an element that isn't already
     // touching anything.
     if (parent) {
-      const placementItems = [];
-      if (node.props.placement !== "inside") {
-        placementItems.push({ i: push({ label: `Inside ${displayName(parent)}`, action: () => setPlacementInside(nodeId) }) });
-      }
       const { container, placement: resolvedPlacement } = resolveContainer(node, parent, program);
-      if (resolvedPlacement === "inside" && container) {
-        const flushLabel = node.props.flush === true
-          ? `Un-flush from ${displayName(container)}`
-          : `Flush against ${displayName(container)}`;
-        placementItems.push({ i: push({ label: flushLabel, action: () => toggleFlush(nodeId) }) });
-      }
-      if (node.props.placement !== undefined || node.props.flush !== undefined) {
-        placementItems.push({ i: push({ label: "Free", action: () => clearPlacement(nodeId) }) });
-      }
-      if (placementItems.length) renderItems.push({ label: "Placement", group: placementItems });
+      const ownInside = node.props.placement === "inside";
+      const ownFlush = node.props.flush === true;
+      // A resolved "inside" via an ancestor's childPlacement (F-020) constrains this node
+      // regardless of its own props — removing this node's own placement/flush can never
+      // actually free it while that ancestor still applies, so "Free" stays disabled
+      // rather than silently doing something that looks like nothing happened (reported
+      // directly: an element still clamped to its parent right after "Free").
+      const ancestorConstrains = !!nearestChildPlacementAncestor(parent, program);
+      const hasOwnPlacementProps = node.props.placement !== undefined || node.props.flush !== undefined;
+
+      const placementItems = [
+        {
+          i: push({ label: `Inside ${displayName(parent)}`, action: () => setPlacementInside(nodeId), checked: ownInside, disabled: ownInside }),
+        },
+        {
+          i: push({
+            label: `Flush against ${displayName(container ?? parent)}`,
+            action: () => toggleFlush(nodeId),
+            checked: ownFlush,
+            disabled: resolvedPlacement !== "inside",
+          }),
+        },
+        {
+          i: push({ label: "Free", action: () => clearPlacement(nodeId), disabled: !hasOwnPlacementProps || ancestorConstrains }),
+        },
+      ];
+      renderItems.push({ label: "Placement", group: placementItems });
     }
 
     contextMenuEl.innerHTML = renderMenuItems(renderItems);
@@ -2001,6 +2019,7 @@
     const li = e.target.closest("li[data-i]");
     if (!li) return;
     const item = contextMenuItems[Number(li.dataset.i)];
+    if (item?.disabled) return;
     closeContextMenu();
     item?.action();
   }

@@ -6,6 +6,7 @@ from helpers import (
     drag,
     element_center,
     load_plan,
+    menu_item_state,
     menu_items,
     open_context_menu,
     source_text,
@@ -106,7 +107,9 @@ def test_place_inside_snaps_out_of_bounds_element(app_page):
     load_plan(app_page, OUT_OF_BOUNDS_PLAN)
     cx, cy = element_center(app_page, "sofa")
     open_context_menu(app_page, cx, cy)
-    assert "Inside room" in menu_items(app_page)
+    # All three placement items are always shown now (checked/disabled convey state
+    # rather than the item appearing/disappearing) -- confirm the unchecked starting state.
+    assert menu_item_state(app_page, "Inside room") == {"checked": False, "disabled": False}
     click_menu_item(app_page, "Inside room")
     text = source_text(app_page)
     assert 'placement: "inside"' in text
@@ -126,14 +129,67 @@ def test_make_flush_then_clear_placement(app_page):
     click_menu_item(app_page, "Inside room")
 
     open_context_menu(app_page, cx, cy)
-    assert "Flush against room" in menu_items(app_page)
+    # Now checked (just placed inside), and Inside itself becomes disabled (already set)
+    # -- clicking an already-checked radio-style option would be a no-op.
+    assert menu_item_state(app_page, "Inside room") == {"checked": True, "disabled": True}
+    assert menu_item_state(app_page, "Flush against room") == {"checked": False, "disabled": False}
     click_menu_item(app_page, "Flush against room")
     assert "flush: true" in source_text(app_page)
 
     open_context_menu(app_page, cx, cy)
-    assert "Un-flush from room" in menu_items(app_page)
-    assert "Free" in menu_items(app_page)
+    assert menu_item_state(app_page, "Flush against room") == {"checked": True, "disabled": False}
+    # Free is enabled: sofa has its own placement+flush, and room has no childPlacement
+    # of its own, so clearing them actually achieves real freedom.
+    assert menu_item_state(app_page, "Free") == {"checked": False, "disabled": False}
     click_menu_item(app_page, "Free")
     text = source_text(app_page)
     assert "flush" not in text.split("element sofa")[1]
     assert "placement" not in text.split("element sofa")[1]
+
+
+def test_free_disabled_when_ancestor_childplacement_still_applies(app_page):
+    """Reported directly: an element with its own explicit placement, freed via the menu,
+    stayed clamped to its parent anyway -- because the parent's own childPlacement still
+    applies once the element's own property is gone. Free must not offer to do something
+    it can't actually achieve."""
+    load_plan(
+        app_page,
+        """
+element room {
+  shape: "rect"
+  size: [5m, 4m]
+  position: [0m, 0m]
+  style: { fill: "#eee" }
+  childPlacement: "inside"
+
+  element desk {
+    placement: "inside"
+    shape: "rect"
+    size: [1.2m, 0.6m]
+    position: [0.2m, 2.8m]
+    style: { fill: "#fbe3b0" }
+  }
+}
+""",
+    )
+    cx, cy = element_center(app_page, "desk")
+    open_context_menu(app_page, cx, cy)
+    # desk has its own placement to clear, but room's childPlacement would still apply
+    # afterward -- Free can't achieve real freedom here, so it must be disabled.
+    assert menu_item_state(app_page, "Free") == {"checked": False, "disabled": True}
+
+    before = source_text(app_page)
+    click_menu_item(app_page, "Free")
+    assert source_text(app_page) == before  # disabled item's click is a no-op
+
+    # Confirm the *reason* this matters: dragging desk far outside room still clamps it,
+    # since it's still governed by room's own childPlacement regardless of desk's own
+    # (still-present) placement property.
+    drag(app_page, cx, cy, cx + 600, cy + 400)
+    text = source_text(app_page)
+    import re
+
+    m = re.search(r'position:\s*\[([\d.-]+)m,\s*([\d.-]+)m\]', text.split("element desk")[1])
+    x, y = float(m.group(1)), float(m.group(2))
+    assert -0.001 <= x <= 5.0 - 1.2 + 0.001
+    assert -0.001 <= y <= 4.0 - 0.6 + 0.001
