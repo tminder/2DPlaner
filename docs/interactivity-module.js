@@ -1422,12 +1422,62 @@
     core.commitUndoStep();
   }
 
+  // A real (source-persisted) front/back swap, unlike D-086's selection-driven, purely
+  // visual raise — deliberately a separate, explicit menu action so ordinary click-cycling
+  // never itself rewrites the plan's source (confirmed directly, D-088). Scoped to siblings
+  // sharing one parent: `position` is always relative to a parent's own local origin, so
+  // reordering against something under a *different* parent would mean reparenting, silently
+  // changing what that position means — a real risk, not just an edge case, so this simply
+  // isn't offered for a stack that only overlaps across different parents.
+  function reorderSibling(nodeId, toFront) {
+    const text = core.sourceEl.value;
+    let base;
+    try { base = core.parseExpanded(text); } catch (e) { return; }
+    const node = base.nodesById[nodeId];
+    const parent = node?.parentId ? base.nodesById[node.parentId] : null;
+    if (!parent) return;
+    const others = parent.children.filter((n) => n !== node);
+    if (!others.length) return;
+    const anchor = toFront ? others[others.length - 1] : others[0];
+
+    // toLineSpan (not Duplicate's cruder raw node.start/end) so the cut consumes the
+    // element's own trailing newline cleanly — no blank line left behind, matching
+    // deleteElement's own established precedent for removing a whole element's text.
+    const cut = toLineSpan(text, node.start, node.end);
+    const cutText = text.slice(cut.start, cut.end);
+    const anchorSpan = toLineSpan(text, anchor.start, anchor.end);
+    const insertPos = toFront ? anchorSpan.end : anchorSpan.start;
+
+    const edits = [{ start: cut.start, end: cut.end, text: "" }, { start: insertPos, end: insertPos, text: cutText }]
+      .sort((a, b) => b.start - a.start);
+    let newText = text;
+    for (const e of edits) newText = newText.slice(0, e.start) + e.text + newText.slice(e.end);
+
+    core.sourceEl.value = newText;
+    core.dragmsgEl.textContent = `'${nodeId}' moved to the ${toFront ? "front" : "back"} of its siblings.`;
+    core.rerender();
+    core.commitUndoStep();
+  }
+
   // ---------- Context menu ----------
   function openContextMenu(nodeId, x, y) {
     contextMenuItems = [
       { label: "Duplicate", action: () => duplicateElement(nodeId) },
       { label: "Delete Element", danger: true, action: () => deleteElement(nodeId) },
     ];
+    // Front/back items only offered when there's an actual same-parent stack at this exact
+    // point to resolve — an ordinary, non-overlapping element's menu stays exactly as before.
+    const node = program.nodesById[nodeId];
+    const parent = node?.parentId ? program.nodesById[node.parentId] : null;
+    if (parent) {
+      const stackedSiblings = resolvedCandidatesAtPoint(x, y)
+        .some((id) => id !== nodeId && program.nodesById[id]?.parentId === node.parentId);
+      if (stackedSiblings) {
+        const idx = parent.children.indexOf(node);
+        if (idx < parent.children.length - 1) contextMenuItems.push({ label: "Bring to Front", action: () => reorderSibling(nodeId, true) });
+        if (idx > 0) contextMenuItems.push({ label: "Send to Back", action: () => reorderSibling(nodeId, false) });
+      }
+    }
     contextMenuEl.innerHTML = contextMenuItems.map((item, i) =>
       `<li data-i="${i}"${item.danger ? ' class="danger"' : ""}>${escapeHtml(item.label)}</li>`
     ).join("");
