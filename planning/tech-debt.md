@@ -18,13 +18,19 @@ Compiled from a full audit of `docs/index.html`, `docs/interactivity-module.js`,
 
 `duplicateElement`, `deleteElement`, `reorderSibling`, `setPlacementInside`, `toggleFlush`, `clearPlacement` each: re-parse fresh from `core.sourceEl.value`, build an edits/spans array, sort descending, splice, `core.rerender()`, `core.commitUndoStep()`. Confirmed via 6+ identical `try { base = core.parseExpanded(text); } catch (e) { return; }` lines. A shared helper (parse-guard + apply-and-commit) is overdue — every new menu action currently means re-copying this shape by hand.
 
+**Resolved — [decisions.md D-096](decisions.md#d-096-s-002s-003-s-004-unified-the-six-menu-action-functions-shared-shell-and-the-three-edit-apply-idioms).** Two tiny helpers, `withParsedSource`/`commitSourceEdit`, extracted; each function's own real logic left untouched. Verified incrementally (one function refactored, full suite re-run, repeat) rather than all six at once.
+
 ## S-003 Three different "apply edits to text" idioms coexist for the identical operation
 
 (a) inline `sort((a,b)=>b.start-a.start)` + manual splice loop, repeated in `applyDrag`, `duplicateElement`, `reorderSibling`, `createConnection`; (b) the shared `deleteSpans` helper (used by `deleteElement`/`clearPlacement`/`removeConnection`); (c) the later `applyEditsDescending` helper (added for F-035, used only by `setPlacementInside`/`toggleFlush`, never retrofitted into the earlier functions it duplicates). Should converge on one.
 
+**Resolved — [decisions.md D-096](decisions.md#d-096-s-002s-003-s-004-unified-the-six-menu-action-functions-shared-shell-and-the-three-edit-apply-idioms).** `applyEditsDescending` is now the sole primitive; `deleteSpans` is a thin wrapper over it; `duplicateElement`/`reorderSibling`'s own inline sort+splice loops both call it directly instead.
+
 ## S-004 Silent argument-mismatch: `snapPositionEdits` passes 8 args to a 7-param function
 
 `snapPositionEdits` always calls `clampFn(nodeId, dx, dy, positions, containerAbs, containerSize, childSize, warnings)`, but `clampRectToStayInsideRect` only declares 7 params — `warnings` is silently dropped, and the code says so in a comment instead of fixing it. A future `clampFn` that *does* need `warnings` would break silently with no error, just missing warning messages.
+
+**Resolved — [decisions.md D-096](decisions.md#d-096-s-002s-003-s-004-unified-the-six-menu-action-functions-shared-shell-and-the-three-edit-apply-idioms).** `clampRectToStayInsideRect` gained a matching, intentionally-unused 8th `_warnings` parameter — same body, signature no longer disagrees with how it's actually called.
 
 ## S-005 `stackOrderCache` is never invalidated and can go stale after a real reorder
 

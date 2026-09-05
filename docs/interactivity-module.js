@@ -633,8 +633,12 @@
   // Exact, non-iterative containment for a rect child in a rect parent: each axis clamps
   // completely independently against the parent's own bounds — no binary search, no
   // tangent, nothing that can misfire at a corner (a corner is simply "both axes clamped
-  // at once," not a special case this needs to detect).
-  function clampRectToStayInsideRect(childId, dx, dy, positions, parentAbs, parentSize, childSize) {
+  // at once," not a special case this needs to detect). Never needs to warn (it's exact,
+  // there's no "reached the end" case) — `_warnings` exists only so this shares an
+  // identical call signature with clampFlushInsideRect (S-004: snapPositionEdits calls
+  // both through the same `clampFn` parameter, and a mismatched signature there used to
+  // mean an 8th argument was silently dropped).
+  function clampRectToStayInsideRect(childId, dx, dy, positions, parentAbs, parentSize, childSize, _warnings) {
     const [x, y] = positions[childId];
     const [pw, ph] = parentSize, [cw, ch] = childSize;
     const targetX = x + dx, targetY = y + dy;
@@ -921,12 +925,16 @@
     return { start, end };
   }
 
+  // S-003: the sole "apply edits to a string" primitive (applyEditsDescending, defined
+  // later in this file — function declarations are hoisted, so the forward reference is
+  // fine) — this used to have its own separate sort+splice loop, one of three coexisting
+  // idioms doing the identical thing.
   function deleteSpans(text, spans) {
-    const lineSpans = spans.map(({ start, end }) => toLineSpan(text, start, end))
-      .sort((a, b) => b.start - a.start);
-    let out = text;
-    for (const { start, end } of lineSpans) out = out.slice(0, start) + out.slice(end);
-    return out;
+    const edits = spans.map(({ start, end }) => {
+      const s = toLineSpan(text, start, end);
+      return { start: s.start, end: s.end, text: "" };
+    });
+    return applyEditsDescending(text, edits);
   }
 
   // ---------- Drag ----------
@@ -1310,6 +1318,25 @@
     for (const child of node.children) collectCornerRefAsts(child, out);
   }
 
+  // S-002: the shared shell every menu action below repeats — re-parse fresh from source
+  // (never trust the possibly-stale `program` closure for an edit), bail out silently on a
+  // parse error, then apply/commit. Each action's own real logic (what to validate, what
+  // edits to compute, what message to show) stays entirely its own; only this mechanical
+  // wrapper was ever actually identical between them.
+  function withParsedSource(action) {
+    const text = core.sourceEl.value;
+    let base;
+    try { base = core.parseExpanded(text); } catch (e) { return; }
+    action(text, base);
+  }
+
+  function commitSourceEdit(newText, message) {
+    core.sourceEl.value = newText;
+    if (message) core.dragmsgEl.textContent = message;
+    core.rerender();
+    core.commitUndoStep();
+  }
+
   // Clones an element and its whole subtree (F-016) as a new sibling, with a fresh id for
   // every node in it (checked against the *entire* plan, not just this subtree, so the
   // clone can't collide with something unrelated either) — retried with a numeric suffix
@@ -1324,108 +1351,98 @@
   // alone — duplicating it would silently connect the new copy to whatever the original
   // was connected to, which is a relationship nobody asked for.
   function duplicateElement(nodeId) {
-    const text = core.sourceEl.value;
-    let base;
-    try { base = core.parseExpanded(text); } catch (e) { return; }
-    const node = base.nodesById[nodeId];
-    if (!node) return;
-    if (!node.parentId) {
-      core.dragmsgEl.textContent = `${nodeId}: can't duplicate the plan's root element.`;
-      return;
-    }
-
-    const subtreeIds = [];
-    collectSubtreeIds(node, subtreeIds);
-    const subtreeIdSet = new Set(subtreeIds);
-    const usedIds = new Set(Object.keys(base.nodesById));
-    const idMap = new Map();
-    for (const id of subtreeIds) {
-      const fresh = uniqueId(`${id}_copy`, usedIds);
-      usedIds.add(fresh);
-      idMap.set(id, fresh);
-    }
-
-    // Every edit below is computed against absolute source positions, then converted to
-    // be relative to node.start once collected — the splice itself runs against the
-    // *extracted* subtree text, not the full source, so descendant declarations' own
-    // start/end (also absolute) need the same conversion.
-    const edits = [];
-    (function walkDecls(n) {
-      const idSpan = findElementIdSpan(text, n.start, n.id);
-      if (idSpan) edits.push({ start: idSpan.start - node.start, end: idSpan.end - node.start, text: idMap.get(n.id) });
-      for (const child of n.children) walkDecls(child);
-    })(node);
-
-    const cornerRefAsts = [];
-    collectCornerRefAsts(node, cornerRefAsts);
-    for (const ast of cornerRefAsts) {
-      if (typeof ast.start !== "number") continue; // defensive; always set now (parser change alongside this feature)
-      const refId = ast.segments[0];
-      if (subtreeIdSet.has(refId)) {
-        edits.push({ start: ast.start - node.start, end: ast.end - node.start, text: idMap.get(refId) });
+    withParsedSource((text, base) => {
+      const node = base.nodesById[nodeId];
+      if (!node) return;
+      if (!node.parentId) {
+        core.dragmsgEl.textContent = `${nodeId}: can't duplicate the plan's root element.`;
+        return;
       }
-    }
 
-    // The clone gets a small position offset so it doesn't land exactly on top of the
-    // original — only for plain literals; an expression-backed position is left
-    // untouched rather than guessed at (same judgment call D-012's own solve-backward
-    // machinery makes elsewhere: don't be clever about what isn't a simple literal).
-    const OFFSET = 0.3;
-    if (node.props.position && core.isEditable(node.props.position[0]) && core.isEditable(node.props.position[1])) {
-      const [x, y] = node.props.position;
-      edits.push({ start: x.start - node.start, end: x.end - node.start, text: core.formatNumber(x.value + OFFSET, x.unit) });
-      edits.push({ start: y.start - node.start, end: y.end - node.start, text: core.formatNumber(y.value + OFFSET, y.unit) });
-    } else if (node.props.points) {
-      for (const pt of node.props.points) {
-        if (!Array.isArray(pt)) continue;
-        const [x, y] = pt;
-        if (core.isEditable(x)) edits.push({ start: x.start - node.start, end: x.end - node.start, text: core.formatNumber(x.value + OFFSET, x.unit) });
-        if (core.isEditable(y)) edits.push({ start: y.start - node.start, end: y.end - node.start, text: core.formatNumber(y.value + OFFSET, y.unit) });
+      const subtreeIds = [];
+      collectSubtreeIds(node, subtreeIds);
+      const subtreeIdSet = new Set(subtreeIds);
+      const usedIds = new Set(Object.keys(base.nodesById));
+      const idMap = new Map();
+      for (const id of subtreeIds) {
+        const fresh = uniqueId(`${id}_copy`, usedIds);
+        usedIds.add(fresh);
+        idMap.set(id, fresh);
       }
-    }
 
-    let clone = text.slice(node.start, node.end);
-    edits.sort((a, b) => b.start - a.start);
-    for (const ed of edits) clone = clone.slice(0, ed.start) + ed.text + clone.slice(ed.end);
+      // Every edit below is computed against absolute source positions, then converted to
+      // be relative to node.start once collected — the splice itself runs against the
+      // *extracted* subtree text, not the full source, so descendant declarations' own
+      // start/end (also absolute) need the same conversion.
+      const edits = [];
+      (function walkDecls(n) {
+        const idSpan = findElementIdSpan(text, n.start, n.id);
+        if (idSpan) edits.push({ start: idSpan.start - node.start, end: idSpan.end - node.start, text: idMap.get(n.id) });
+        for (const child of n.children) walkDecls(child);
+      })(node);
 
-    const newConnections = base.connections
-      .filter((c) => subtreeIdSet.has(c.from) && subtreeIdSet.has(c.to))
-      .map((c) => `connection ${idMap.get(c.from)} ${idMap.get(c.to)}\n`)
-      .join("");
+      const cornerRefAsts = [];
+      collectCornerRefAsts(node, cornerRefAsts);
+      for (const ast of cornerRefAsts) {
+        if (typeof ast.start !== "number") continue; // defensive; always set now (parser change alongside this feature)
+        const refId = ast.segments[0];
+        if (subtreeIdSet.has(refId)) {
+          edits.push({ start: ast.start - node.start, end: ast.end - node.start, text: idMap.get(refId) });
+        }
+      }
 
-    let newText = text.slice(0, node.end) + "\n" + clone + text.slice(node.end);
-    if (newConnections) newText = newText.trimEnd() + "\n" + newConnections;
+      // The clone gets a small position offset so it doesn't land exactly on top of the
+      // original — only for plain literals; an expression-backed position is left
+      // untouched rather than guessed at (same judgment call D-012's own solve-backward
+      // machinery makes elsewhere: don't be clever about what isn't a simple literal).
+      const OFFSET = 0.3;
+      if (node.props.position && core.isEditable(node.props.position[0]) && core.isEditable(node.props.position[1])) {
+        const [x, y] = node.props.position;
+        edits.push({ start: x.start - node.start, end: x.end - node.start, text: core.formatNumber(x.value + OFFSET, x.unit) });
+        edits.push({ start: y.start - node.start, end: y.end - node.start, text: core.formatNumber(y.value + OFFSET, y.unit) });
+      } else if (node.props.points) {
+        for (const pt of node.props.points) {
+          if (!Array.isArray(pt)) continue;
+          const [x, y] = pt;
+          if (core.isEditable(x)) edits.push({ start: x.start - node.start, end: x.end - node.start, text: core.formatNumber(x.value + OFFSET, x.unit) });
+          if (core.isEditable(y)) edits.push({ start: y.start - node.start, end: y.end - node.start, text: core.formatNumber(y.value + OFFSET, y.unit) });
+        }
+      }
 
-    core.sourceEl.value = newText;
-    core.dragmsgEl.textContent = `Duplicated '${nodeId}' as '${idMap.get(nodeId)}'.`;
-    core.rerender();
-    core.commitUndoStep();
+      const clone = applyEditsDescending(text.slice(node.start, node.end), edits);
+
+      const newConnections = base.connections
+        .filter((c) => subtreeIdSet.has(c.from) && subtreeIdSet.has(c.to))
+        .map((c) => `connection ${idMap.get(c.from)} ${idMap.get(c.to)}\n`)
+        .join("");
+
+      let newText = text.slice(0, node.end) + "\n" + clone + text.slice(node.end);
+      if (newConnections) newText = newText.trimEnd() + "\n" + newConnections;
+
+      commitSourceEdit(newText, `Duplicated '${nodeId}' as '${idMap.get(nodeId)}'.`);
+    });
   }
 
   function deleteElement(nodeId) {
-    const text = core.sourceEl.value;
-    let base;
-    try { base = core.parseExpanded(text); } catch (e) { return; }
-    const node = base.nodesById[nodeId];
-    if (!node) return;
-    if (!node.parentId) {
-      core.dragmsgEl.textContent = `${nodeId}: can't delete the plan's root element.`;
-      return;
-    }
-    const cornerUsers = {};
-    core.computeCornerUsers(base.root, cornerUsers);
-    const users = cornerUsers[nodeId];
-    if (users && users.length) {
-      core.dragmsgEl.textContent = `${nodeId}: still referenced as a corner by ${users.join(", ")} — remove those references first.`;
-      return;
-    }
+    withParsedSource((text, base) => {
+      const node = base.nodesById[nodeId];
+      if (!node) return;
+      if (!node.parentId) {
+        core.dragmsgEl.textContent = `${nodeId}: can't delete the plan's root element.`;
+        return;
+      }
+      const cornerUsers = {};
+      core.computeCornerUsers(base.root, cornerUsers);
+      const users = cornerUsers[nodeId];
+      if (users && users.length) {
+        core.dragmsgEl.textContent = `${nodeId}: still referenced as a corner by ${users.join(", ")} — remove those references first.`;
+        return;
+      }
 
-    const spans = [node, ...base.connections.filter((c) => c.from === nodeId || c.to === nodeId)];
-    core.sourceEl.value = deleteSpans(text, spans);
-    if (selectedId === nodeId) selectedId = null;
-    core.dragmsgEl.textContent = `Deleted '${nodeId}'.`;
-    core.rerender();
-    core.commitUndoStep();
+      const spans = [node, ...base.connections.filter((c) => c.from === nodeId || c.to === nodeId)];
+      if (selectedId === nodeId) selectedId = null;
+      commitSourceEdit(deleteSpans(text, spans), `Deleted '${nodeId}'.`);
+    });
   }
 
   // A real (source-persisted) front/back swap, unlike D-086's selection-driven, purely
@@ -1436,33 +1453,25 @@
   // changing what that position means — a real risk, not just an edge case, so this simply
   // isn't offered for a stack that only overlaps across different parents.
   function reorderSibling(nodeId, toFront) {
-    const text = core.sourceEl.value;
-    let base;
-    try { base = core.parseExpanded(text); } catch (e) { return; }
-    const node = base.nodesById[nodeId];
-    const parent = node?.parentId ? base.nodesById[node.parentId] : null;
-    if (!parent) return;
-    const others = parent.children.filter((n) => n !== node);
-    if (!others.length) return;
-    const anchor = toFront ? others[others.length - 1] : others[0];
+    withParsedSource((text, base) => {
+      const node = base.nodesById[nodeId];
+      const parent = node?.parentId ? base.nodesById[node.parentId] : null;
+      if (!parent) return;
+      const others = parent.children.filter((n) => n !== node);
+      if (!others.length) return;
+      const anchor = toFront ? others[others.length - 1] : others[0];
 
-    // toLineSpan (not Duplicate's cruder raw node.start/end) so the cut consumes the
-    // element's own trailing newline cleanly — no blank line left behind, matching
-    // deleteElement's own established precedent for removing a whole element's text.
-    const cut = toLineSpan(text, node.start, node.end);
-    const cutText = text.slice(cut.start, cut.end);
-    const anchorSpan = toLineSpan(text, anchor.start, anchor.end);
-    const insertPos = toFront ? anchorSpan.end : anchorSpan.start;
+      // toLineSpan (not Duplicate's cruder raw node.start/end) so the cut consumes the
+      // element's own trailing newline cleanly — no blank line left behind, matching
+      // deleteElement's own established precedent for removing a whole element's text.
+      const cut = toLineSpan(text, node.start, node.end);
+      const cutText = text.slice(cut.start, cut.end);
+      const anchorSpan = toLineSpan(text, anchor.start, anchor.end);
+      const insertPos = toFront ? anchorSpan.end : anchorSpan.start;
 
-    const edits = [{ start: cut.start, end: cut.end, text: "" }, { start: insertPos, end: insertPos, text: cutText }]
-      .sort((a, b) => b.start - a.start);
-    let newText = text;
-    for (const e of edits) newText = newText.slice(0, e.start) + e.text + newText.slice(e.end);
-
-    core.sourceEl.value = newText;
-    core.dragmsgEl.textContent = `'${nodeId}' moved to the ${toFront ? "front" : "back"} of its siblings.`;
-    core.rerender();
-    core.commitUndoStep();
+      const edits = [{ start: cut.start, end: cut.end, text: "" }, { start: insertPos, end: insertPos, text: cutText }];
+      commitSourceEdit(applyEditsDescending(text, edits), `'${nodeId}' moved to the ${toFront ? "front" : "back"} of its siblings.`);
+    });
   }
 
   // ---------- F-035: setting placement/flush directly from the context menu ----------
@@ -1531,85 +1540,73 @@
   // — never resolveContainer's ancestor search, which only applies to a node with no
   // explicit placement of its own.
   function setPlacementInside(nodeId) {
-    const text = core.sourceEl.value;
-    let base;
-    try { base = core.parseExpanded(text); } catch (e) { return; }
-    const node = base.nodesById[nodeId];
-    const parent = node?.parentId ? base.nodesById[node.parentId] : null;
-    if (!parent) return;
+    withParsedSource((text, base) => {
+      const node = base.nodesById[nodeId];
+      const parent = node?.parentId ? base.nodesById[node.parentId] : null;
+      if (!parent) return;
 
-    const edits = [];
-    const existing = findOwnPropertyLine(text, node, "placement");
-    if (existing) edits.push({ start: existing.start, end: existing.end, text: `${existing.indent}placement: "inside"` });
-    else edits.push({ start: afterHeaderLine(text, node), end: afterHeaderLine(text, node), text: `${lineIndentAt(text, node.start)}  placement: "inside"\n` });
+      const edits = [];
+      const existing = findOwnPropertyLine(text, node, "placement");
+      if (existing) edits.push({ start: existing.start, end: existing.end, text: `${existing.indent}placement: "inside"` });
+      else edits.push({ start: afterHeaderLine(text, node), end: afterHeaderLine(text, node), text: `${lineIndentAt(text, node.start)}  placement: "inside"\n` });
 
-    const positions = {};
-    core.computePositions(base.root, null, [0, 0], positions);
-    const warnings = [];
-    // clampRectToStayInsideRect takes no `warnings` param (it's exact, never needs to warn)
-    // — the extra argument snapPositionEdits always passes is simply unused here.
-    const isRectPair = node.props.shape === "rect" && node.props.size && parent.props.shape === "rect" && parent.props.size;
-    edits.push(...snapPositionEdits(node, parent, positions, clampRectToStayInsideRect, warnings));
+      const positions = {};
+      core.computePositions(base.root, null, [0, 0], positions);
+      const warnings = [];
+      const isRectPair = node.props.shape === "rect" && node.props.size && parent.props.shape === "rect" && parent.props.size;
+      edits.push(...snapPositionEdits(node, parent, positions, clampRectToStayInsideRect, warnings));
 
-    core.sourceEl.value = applyEditsDescending(text, edits);
-    core.dragmsgEl.textContent = isRectPair
-      ? `'${nodeId}': placed inside '${parent.id}'.`
-      : `'${nodeId}': placement set to "inside" (position unchanged — containment only checked for rect children).`;
-    core.rerender();
-    core.commitUndoStep();
+      const message = isRectPair
+        ? `'${nodeId}': placed inside '${parent.id}'.`
+        : `'${nodeId}': placement set to "inside" (position unchanged — containment only checked for rect children).`;
+      commitSourceEdit(applyEditsDescending(text, edits), message);
+    });
   }
 
   // Flush can sit on top of an *inherited* "inside" (a distant ancestor's childPlacement),
   // not only an explicit one on this node — resolveContainer (F-020) finds the actual
   // container either way, unlike setPlacementInside's own always-immediate-parent rule.
   function toggleFlush(nodeId) {
-    const text = core.sourceEl.value;
-    let base;
-    try { base = core.parseExpanded(text); } catch (e) { return; }
-    const node = base.nodesById[nodeId];
-    const parent = node?.parentId ? base.nodesById[node.parentId] : null;
-    if (!parent) return;
-    const { container, placement } = resolveContainer(node, parent, base);
-    if (placement !== "inside" || !container) return;
-    const turningOn = node.props.flush !== true;
+    withParsedSource((text, base) => {
+      const node = base.nodesById[nodeId];
+      const parent = node?.parentId ? base.nodesById[node.parentId] : null;
+      if (!parent) return;
+      const { container, placement } = resolveContainer(node, parent, base);
+      if (placement !== "inside" || !container) return;
+      const turningOn = node.props.flush !== true;
 
-    const edits = [];
-    const existing = findOwnPropertyLine(text, node, "flush");
-    if (turningOn) {
-      if (existing) edits.push({ start: existing.start, end: existing.end, text: `${existing.indent}flush: true` });
-      else edits.push({ start: afterHeaderLine(text, node), end: afterHeaderLine(text, node), text: `${lineIndentAt(text, node.start)}  flush: true\n` });
-    } else if (existing) {
-      const span = toLineSpan(text, existing.start, existing.end);
-      edits.push({ start: span.start, end: span.end, text: "" });
-    }
+      const edits = [];
+      const existing = findOwnPropertyLine(text, node, "flush");
+      if (turningOn) {
+        if (existing) edits.push({ start: existing.start, end: existing.end, text: `${existing.indent}flush: true` });
+        else edits.push({ start: afterHeaderLine(text, node), end: afterHeaderLine(text, node), text: `${lineIndentAt(text, node.start)}  flush: true\n` });
+      } else if (existing) {
+        const span = toLineSpan(text, existing.start, existing.end);
+        edits.push({ start: span.start, end: span.end, text: "" });
+      }
 
-    const isRectPair = node.props.shape === "rect" && node.props.size && container.props.shape === "rect" && container.props.size;
-    if (turningOn) {
-      const positions = {};
-      core.computePositions(base.root, null, [0, 0], positions);
-      edits.push(...snapPositionEdits(node, container, positions, clampFlushInsideRect, []));
-    }
+      const isRectPair = node.props.shape === "rect" && node.props.size && container.props.shape === "rect" && container.props.size;
+      if (turningOn) {
+        const positions = {};
+        core.computePositions(base.root, null, [0, 0], positions);
+        edits.push(...snapPositionEdits(node, container, positions, clampFlushInsideRect, []));
+      }
 
-    core.sourceEl.value = applyEditsDescending(text, edits);
-    core.dragmsgEl.textContent = !turningOn ? `'${nodeId}': flush removed.`
-      : isRectPair ? `'${nodeId}': now flush against '${container.id}'.`
-      : `'${nodeId}': flush set (position unchanged — flush only checked for a rect parent).`;
-    core.rerender();
-    core.commitUndoStep();
+      const message = !turningOn ? `'${nodeId}': flush removed.`
+        : isRectPair ? `'${nodeId}': now flush against '${container.id}'.`
+        : `'${nodeId}': flush set (position unchanged — flush only checked for a rect parent).`;
+      commitSourceEdit(applyEditsDescending(text, edits), message);
+    });
   }
 
   function clearPlacement(nodeId) {
-    const text = core.sourceEl.value;
-    let base;
-    try { base = core.parseExpanded(text); } catch (e) { return; }
-    const node = base.nodesById[nodeId];
-    if (!node) return;
-    const spans = ["placement", "flush"].map((key) => findOwnPropertyLine(text, node, key)).filter(Boolean);
-    if (!spans.length) return;
-    core.sourceEl.value = deleteSpans(text, spans);
-    core.dragmsgEl.textContent = `'${nodeId}': placement cleared.`;
-    core.rerender();
-    core.commitUndoStep();
+    withParsedSource((text, base) => {
+      const node = base.nodesById[nodeId];
+      if (!node) return;
+      const spans = ["placement", "flush"].map((key) => findOwnPropertyLine(text, node, key)).filter(Boolean);
+      if (!spans.length) return;
+      commitSourceEdit(deleteSpans(text, spans), `'${nodeId}': placement cleared.`);
+    });
   }
 
   // ---------- Context menu ----------
