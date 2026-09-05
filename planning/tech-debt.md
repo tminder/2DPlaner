@@ -1,44 +1,14 @@
 # Technical Debt
 
-Numbered `S-x` (Gap) entries — code-quality, consistency, and correctness-risk items to keep in mind and address going forward, as distinct from `F-x` (feature/design questions, `open-questions.md`) and `D-x` (decisions already made and built, `decisions.md`). An item belongs here if it's about the *existing* code being harder to maintain or riskier than it should be — not about something that was never built yet.
+Numbered `S-x` (Gap) entries — code-quality, consistency, and correctness-risk items in the *existing* codebase that are harder to maintain or riskier than they should be, kept in mind and addressed going forward. Distinct from `F-x` (feature/design questions not yet built, `open-questions.md`) and `D-x` (decisions already made and built, `decisions.md`).
 
-Compiled from a full audit of `docs/index.html`, `docs/interactivity-module.js`, and the three smaller modules (`docs/annotations-module.js`, `docs/grid-module.js`, `docs/wall-with-door-module.js`), cross-referenced against what `decisions.md`/`open-questions.md` already self-admit — plus a separate pass over the repo's own top-level structure (folders, deploy process, README) for the same kind of "harder to maintain than it should be" risk at the project-organization level, not just inside individual files. Every entry below was read and verified directly, not inferred from naming.
-
-**Where to start, if picking one thing:** S-030 (no test suite anywhere in the repo) was the single highest-leverage item in this whole document — now built (D-093) — and every other fix here is safer to make with it in place. Among the remaining code-level items, S-001 (the clamp/slide duplication F-026 already named) turned out lower-risk to fix than assumed — each function has only 1-2 call sites — and S-002/S-003 (the six near-identical "action" functions and three competing edit-apply idioms) are a contained, low-risk refactor that would make every future context-menu action cheaper to add correctly. S-012 is the only item here that's an active, shipped, user-visible bug rather than a maintainability risk, and probably deserves a standalone fix before the others.
+This file holds only *currently open* debt. An entry is removed once it's resolved — the fix itself is recorded as a `D-x` decision in `decisions.md`, not narrated here. Entries aren't a chronological log of when something was found; they're numbered for stable cross-referencing, and a number is retired (not reused) once its entry is resolved and removed. When new debt is found, prefer folding it into an existing related entry over adding a new number — add a new one only for something genuinely distinct.
 
 ## `docs/interactivity-module.js`
 
-## S-001 Six independently-reinvented "clamp/slide/warn" functions (confirms F-026)
+## S-005 The stacked-element paint-order cache is fragile: never invalidated, and duplicated by a second mechanism
 
-`clampToNoCollision`, `clampToStayInside`, `clampRectToStayInsideRect`, `clampFlushInsideRect`, `trySlideAlongConnectedRect`, and the door-slide branch inside `composeDragEdits` all solve the same underlying problem — clamp a proposed `dx/dy` against some boundary, optionally sliding along it, optionally warning — each with its own logic. `clampFlushInsideRect`'s own comment admits it's "same shape as `trySlideAlongConnectedRect`'s… mechanic." Verified directly: each has only 1-2 call sites, so unifying them is **lower-risk than the repeated-rebuilding history suggests** — the real obstacle is reconciling their differing return shapes (delta vs. finished edits), warning conventions, and exactness (binary-search+tangent vs. closed-form per-axis), not fan-out.
-
-**Resolved — [decisions.md D-095](decisions.md#d-095-s-001-extracted-the-one-genuinely-duplicated-piece-deliberately-did-not-merge-the-rest), with the scope revised after actually reading all six.** The four clamp algorithms turned out to be genuinely different problems, not four rewrites of one — merging them was checked and deliberately rejected as premature abstraction, not left undone for lack of time. The one piece that *was* real, byte-for-byte duplication (a "clamp to a span, warn if clamped" idiom, five call sites, identical warning text) was extracted into `clampSpanWithWarning`. This is the closed, correct state of this entry — not a partial cleanup.
-
-## S-002 Six "action" functions share an unfactored 5-step shape
-
-`duplicateElement`, `deleteElement`, `reorderSibling`, `setPlacementInside`, `toggleFlush`, `clearPlacement` each: re-parse fresh from `core.sourceEl.value`, build an edits/spans array, sort descending, splice, `core.rerender()`, `core.commitUndoStep()`. Confirmed via 6+ identical `try { base = core.parseExpanded(text); } catch (e) { return; }` lines. A shared helper (parse-guard + apply-and-commit) is overdue — every new menu action currently means re-copying this shape by hand.
-
-**Resolved — [decisions.md D-096](decisions.md#d-096-s-002s-003-s-004-unified-the-six-menu-action-functions-shared-shell-and-the-three-edit-apply-idioms).** Two tiny helpers, `withParsedSource`/`commitSourceEdit`, extracted; each function's own real logic left untouched. Verified incrementally (one function refactored, full suite re-run, repeat) rather than all six at once.
-
-## S-003 Three different "apply edits to text" idioms coexist for the identical operation
-
-(a) inline `sort((a,b)=>b.start-a.start)` + manual splice loop, repeated in `applyDrag`, `duplicateElement`, `reorderSibling`, `createConnection`; (b) the shared `deleteSpans` helper (used by `deleteElement`/`clearPlacement`/`removeConnection`); (c) the later `applyEditsDescending` helper (added for F-035, used only by `setPlacementInside`/`toggleFlush`, never retrofitted into the earlier functions it duplicates). Should converge on one.
-
-**Resolved — [decisions.md D-096](decisions.md#d-096-s-002s-003-s-004-unified-the-six-menu-action-functions-shared-shell-and-the-three-edit-apply-idioms).** `applyEditsDescending` is now the sole primitive; `deleteSpans` is a thin wrapper over it; `duplicateElement`/`reorderSibling`'s own inline sort+splice loops both call it directly instead.
-
-## S-004 Silent argument-mismatch: `snapPositionEdits` passes 8 args to a 7-param function
-
-`snapPositionEdits` always calls `clampFn(nodeId, dx, dy, positions, containerAbs, containerSize, childSize, warnings)`, but `clampRectToStayInsideRect` only declares 7 params — `warnings` is silently dropped, and the code says so in a comment instead of fixing it. A future `clampFn` that *does* need `warnings` would break silently with no error, just missing warning messages.
-
-**Resolved — [decisions.md D-096](decisions.md#d-096-s-002s-003-s-004-unified-the-six-menu-action-functions-shared-shell-and-the-three-edit-apply-idioms).** `clampRectToStayInsideRect` gained a matching, intentionally-unused 8th `_warnings` parameter — same body, signature no longer disagrees with how it's actually called.
-
-## S-005 `stackOrderCache` is never invalidated and can go stale after a real reorder
-
-Populated once per id-set and never cleared — not on render, not after `reorderSibling` physically changes sibling declaration order in the source. A later hover over the same point (same id set) can still return the pre-reorder cached order. Also an unbounded, session-lifetime `Map` with no eviction.
-
-## S-006 Two independent mechanisms freeze paint order to fight the same problem
-
-`clickCycle.candidates` (D-086) and `stackOrderCache` (D-088/090) were built at different times to solve the identical issue — `bringToFront` scrambling live `elementsFromPoint` order — instead of sharing one. The stacked-element subsystem as a whole (`candidateIdsAtPoint` → `excludeOutsideAttachedPairs` → `resolvedCandidatesAtPoint` → `updateStackedHint` → `bringToFront`) needed four same-day bug-fix rounds (D-086, D-088, D-090, D-091) after each prior fix missed an edge case — a real fragility signal even without an inline "hack" comment admitting it.
+`stackOrderCache` (keyed by id-set, populated once and never cleared — not on render, not after a real sibling reorder) and `clickCycle.candidates` (a separate frozen-list mechanism for the same underlying problem: `bringToFront` scrambling live `elementsFromPoint` order mid-interaction) were built at different times to solve the identical issue independently, rather than sharing one. The stacked-element subsystem as a whole (`candidateIdsAtPoint` → `excludeOutsideAttachedPairs` → `resolvedCandidatesAtPoint` → `updateStackedHint` → `bringToFront`) needed several same-day bug-fix rounds after each prior fix missed an edge case — a real fragility signal on its own. `stackOrderCache` is also an unbounded, session-lifetime `Map` with no eviction.
 
 ## S-007 `handleRendered` is a god-function with seven unrelated responsibilities
 
@@ -58,15 +28,9 @@ The cleanup comment says it "undoes exactly what setup above did," but only rese
 
 ## S-011 Eleven module-level mutable variables with no ownership boundaries
 
-`program`, `lastBboxes`, `selectedId`, `drag`, `contextMenuItems`, `clickCycle`, `stackHintCandidates`, `viewState`, `lastCoreFit`, `canvasDrag`, `stackOrderCache` — nearly every function reads/writes several of these directly. Correctness currently depends on remembering which handler runs in what order rather than any enforced contract. Worth considering a single explicit state object with documented invariants, at least for the ones that must stay in sync with each other (S-006's two freeze mechanisms being the clearest case).
+`program`, `lastBboxes`, `selectedId`, `drag`, `contextMenuItems`, `clickCycle`, `stackHintCandidates`, `viewState`, `lastCoreFit`, `canvasDrag`, `stackOrderCache` — nearly every function reads/writes several of these directly. Correctness currently depends on remembering which handler runs in what order rather than any enforced contract. Worth considering a single explicit state object with documented invariants, at least for the ones that must stay in sync with each other (S-005's own two mechanisms being the clearest case).
 
 ## `docs/index.html` (core)
-
-## S-012 Real, currently-shipped rendering bug: `polygon`/`polyline` has no style fallback
-
-`renderShape`'s rect/circle branches default a missing `stroke`/`fill` to `"none"` and `strokeWidth` to `0.02`; the polygon/polyline branch emits `style.stroke` and `numOf(style.strokeWidth)*M` raw, with no fallback. A polygon whose `style` object omits `stroke`/`strokeWidth` renders literal `stroke="undefined"` and `stroke-width="NaN"` in the actual SVG output — not a style regression, a broken/invalid attribute. The only item in this file classified as an active bug rather than a maintainability risk.
-
-**Built — [decisions.md D-094](decisions.md#d-094-s-012-polygonpolyline-now-falls-back-like-rectcircle-when-style-omits-strokestrokewidth).** A one-line fix, applying the exact fallback pattern `rect`/`circle` already had. Now covered by two permanent tests in `tests/test_rendering.py`.
 
 ## S-013 `isTrustedModule` and `hasModuleDeclared` use incompatible matching rules
 
@@ -94,7 +58,7 @@ An unresolvable style preset (`resolveStyle`) only `console.warn`s and falls bac
 
 ## S-019 `render()` re-derives geometry `renderShape()` already computed, instead of one shared bbox pass
 
-`bboxes` is only populated for rects inside `renderShape`; `render()` then separately re-walks the whole tree and recomputes polyline/polygon points and circle radii a second time just to fold their extents into the fit box — a narrow patch (added after the Blank example exposed the gap) rather than a generalized single pass. Any future shape type will likely repeat the same oversight.
+`bboxes` is only populated for rects inside `renderShape`; `render()` then separately re-walks the whole tree and recomputes polyline/polygon points and circle radii a second time just to fold their extents into the fit box. Any future shape type will likely repeat the same oversight.
 
 ## S-020 `nodeDragEdits` solves "literal vs. expression" differently for `position` than for `points`
 
@@ -112,7 +76,7 @@ Called on every proposed move during an active drag, over the entire plan every 
 
 ## S-023 `annotations-module.js` re-derives geometry core already computed, with no enforced link
 
-`annotationMarkupForNode`'s own comment admits it "mirrors core's own `renderShape` branching exactly," re-deriving rect corners and polygon/polyline absolute points from scratch since core doesn't expose per-node corner lists after rendering. Any future shape-branch change in `renderShape` can silently desync this copy — nothing (no test, no shared function) links the two.
+`annotationMarkupForNode`'s own comment admits it "mirrors core's own `renderShape` branching exactly," re-deriving rect corners and polygon/polyline absolute points from scratch since core doesn't expose per-node corner lists after rendering. Any future shape-branch change in `renderShape` can silently desync this copy — nothing links the two.
 
 ## S-024 `bringToFront`'s annotation-sibling-adjacency handling is a fragile implicit contract
 
@@ -120,7 +84,7 @@ Called on every proposed move during an active drag, over the entire plan every 
 
 ## S-025 Auto-load policy is applied inconsistently across modules that share the same justification
 
-`grid-module.js` is auto-loaded specifically so `settings.grid` isn't silently inert for an author who didn't know to declare the module (citing F-023's own reasoning). `wall-with-door-module.js` is equally settings/property-driven (`compose: "wallWithDoor"`) but is *not* auto-loaded — an undeclared `compose` would presumably also silently do nothing, the exact gap the grid module's own design comment says it exists to avoid.
+`grid-module.js` is auto-loaded specifically so `settings.grid` isn't silently inert for an author who didn't know to declare the module. `wall-with-door-module.js` is equally settings/property-driven (`compose: "wallWithDoor"`) but is *not* auto-loaded — an undeclared `compose` would presumably also silently do nothing, the exact gap the grid module's own auto-load exists to avoid.
 
 ## S-026 `annotations-module.js`'s `fmtMeters` reimplements number formatting instead of reusing `core.formatNumber`
 
@@ -128,39 +92,25 @@ Produces a second, independently-maintained formatting rule (plain rounding + `.
 
 ## S-027 `wall-with-door-module.js`'s synthesized child ids have no collision check against real sibling ids
 
-`segment`'s hand-built ids (`${node.id}_wall_a`, etc.) aren't checked against existing sibling ids before use. If an author's own plan happens to declare a colliding id, this could silently corrupt drag targeting the same way F-028 describes for hand-authored duplicates — and this path is exempt from D-075's load-time duplicate-id check, since these nodes are synthesized after parsing, not part of the parsed source. Untested edge case, not confirmed broken.
+`segment`'s hand-built ids (`${node.id}_wall_a`, etc.) aren't checked against existing sibling ids before use. If an author's own plan happens to declare a colliding id, this could silently corrupt drag targeting the same way F-028 describes for hand-authored duplicates — and this path is exempt from the load-time duplicate-id check, since these nodes are synthesized after parsing, not part of the parsed source. Untested edge case, not confirmed broken.
 
 ## S-028 `wall-with-door-module.js`'s own composite doesn't account for a non-zero `position`
 
 The module's own comment states the composite's `position` isn't factored into its `from`/`to` endpoints, "left out to keep this focused." A `wallWithDoor` element nested somewhere with a non-zero `position` would likely place its segments wrong — self-admitted, unaddressed.
 
-## Already-shipped, currently-broken behavior (not a style/maintainability item)
-
-## S-029 ~~Collision-avoidance sliding against a circle or non-axis-aligned polygon edge~~ — retracted, not a real bug
-
-**Retracted after re-reading `decisions.md` D-041 in full, not just the middle of it.** The original audit stopped at D-041's own "paused here, not fully working" paragraph (a genuine mid-session pause, honestly written) and reported it as an open bug — but D-041 continues past that point with a "Fifth correction" and a final status revision that supersedes it: the shipped `clampToNoCollision` (`docs/interactivity-module.js`) uses X/Y-axis-separated clamping, which the code's own comment states plainly is "exact for the common case (rect furniture against rect furniture)" and, for a circle or polygon, "merely safe, if not perfectly smooth... never lets an overlap through, just may not track a curved boundary as fluidly — an accepted limitation rather than an unvalidated attempt at solving it." Confirmed directly against the current source, not just the decision log: the abandoned tangent-slide approach (`contactNormal`, the actual buggy code D-041 describes) is gone from `clampToNoCollision` entirely; a tangent-slide function does still exist (`clampToStayInside`) but is a *different* mechanism (containment against a polygon *parent*, D-032, not sibling collision-avoidance) with its own, separately-documented accepted limitation. Left in this document, struck through, as a record that the finding was checked and found wrong — not silently deleted, so nobody re-derives the same false alarm from a partial read later.
-
 ## Project structure / process
-
-Found by reading the repo's own top-level layout, `README.md`, `.gitignore`, and `documentation/` against what's actually shipped — not code-level, but process/organization debt with the same "harder to maintain than it should be" character as everything above. The project's own naming choices are, for the most part, already explained directly in `README.md` (e.g. why `docs/` is the app and not documentation, why `storage-service/` is kept alongside `storage-service-php/`) — the items below are the ones that aren't already mitigated by that self-documentation.
-
-## S-030 No test suite lives in the repository at all
-
-Every verification this project has ever had — dozens of Playwright scripts across many sessions — was written into a session-local scratchpad temp directory, run once, and discarded; none were ever committed. There is no `tests/` directory, no fixture plans, no repeatable regression suite anywhere in the repo (confirmed: no directory anywhere matches `*test*` except an unrelated `Prototypes/11-performance-test` name). This is the largest sustainability gap of anything in this document: every future change to `docs/index.html` or `docs/interactivity-module.js` currently has no automated safety net — correctness depends entirely on whoever is making the change happening to re-derive the right ad hoc checks by hand, in whatever session they're working in.
-
-**Built — [decisions.md D-093](decisions.md#d-093-s-030-a-real-committed-test-suite--python--pytest--playwright-chosen-after-checking-not-assuming-that-node-was-available).** `tests/` at the repo root, Python + pytest + Playwright (Node/npm checked directly and found genuinely absent from this machine, not assumed available), 27 tests across six files covering shipped examples, drag/undo, containment/placement/flush, the load-time validation pass, the stacked-element subsystem, and the context menu's structural actions. Not a wholesale port of this session's own ~65 scratchpad scripts — a curated set covering what the audit itself flagged as most valuable and most fragile. Two real bugs found in the process of writing it, both in test code rather than the product (a debounce race in a test helper, a wrong assumption about click-cycling's own first-click behavior) — see D-093 for both.
 
 ## S-031 `documentation/modules.md` is stale — missing two of the four shipped modules
 
-Documents `annotations-module.js`, `interactivity-module.js`, and `code-highlight-module.js` in detail, but has no section for `grid-module.js` (D-085) or `wall-with-door-module.js`, both real, currently-auto-loaded/shipped modules. Confirmed by grepping the file directly for all five module names. A reader relying on this file to understand "what modules exist and what they do" gets an incomplete picture with no indication anything is missing.
+Documents `annotations-module.js`, `interactivity-module.js`, and `code-highlight-module.js` in detail, but has no section for `grid-module.js` or `wall-with-door-module.js`, both real, currently-auto-loaded/shipped modules. A reader relying on this file to understand "what modules exist and what they do" gets an incomplete picture with no indication anything is missing.
 
 ## S-032 Deploying has no CI/CD and no structural safeguard against a skipped step
 
-Five independently-deployed targets (`homepage/`, `docs/`, `site-docs/`, `profile/`, `storage-service-php/`) each require a manual `scp` after every relevant change, with correctness resting on a human (or an assisting session) remembering to run it and separately verifying byte-counts match. This has worked so far because of consistent session-level discipline, not because the repository itself enforces or automates it — nothing would catch a deploy step that got forgotten.
+Six independently-deployed targets (`homepage/`, `docs/`, `site-docs/`, `profile/`, `homepage/blog/`, `storage-service-php/`) each require a manual `scp` after every relevant change, with correctness resting on a human (or an assisting session) remembering to run it and separately verifying byte-counts match. Nothing would catch a deploy step that got forgotten.
 
-## S-033 Static assets are physically duplicated across seven directories
+## S-033 Static assets are physically duplicated across many directories
 
-`favicon.ico`, `favicon.svg`, and `apple-touch-icon.png` each exist as separate physical copies in `docs/`, `homepage/`, `homepage/blog/`, `homepage/blog/planagonia-is-live/`, `homepage/blog/six-bugs-we-found/`, `homepage/impressum/`, `profile/`, and `site-docs/` — confirmed via the repo's own directory listing. A future favicon change means updating (and re-deploying) up to eight copies by hand; missing one silently leaves a stale icon on that one section indefinitely.
+`favicon.ico`, `favicon.svg`, and `apple-touch-icon.png` each exist as separate physical copies across `docs/`, `homepage/`, every `homepage/blog/<post>/` directory, `homepage/impressum/`, `profile/`, and `site-docs/`. A future favicon change means updating (and re-deploying) every copy by hand; missing one silently leaves a stale icon on that one section indefinitely.
 
 ## S-034 `documentation/` and `site-docs/` are close enough in name to require an explicit disclaimer
 
