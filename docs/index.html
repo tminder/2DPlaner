@@ -395,7 +395,9 @@ const EXAMPLE_LABELS = { blank: "Blank", apartment: "Studio Apartment", utility:
 // the base shapes, with interactivity's own icons/scale-bar/fit-button still ending up on
 // top of them (D-039); code-highlight-module.js has to run after interactivity-module.js
 // since it reads the selectedId signal interactivity's own render pass sets.
-const AUTO_MODULES = ["annotations-module.js", "interactivity-module.js", "code-highlight-module.js"];
+// grid-module.js (F-014) always inserts itself as the SVG's very first child regardless of
+// callback order, so its position in this list doesn't affect stacking.
+const AUTO_MODULES = ["grid-module.js", "annotations-module.js", "interactivity-module.js", "code-highlight-module.js"];
 
 // ---------- Built-in ("internal") module registry — none shipped by default; a plan can
 // still load its own via module "name.js" (external) or a bare internal name if one is
