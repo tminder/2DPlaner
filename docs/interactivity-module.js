@@ -1570,6 +1570,38 @@
     return ids;
   }
 
+  // An "outside"-attached element (D-032's connected-point mode: touching its container
+  // from the outside, e.g. a door sliding along a wall) legitimately shares a boundary
+  // pixel with that container without being "stacked" with it in any meaningful sense —
+  // nothing is hidden, nothing needs reaching. Filters any candidate out of a stacked-hint
+  // list if its only reason for being there is exactly that relationship to another
+  // candidate in the same list; requested directly as the fix for a real false positive.
+  function excludeOutsideAttachedPairs(ids, base) {
+    return ids.filter((id) => {
+      const node = base.nodesById[id];
+      const parent = node.parentId ? base.nodesById[node.parentId] : null;
+      const { container, placement } = resolveContainer(node, parent, base);
+      return !(placement === "outside" && container && ids.includes(container.id));
+    });
+  }
+
+  // The badge's list and click-cycling's own stepping both need one **stable** ordering per
+  // group of stacked ids — computed once, then reused for as long as that exact set of ids
+  // keeps appearing together, regardless of how many times a hover/click retriggers this.
+  // Without this, D-086's own bringToFront (raising whatever gets selected) changes live
+  // elementsFromPoint order after every click, and either a stray pointerover retrigger or
+  // simply re-hovering the same spot later would show the list in a different order each
+  // time — confusing for something whose whole point is letting someone track "which one am
+  // I on now." Keyed by the sorted id set (order-independent) so membership, not order,
+  // decides whether this is "the same group" as before.
+  const stackOrderCache = new Map();
+  function resolvedCandidatesAtPoint(clientX, clientY) {
+    const filtered = excludeOutsideAttachedPairs(candidateIdsAtPoint(clientX, clientY), program);
+    const key = [...filtered].sort().join("|");
+    if (!stackOrderCache.has(key)) stackOrderCache.set(key, filtered);
+    return stackOrderCache.get(key);
+  }
+
   // ---------- Event wiring — named functions so registerModuleCleanup can remove exactly
   // what was added. ----------
   function handlePointerDown(e) {
@@ -1622,7 +1654,7 @@
       const idx = cycleCandidates.indexOf(clickCycle.lastId);
       if (idx !== -1 && cycleCandidates.length > 1) chosenId = cycleCandidates[(idx + 1) % cycleCandidates.length];
     } else {
-      cycleCandidates = candidateIdsAtPoint(e.clientX, e.clientY);
+      cycleCandidates = resolvedCandidatesAtPoint(e.clientX, e.clientY);
     }
 
     const node = program.nodesById[chosenId];
@@ -1819,7 +1851,7 @@
     // hidden container (F-019's own case: a mid-tree container fully covered by its own
     // children, never visible *anywhere*). Excluding it turns this back into a signal for
     // the second, unexpected case rather than ambient noise on every single element.
-    const allCandidates = candidateIdsAtPoint(e.clientX, e.clientY);
+    const allCandidates = resolvedCandidatesAtPoint(e.clientX, e.clientY);
     const nonRootCandidates = allCandidates.filter((id) => id !== program.root.id);
     if (nonRootCandidates.length > 1) {
       el.classList.add("stacked-hint");
