@@ -1422,6 +1422,30 @@
     contextMenuItems = [];
   }
 
+  // Selecting a stacked/covered element (D-077's click-cycling) puts it in the *logical*
+  // foreground (it's now the thing further clicks/drags target) but does nothing to its
+  // *visual* stacking — render order alone still decides paint order, so a selected element
+  // can stay hidden under whatever already covered it. This raises the whole selected
+  // subtree (the node and every descendant, reusing collectAllNodes — same walk F-022's
+  // validation pass already uses) to the end of the SVG, preserving their existing relative
+  // order so a container's own children still paint on top of it, not the other way
+  // around. Also moves each shape's immediately-following annotation `<g>` (if any) along
+  // with it, so a re-ordered element's label/dimensions stay attached rather than being
+  // left behind at the old position — preserves the exact sibling adjacency
+  // annotations-module.js's own hover CSS rule depends on.
+  function bringToFront(svgEl, prog) {
+    const node = prog.nodesById[selectedId];
+    if (!node) return;
+    for (const n of collectAllNodes(node, [])) {
+      const el = svgEl.querySelector(`[data-id="${CSS.escape(n.id)}"]`);
+      if (!el) continue;
+      const next = el.nextElementSibling;
+      const annotation = next && next.tagName === "g" && next.classList.contains("annotation") ? next : null;
+      svgEl.appendChild(el);
+      if (annotation) svgEl.appendChild(annotation);
+    }
+  }
+
   // ---------- After every render, reapply the selection class and lay the connect/
   // disconnect icons on top. Full DOM replacement each render means there's never stale
   // overlay state to clean up first. ----------
@@ -1472,6 +1496,7 @@
     if (selectedId) {
       core.rootEl.querySelector(`[data-id="${CSS.escape(selectedId)}"]`)?.classList.add("selected");
       core.rootEl.dataset.selectedId = selectedId;
+      bringToFront(svgEl, prog);
     } else {
       delete core.rootEl.dataset.selectedId;
     }
@@ -1557,10 +1582,19 @@
     // *previous* plain click's own point, in which case it steps to whatever was one layer
     // further down that same stack last time, wrapping back to the top once exhausted.
     let chosenId = el.dataset.id;
+    let cycleCandidates;
     if (clickCycle && Math.hypot(e.clientX - clickCycle.x, e.clientY - clickCycle.y) <= CLICK_CYCLE_TOLERANCE_PX) {
-      const candidates = candidateIdsAtPoint(e.clientX, e.clientY);
-      const idx = candidates.indexOf(clickCycle.lastId);
-      if (idx !== -1 && candidates.length > 1) chosenId = candidates[(idx + 1) % candidates.length];
+      // Frozen from when this cycle started (see handlePointerUp), not recomputed on every
+      // click: bringToFront (below) reorders the DOM on every selection change, which would
+      // otherwise scramble elementsFromPoint's own live order mid-cycle and get this stuck
+      // bouncing between only the two most recently selected elements instead of ever
+      // reaching the rest of the stack — a real bug, found while designing this, not
+      // observed after the fact.
+      cycleCandidates = clickCycle.candidates;
+      const idx = cycleCandidates.indexOf(clickCycle.lastId);
+      if (idx !== -1 && cycleCandidates.length > 1) chosenId = cycleCandidates[(idx + 1) % cycleCandidates.length];
+    } else {
+      cycleCandidates = candidateIdsAtPoint(e.clientX, e.clientY);
     }
 
     const node = program.nodesById[chosenId];
@@ -1568,7 +1602,7 @@
       core.dragmsgEl.textContent = `${node.id}: has no explicit position/points in source, nothing to drag`;
       return;
     }
-    drag = { id: node.id, baseText: core.sourceEl.value, clientX: e.clientX, clientY: e.clientY, moved: false, singleOnly: e.shiftKey };
+    drag = { id: node.id, baseText: core.sourceEl.value, clientX: e.clientX, clientY: e.clientY, moved: false, singleOnly: e.shiftKey, cycleCandidates };
     core.rootEl.classList.add("dragging");
   }
 
@@ -1713,7 +1747,7 @@
       // A plain click (never moved) remembers its own point + chosen id, so a repeated
       // click right there can step to the next thing underneath next time; an actual drag
       // invalidates it — dragging is a deliberate move, not "try again at this spot".
-      clickCycle = drag.moved ? null : { x: drag.clientX, y: drag.clientY, lastId: drag.id };
+      clickCycle = drag.moved ? null : { x: drag.clientX, y: drag.clientY, lastId: drag.id, candidates: drag.cycleCandidates };
       drag = null;
       core.rerender({ preserveViewBox: true });
       // Once per gesture, not once per pointermove frame (applyDrag runs on every one of
