@@ -668,6 +668,19 @@
   // is scoped); motion along the edge slides within its own span, clamped by the same
   // exact per-axis math clampRectToStayInsideRect already uses, just pinned on one axis
   // rather than free on both.
+  // S-001: the one piece genuinely duplicated (not just similarly-named) across
+  // clampFlushInsideRect, trySlideAlongConnectedRect, and composeDragEdits's door-slide —
+  // confirmed by reading all three, not assumed from the shared "clamp/slide" naming
+  // pattern the rest of this section's functions only superficially share. Everything
+  // else here (nearestRectEdge vs. nearestParentRectEdge, the four position-clamp
+  // algorithms themselves) was checked and found to solve genuinely different problems,
+  // not left unmerged for lack of time — see decisions.md for the full read.
+  function clampSpanWithWarning(nodeId, value, min, max, warnings) {
+    const clamped = Math.min(max, Math.max(min, value));
+    if (clamped !== value) warnings.push(`${nodeId}: reached the end of the wall`);
+    return clamped;
+  }
+
   function clampFlushInsideRect(nodeId, dx, dy, positions, parentAbs, parentSize, childSize, warnings) {
     const [x, y] = positions[nodeId];
     const [pw, ph] = parentSize, [cw, ch] = childSize;
@@ -677,14 +690,10 @@
     let newX = x, newY = y;
     if (edge === "left" || edge === "right") {
       newX = edge === "left" ? parentAbs[0] : parentAbs[0] + pw - cw;
-      const targetY = y + dy;
-      newY = Math.min(parentAbs[1] + ph - ch, Math.max(parentAbs[1], targetY));
-      if (targetY !== newY) warnings.push(`${nodeId}: reached the end of the wall`);
+      newY = clampSpanWithWarning(nodeId, y + dy, parentAbs[1], parentAbs[1] + ph - ch, warnings);
     } else {
       newY = edge === "top" ? parentAbs[1] : parentAbs[1] + ph - ch;
-      const targetX = x + dx;
-      newX = Math.min(parentAbs[0] + pw - cw, Math.max(parentAbs[0], targetX));
-      if (targetX !== newX) warnings.push(`${nodeId}: reached the end of the wall`);
+      newX = clampSpanWithWarning(nodeId, x + dx, parentAbs[0], parentAbs[0] + pw - cw, warnings);
     }
     return [newX - x, newY - y];
   }
@@ -1114,13 +1123,9 @@
 
     let newX = myBox.left, newY = myBox.top;
     if (nearest.edge === "left" || nearest.edge === "right") {
-      const target = myBox.top + dy;
-      newY = Math.min(rect.bottom, Math.max(rect.top, target));
-      if (target !== newY) warnings.push(`${node.id}: reached the end of the wall`);
+      newY = clampSpanWithWarning(node.id, myBox.top + dy, rect.top, rect.bottom, warnings);
     } else {
-      const target = myBox.left + dx;
-      newX = Math.min(rect.right, Math.max(rect.left, target));
-      if (target !== newX) warnings.push(`${node.id}: reached the end of the wall`);
+      newX = clampSpanWithWarning(node.id, myBox.left + dx, rect.left, rect.right, warnings);
     }
     const slideDx = newX - myBox.left, slideDy = newY - myBox.top;
     if (!slideDx && !slideDy) return [];
@@ -1184,9 +1189,7 @@
 
     const doorWidth = core.numOf(composite.props.doorWidth);
     const doorAtProp = composite.props.doorAt;
-    const proposed = doorAtProp.value + slide;
-    const clamped = Math.min(Math.max(proposed, 0), Math.max(0, wallLen - doorWidth));
-    if (clamped !== proposed) warnings.push(`${node.id}: reached the end of the wall`);
+    const clamped = clampSpanWithWarning(node.id, doorAtProp.value + slide, 0, Math.max(0, wallLen - doorWidth), warnings);
     if (clamped === doorAtProp.value) return [];
 
     return [{ start: doorAtProp.start, end: doorAtProp.end, text: core.formatNumber(clamped, doorAtProp.unit) }];
