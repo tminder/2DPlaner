@@ -63,6 +63,18 @@
       .context-menu li { padding: 6px 16px; cursor: pointer; }
       .context-menu li:hover { background: #eef2ff; }
       .context-menu li.danger { color: #a11; }
+      /* A group header (e.g. "Placement") isn't itself clickable — no data-i, see
+         handleMenuClick — hovering it reveals the nested list as a flyout to the right,
+         the same convention a native app's own hierarchical menu uses. No viewport-edge
+         handling, matching the top-level menu itself (positioned directly at the click
+         point with no edge-clamping either). */
+      .context-menu li.has-submenu { position: relative; }
+      .context-menu li.has-submenu::after { content: "▸"; float: right; opacity: 0.5; margin-left: 12px; }
+      .context-menu .context-submenu { display: none; position: absolute; top: -5px; left: 100%;
+        margin: 0; padding: 4px 0; min-width: 170px; list-style: none; background: #fff;
+        border: 1px solid #ccc; border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+        font-family: system-ui, sans-serif; font-size: 13px; }
+      .context-menu li.has-submenu:hover > .context-submenu { display: block; }
 
       #interactivity-scale-bar { position: absolute; right: 10px; bottom: 10px;
         display: flex; flex-direction: column; align-items: center; pointer-events: none;
@@ -1610,11 +1622,36 @@
   }
 
   // ---------- Context menu ----------
+  // An element's own label if it has one, its raw id otherwise — the exact fallback
+  // precedent D-087 already established for the F-021 stack-hint badge, reused here so a
+  // menu label naming a container reads the same way that badge already does.
+  function displayName(node) {
+    return node.props.label ?? node.id;
+  }
+
+  // contextMenuItems stays the flat action registry handleMenuClick already indexes into
+  // (data-i="N" -> contextMenuItems[N]) regardless of how deep a leaf is visually nested —
+  // renderItems is a separate, small tree describing layout only. A leaf is { i }; a group
+  // (e.g. "Placement") is { label, group: [...] }, not itself clickable (no data-i), shown
+  // as a hover flyout matching native app menu convention.
+  function renderMenuItems(items) {
+    return items.map((entry) => {
+      if (entry.group) {
+        return `<li class="has-submenu">${escapeHtml(entry.label)}<ul class="context-submenu">${renderMenuItems(entry.group)}</ul></li>`;
+      }
+      const item = contextMenuItems[entry.i];
+      return `<li data-i="${entry.i}"${item.danger ? ' class="danger"' : ""}>${escapeHtml(item.label)}</li>`;
+    }).join("");
+  }
+
   function openContextMenu(nodeId, x, y) {
-    contextMenuItems = [
-      { label: "Duplicate", action: () => duplicateElement(nodeId) },
-      { label: "Delete Element", danger: true, action: () => deleteElement(nodeId) },
-    ];
+    contextMenuItems = [];
+    const renderItems = [];
+    const push = (item) => { contextMenuItems.push(item); return contextMenuItems.length - 1; };
+
+    renderItems.push({ i: push({ label: "Duplicate", action: () => duplicateElement(nodeId) }) });
+    renderItems.push({ i: push({ label: "Delete Element", danger: true, action: () => deleteElement(nodeId) }) });
+
     // Front/back items offered whenever the element has any sibling at all — not gated on
     // detecting an actual overlap at this exact pixel (found not to be intuitive: an author
     // may want to set stacking order pre-emptively, or the one-point sample simply might not
@@ -1624,33 +1661,36 @@
     const parent = node?.parentId ? program.nodesById[node.parentId] : null;
     if (parent && parent.children.length > 1) {
       const idx = parent.children.indexOf(node);
-      if (idx < parent.children.length - 1) contextMenuItems.push({ label: "Bring to Front", action: () => reorderSibling(nodeId, true) });
-      if (idx > 0) contextMenuItems.push({ label: "Send to Back", action: () => reorderSibling(nodeId, false) });
+      if (idx < parent.children.length - 1) renderItems.push({ i: push({ label: "Bring to Front", action: () => reorderSibling(nodeId, true) }) });
+      if (idx > 0) renderItems.push({ i: push({ label: "Send to Back", action: () => reorderSibling(nodeId, false) }) });
     }
     // F-035: setting placement/flush directly, instead of hand-typing the exact property
-    // names into the source. "Outside" deliberately isn't offered here yet — unlike
-    // "inside", it has no existing cold-start positioning logic anywhere in this codebase
-    // (D-032's connected-point mode only ever activates once an element is *already*
-    // resting against a target edge mid-drag), so offering it now would silently do
-    // nothing for the common case of an element that isn't already touching anything.
+    // names into the source, grouped under one "Placement" submenu naming the actual
+    // container in each label rather than leaving it to be inferred. "Outside" deliberately
+    // isn't offered here yet — unlike "inside", it has no existing cold-start positioning
+    // logic anywhere in this codebase (D-032's connected-point mode only ever activates
+    // once an element is *already* resting against a target edge mid-drag), so offering it
+    // now would silently do nothing for the common case of an element that isn't already
+    // touching anything.
     if (parent) {
+      const placementItems = [];
       if (node.props.placement !== "inside") {
-        contextMenuItems.push({ label: "Place Inside", action: () => setPlacementInside(nodeId) });
+        placementItems.push({ i: push({ label: `Inside ${displayName(parent)}`, action: () => setPlacementInside(nodeId) }) });
       }
-      const { placement: resolvedPlacement } = resolveContainer(node, parent, program);
-      if (resolvedPlacement === "inside") {
-        contextMenuItems.push({
-          label: node.props.flush === true ? "Un-flush" : "Make Flush",
-          action: () => toggleFlush(nodeId),
-        });
+      const { container, placement: resolvedPlacement } = resolveContainer(node, parent, program);
+      if (resolvedPlacement === "inside" && container) {
+        const flushLabel = node.props.flush === true
+          ? `Un-flush from ${displayName(container)}`
+          : `Flush against ${displayName(container)}`;
+        placementItems.push({ i: push({ label: flushLabel, action: () => toggleFlush(nodeId) }) });
       }
       if (node.props.placement !== undefined || node.props.flush !== undefined) {
-        contextMenuItems.push({ label: "Clear Placement", action: () => clearPlacement(nodeId) });
+        placementItems.push({ i: push({ label: "Free", action: () => clearPlacement(nodeId) }) });
       }
+      if (placementItems.length) renderItems.push({ label: "Placement", group: placementItems });
     }
-    contextMenuEl.innerHTML = contextMenuItems.map((item, i) =>
-      `<li data-i="${i}"${item.danger ? ' class="danger"' : ""}>${escapeHtml(item.label)}</li>`
-    ).join("");
+
+    contextMenuEl.innerHTML = renderMenuItems(renderItems);
     contextMenuEl.style.left = `${x}px`;
     contextMenuEl.style.top = `${y}px`;
     contextMenuEl.hidden = false;

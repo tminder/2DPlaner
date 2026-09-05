@@ -106,8 +106,8 @@ def test_place_inside_snaps_out_of_bounds_element(app_page):
     load_plan(app_page, OUT_OF_BOUNDS_PLAN)
     cx, cy = element_center(app_page, "sofa")
     open_context_menu(app_page, cx, cy)
-    assert "Place Inside" in menu_items(app_page)
-    click_menu_item(app_page, "Place Inside")
+    assert "Inside room" in menu_items(app_page)
+    click_menu_item(app_page, "Inside room")
     text = source_text(app_page)
     assert 'placement: "inside"' in text
     import re
@@ -123,17 +123,17 @@ def test_make_flush_then_clear_placement(app_page):
     load_plan(app_page, OUT_OF_BOUNDS_PLAN)
     cx, cy = element_center(app_page, "sofa")
     open_context_menu(app_page, cx, cy)
-    click_menu_item(app_page, "Place Inside")
+    click_menu_item(app_page, "Inside room")
 
     open_context_menu(app_page, cx, cy)
-    assert "Make Flush" in menu_items(app_page)
-    click_menu_item(app_page, "Make Flush")
+    assert "Flush against room" in menu_items(app_page)
+    click_menu_item(app_page, "Flush against room")
     assert "flush: true" in source_text(app_page)
 
     open_context_menu(app_page, cx, cy)
-    assert "Un-flush" in menu_items(app_page)
-    assert "Clear Placement" in menu_items(app_page)
-    click_menu_item(app_page, "Clear Placement")
+    assert "Un-flush from room" in menu_items(app_page)
+    assert "Free" in menu_items(app_page)
+    click_menu_item(app_page, "Free")
     text = source_text(app_page)
     assert "flush" not in text.split("element sofa")[1]
     assert "placement" not in text.split("element sofa")[1]

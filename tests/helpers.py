@@ -46,10 +46,13 @@ def validation_violations(page):
 
 
 def menu_items(page):
-    """Labels of every item currently shown in the right-click context menu."""
+    """Labels of every clickable item currently shown in the right-click context menu,
+    submenu items included by their own real label (e.g. "Inside room"). A non-clickable
+    group header like "Placement" has no data-i and is deliberately excluded -- it isn't
+    an action itself, its children are."""
     return page.evaluate(
         """() => Array.from(
-            document.querySelectorAll('#interactivity-context-menu li')
+            document.querySelectorAll('#interactivity-context-menu li[data-i]')
         ).map(li => li.textContent.trim())"""
     )
 
@@ -60,9 +63,25 @@ def open_context_menu(page, x, y):
 
 
 def click_menu_item(page, label):
-    items = menu_items(page)
-    idx = items.index(label)
-    page.locator(f'#interactivity-context-menu li[data-i="{idx}"]').click()
+    """Finds the item with this exact label by its own data-i (never by array position,
+    which no longer lines up 1:1 with data-i once a non-clickable group header can also
+    appear among the <li> elements), hovers its group open first if it's nested inside
+    one -- CSS :hover only responds to genuine pointer input, not a dispatched event, so
+    this uses Playwright's own .hover() the same way a real user would open the flyout."""
+    li_data_i = page.evaluate(
+        """(label) => {
+            const items = Array.from(document.querySelectorAll('#interactivity-context-menu li[data-i]'));
+            const match = items.find((el) => el.textContent.trim() === label);
+            return match ? match.dataset.i : null;
+        }""",
+        label,
+    )
+    assert li_data_i is not None, f"menu item not found: {label!r}"
+    groups = page.locator("#interactivity-context-menu li.has-submenu")
+    if groups.count():
+        groups.first.hover()
+        page.wait_for_timeout(100)
+    page.locator(f'#interactivity-context-menu li[data-i="{li_data_i}"]').click()
     page.wait_for_timeout(200)
 
 
