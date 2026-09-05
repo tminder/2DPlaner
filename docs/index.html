@@ -348,44 +348,133 @@ connection stove counter
   utility: `settings {
   version: 1
   allowSelfIntersectingPolygons: false
+  styles: {
+    parcel: { fill: "#e7ecdf", stroke: "#7c8f6a", strokeWidth: 0.05 }
+    haus: { fill: "#dcdcd7", stroke: "#55554f", strokeWidth: 0.07 }
+    kabel: { stroke: "#c98a1c", strokeWidth: 0.05, strokeDash: "0.3,0.15" }
+    kabine: { fill: "#3a3a38", stroke: "#1c1c1a", strokeWidth: 0.06 }
+  }
 }
 
-element grundstueck {
-  shape: "polygon"
-  points: [[0m, 0m], [11m, 0m], [12m, 9m], [-1m, 9m]]
-  style: { fill: "#dce8c8", stroke: "#7a9a5a", strokeWidth: 0.06 }
-  label: "Grundstück"
-  show: "hover"
-  edgeLengths: true
-
-  element haus {
+element stromnetz {
+  element parzelle_1 {
     shape: "rect"
-    size: [5.5m, 4m]
-    position: [3m, 3m]
-    style: { fill: "#e8d6b8", stroke: "#8a6a42", strokeWidth: 0.08 }
-    label: "Haus"
-    show: "always"
-    dimensions: true
+    size: [8m, 9m]
+    position: [0m, 0m]
+    style: "parcel"
+    label: "Parzelle 1"
+    show: "hover"
+    edgeLengths: true
+
+    element haus_1 {
+      shape: "rect"
+      size: [4m, 4m]
+      position: [2m, 3m]
+      style: "haus"
+      label: "Haus 1"
+      show: "always"
+      dimensions: true
+    }
+
+    element hausanschluss_1 { position: [4m, 3m] }
   }
 
-  element haus_anschluss { position: [3m, 4.5m] }
+  element parzelle_2 {
+    shape: "rect"
+    size: [8m, 9m]
+    position: [9m, 0m]
+    style: "parcel"
+    label: "Parzelle 2"
+    show: "hover"
+    edgeLengths: true
 
-  element stromanschluss {
+    element haus_2 {
+      shape: "rect"
+      size: [4m, 4m]
+      position: [2m, 3m]
+      style: "haus"
+      label: "Haus 2"
+      show: "always"
+      dimensions: true
+    }
+
+    element hausanschluss_2 { position: [4m, 3m] }
+  }
+
+  element parzelle_3 {
+    shape: "rect"
+    size: [8m, 9m]
+    position: [18m, 0m]
+    style: "parcel"
+    label: "Parzelle 3"
+    show: "hover"
+    edgeLengths: true
+
+    element haus_3 {
+      shape: "rect"
+      size: [4m, 4m]
+      position: [2m, 3m]
+      style: "haus"
+      label: "Haus 3"
+      show: "always"
+      dimensions: true
+    }
+
+    element hausanschluss_3 { position: [4m, 3m] }
+  }
+
+  element verteilkabine {
+    shape: "rect"
+    size: [1m, 1m]
+    position: [12.5m, -1.5m]
+    style: "kabine"
+    label: "Verteilkabine"
+    show: "always"
+    dimensions: true
+
+    element kabine_anschluss { position: [0.5m, 1m] }
+  }
+
+  element kabel_1 {
     shape: "polyline"
-    points: [[1.5m, 0.5m], [1.5m, 4.5m], haus_anschluss]
-    style: { stroke: "#e0a800", strokeWidth: 0.05, strokeDash: "0.3,0.15" }
-    label: "Stromanschluss"
+    points: [kabine_anschluss, [4m, -0.5m], hausanschluss_1]
+    style: "kabel"
+    label: "Hausanschluss 1"
+    show: "hover"
+  }
+
+  element kabel_2 {
+    shape: "polyline"
+    points: [kabine_anschluss, hausanschluss_2]
+    style: "kabel"
+    label: "Hausanschluss 2"
+    show: "hover"
+  }
+
+  element kabel_3 {
+    shape: "polyline"
+    points: [kabine_anschluss, [22m, -0.5m], hausanschluss_3]
+    style: "kabel"
+    label: "Hausanschluss 3"
     show: "hover"
   }
 }
 
-connection haus_anschluss haus
+connection parzelle_1 parzelle_2
+connection parzelle_2 parzelle_3
+connection parzelle_1 parzelle_3
+connection hausanschluss_1 haus_1
+connection hausanschluss_2 haus_2
+connection hausanschluss_3 haus_3
+connection hausanschluss_1 verteilkabine
+connection hausanschluss_2 verteilkabine
+connection hausanschluss_3 verteilkabine
 `,
 };
 
 // Display names for the plan switcher's "New from example…" group — kept separate from
 // EXAMPLES' own keys since those are also used as (stable, never user-facing) identifiers.
-const EXAMPLE_LABELS = { blank: "Blank", apartment: "Studio Apartment", utility: "Utility Connection" };
+const EXAMPLE_LABELS = { blank: "Blank", apartment: "Studio Apartment", utility: "Electrical Grid" };
 
 // None of the examples declare these themselves, so all three are added automatically if
 // missing (see withAutoModules below) — every plan gets display (label/dimensions/edgeLengths),
