@@ -796,11 +796,77 @@
     }
   }
 
+  // F-023: nothing anywhere validates that a declared `shape` or property is one the
+  // parser/renderer actually knows about — parseElementDecl accepts any `key: value` pair
+  // with no allow-list at all. Verified against actual `.props` reads across index.html /
+  // interactivity-module.js / annotations-module.js, and against language.md's own stated
+  // per-shape restrictions (edge lengths / dimensions sections), not invented from scratch.
+  const CORE_SHAPES = ["rect", "polygon", "polyline", "circle"];
+  const SHARED_PROPS = ["position", "style", "placement", "childPlacement", "flush", "show", "allowCollisions", "label"];
+  const SHAPE_PROPS = {
+    rect: [...SHARED_PROPS, "size", "dimensions", "edgeLengths"],
+    circle: [...SHARED_PROPS, "radius", "dimensions"],
+    polygon: [...SHARED_PROPS, "points", "edgeLengths"],
+    polyline: [...SHARED_PROPS, "points", "edgeLengths"],
+  };
+  const SHAPELESS_PROPS = ["position"];
+
+  function checkUnrecognizedShapes(base, violations) {
+    for (const node of collectAllNodes(base.root, [])) {
+      const shape = node.props.shape;
+      if (shape === undefined) continue; // a shapeless node is a documented, legitimate pattern (D-018's corner elements)
+      if (CORE_SHAPES.includes(shape)) continue;
+      if (window.PlanModules && window.PlanModules[shape]) continue;
+      violations.push({ type: "unrecognized-shape", message: `'${node.id}': shape "${shape}" isn't recognized — rendering as an invisible point` });
+    }
+  }
+
+  // A composite element (`compose: "wallWithDoor"`, D-046/D-072) has no `shape` of its own
+  // and its props (`from`/`to`/`doorAt`/...) are module-specific — this language has no
+  // declared schema for a module's own composition inputs, so it's skipped entirely rather
+  // than flagged.
+  function checkUnsupportedProperties(base, violations) {
+    for (const node of collectAllNodes(base.root, [])) {
+      if (node.props.compose !== undefined) continue;
+      const shape = node.props.shape;
+      if (shape !== undefined && !CORE_SHAPES.includes(shape)) continue; // already reported by checkUnrecognizedShapes
+      const allowed = shape === undefined ? SHAPELESS_PROPS : SHAPE_PROPS[shape];
+      for (const key of Object.keys(node.props)) {
+        if (key === "shape" || allowed.includes(key)) continue;
+        violations.push({ type: "unsupported-property", message: `'${node.id}': "${key}" isn't used by ${shape === undefined ? "a shapeless element" : `shape "${shape}"`} — ignored` });
+      }
+    }
+  }
+
+  // Two co-requirement checks living together since both read the same resolveContainer
+  // result. `flush: true` without a resolved "inside" placement does nothing anywhere today
+  // — not even the ephemeral drag-time warning below catches this exact combination, since
+  // that one bails out before ever looking at `flush` when placement isn't "inside" (see
+  // clampToContainment). An unrecognized `placement` value already warns, but only as a
+  // one-off drag-time toast (line below) — promoted here into the permanent static panel so
+  // it's visible on load, not only the first time someone happens to drag that element.
+  function checkFlushPlacement(base, violations) {
+    for (const node of collectAllNodes(base.root, [])) {
+      if (!node.parentId) continue;
+      const parent = base.nodesById[node.parentId];
+      const { placement } = resolveContainer(node, parent, base);
+      if (node.props.flush === true && placement !== "inside") {
+        violations.push({ type: "flush-without-inside", message: `'${node.id}': flush: true has no effect unless placement resolves to "inside" (currently: ${placement ?? "none"})` });
+      }
+      if (typeof node.props.placement === "string" && placement !== "inside" && placement !== "outside") {
+        violations.push({ type: "unrecognized-placement", message: `'${node.id}': placement "${node.props.placement}" isn't recognized (expected "inside" or "outside") — ignored` });
+      }
+    }
+  }
+
   function checkPlanValidity(base, positions) {
     const violations = [];
     checkDuplicateIds(base, violations);
     checkCollisions(base, positions, violations);
     checkContainment(base, positions, violations);
+    checkUnrecognizedShapes(base, violations);
+    checkUnsupportedProperties(base, violations);
+    checkFlushPlacement(base, violations);
     return violations;
   }
 
