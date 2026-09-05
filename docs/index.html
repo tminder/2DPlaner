@@ -30,64 +30,58 @@
   #file-input { display: none; }
   .mobile-tabs { display: none; }
 
-  /* F-032/D-103/D-104: the header's own menu bar (File/View/Account) -- a core-owned rule
+  /* F-032/D-103/D-104/D-105: every action sits directly in the header, always visible, in
+     small icon-on-top/label-below groups — no dropdown/trigger layer at all, reported
+     directly after D-104's own click-to-open panels ("keine dropdowns"). A core-owned rule
      set, deliberately separate from interactivity-module.js's own .context-menu styles:
      this chrome has to work with no plan module loaded at all, so it can't depend on one
      module's runtime-injected CSS just because that module happens to always auto-load
-     (D-034). Same markup and behavior on desktop and mobile -- see the header's own script
-     block below for the click-to-open/close wiring. The dropdown itself is styled as a
-     small ribbon panel (icon on top, label below, grouped with dividers) rather than a
-     classic vertical list, per D-104's own "modern Word" direction. */
-  .menu-bar { display: flex; gap: 0.25rem; position: relative; }
-  .menu { position: relative; }
-  .menu-trigger { font-size: 0.85rem; }
-  .menu-dropdown { display: none; position: absolute; left: 0; top: 100%; margin: 4px 0 0;
-    background: #fff; border: 1px solid #ccc; border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,0.18);
-    font-family: system-ui, sans-serif; z-index: 20; }
-  .menu.menu-right .menu-dropdown { left: auto; right: 0; } /* stays on-screen at a narrow width */
-  /* `display: flex` lives here, not on `.ribbon-panel` itself -- both selectors are equal
-     specificity (one class each), so a `.ribbon-panel { display: flex }` rule appearing
-     later in the sheet would otherwise silently win the cascade over `.menu-dropdown`'s own
-     `display: none` above for every CLOSED menu too, showing all three panels at once
-     regardless of which one was actually clicked open (caught immediately, D-104). */
-  .menu.open .menu-dropdown { display: flex; }
-
-  .ribbon-panel { align-items: stretch; flex-wrap: wrap; gap: 2px; padding: 6px;
-    max-width: min(420px, calc(100vw - 20px)); }
+     (D-034). */
   .ribbon-group { display: flex; gap: 2px; }
-  .ribbon-btn { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 68px;
-    padding: 6px 4px; border: 1px solid transparent; border-radius: 5px; background: none;
-    font-size: 11px; text-align: center; white-space: normal; line-height: 1.2; cursor: pointer;
+  .ribbon-btn { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 62px;
+    padding: 4px 2px; border: 1px solid transparent; border-radius: 5px; background: none;
+    font-size: 10.5px; text-align: center; white-space: normal; line-height: 1.2; cursor: pointer;
     font-family: inherit; color: inherit; position: relative; }
-  .ribbon-icon { font-size: 20px; line-height: 1; opacity: 0.75; }
-  .ribbon-label { font-size: 11px; }
+  .ribbon-icon { font-size: 18px; line-height: 1; opacity: 0.75; }
+  .ribbon-label { font-size: 10.5px; }
   .ribbon-btn:hover:not(:disabled) { background: #eef2ff; border-color: #d3ddfa; }
   /* A pressed/highlighted background marks an active toggle (Grid), matching how a real
      ribbon shows Bold/Italic as "on" — not a checkmark glyph. */
   .ribbon-btn.active { background: #d8e4fc; border-color: #9db8e8; }
   .ribbon-btn.danger { color: #a11; }
   /* The cloud sign-in/out buttons are shown/hidden via the plain `hidden` attribute
-     (updateCloudUi(), unchanged by this menu) -- `.ribbon-btn`'s own `display: flex` would
-     otherwise silently override the UA stylesheet's own `[hidden] { display: none }` and
-     show every cloud button at once regardless of sign-in state. */
+     (updateCloudUi(), unchanged) -- `.ribbon-btn`'s own `display: flex` would otherwise
+     silently override the UA stylesheet's own `[hidden] { display: none }` and show every
+     cloud button at once regardless of sign-in state (the exact D-103 bug, guarded against
+     here too even though this is a new rule, not that one). */
   .ribbon-btn[hidden] { display: none; }
-  .ribbon-divider { width: 1px; align-self: stretch; margin: 2px 4px; background: #e5e5e5; }
-  .ribbon-status { flex-basis: 100%; padding: 4px 6px 0; font-size: 11px; color: #888; }
+  .ribbon-divider { width: 1px; align-self: stretch; margin: 2px 2px; background: #e5e5e5; }
+  .ribbon-status { font-size: 10.5px; color: #888; white-space: nowrap; }
 
-  /* Export's own three formats stay a plain flyout inside the File ribbon panel, not three
-     more same-sized ribbon buttons — same hover-flyout pattern the right-click context menu
-     already established (D-097), independently defined here since this menu doesn't share
-     that module's injected stylesheet either. */
-  .ribbon-btn.has-submenu { cursor: default; }
-  .ribbon-btn.has-submenu:hover { background: #eef2ff; border-color: #d3ddfa; }
-  .submenu { display: none; position: absolute; top: -7px; left: 100%; margin: 0; padding: 4px 0;
-    min-width: 190px; list-style: none; background: #fff; border: 1px solid #ccc; border-radius: 6px;
-    box-shadow: 0 4px 14px rgba(0,0,0,0.18); font-size: 13px; text-align: left; white-space: nowrap; }
-  .ribbon-btn.has-submenu:hover > .submenu { display: block; }
-  .submenu li { padding: 0; }
-  .submenu button { display: block; width: 100%; padding: 6px 16px; border: none; background: none;
-    text-align: left; font: inherit; font-size: 13px; cursor: pointer; }
-  .submenu button:hover { background: #eef2ff; }
+  /* D-105: a real popup instead of native prompt()s for sign-in/registration — same
+     fields/copy/endpoints as profile/index.html's own card, ported here rather than
+     redesigned, so the two stay recognizably the same flow. */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.35);
+    display: flex; align-items: center; justify-content: center; z-index: 50; padding: 1rem; }
+  .modal-overlay[hidden] { display: none; }
+  .modal { background: #fff; border-radius: 10px; padding: 1.5rem; width: 100%; max-width: 340px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.3); position: relative; }
+  .modal h2 { margin: 0 0 1rem; font-size: 1.1rem; }
+  .modal-close { position: absolute; top: 0.6rem; right: 0.6rem; border: none; background: none;
+    font-size: 1.1rem; line-height: 1; padding: 0.3rem 0.5rem; cursor: pointer; color: #888; }
+  .modal-close:hover { color: #222; background: none; }
+  .modal label { display: block; font-size: 0.82rem; color: #555; margin: 0.75rem 0 0.3rem; }
+  .modal label:first-of-type { margin-top: 0; }
+  .modal input { width: 100%; padding: 0.5rem 0.6rem; border: 1px solid #ccc; border-radius: 6px;
+    font: inherit; font-size: 0.9rem; }
+  .modal .hint { font-size: 0.76rem; color: #888; margin-top: 0.35rem; }
+  .modal .btn-primary { margin-top: 1rem; width: 100%; background: #2c5f7c; color: #fff; border-color: #2c5f7c; }
+  .modal .btn-primary:hover { background: #1e4457; }
+  .auth-msg { font-size: 0.8rem; margin: 0.6rem 0 0; min-height: 1.1em; }
+  .auth-msg.error { color: #a63d34; }
+  .auth-msg.ok { color: #555; }
+  .modal .toggle-mode { font-size: 0.8rem; margin-top: 1rem; }
+  .modal .toggle-mode a { color: #2c5f7c; cursor: pointer; }
 
   /* main/.layout fill exactly the viewport height left after the header — nothing here
      should ever make the page itself scroll. Both panes stretch to that full height;
@@ -135,18 +129,13 @@
   #modlog { color: #366; background: rgba(255,255,255,0.92); white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace;
     font-size: 11px; padding: 0.3rem 0.55rem; border-radius: 6px; opacity: 0.9; }
 
-  /* Desktop-first: the two-pane code+viewer split (D-006), the always-visible menu bar,
-     and its button sizing are all the default and stay unchanged above this width. Below
-     it: the two panes become tabs — showing both panes at once, even stacked, leaves
-     neither one tall enough to be usable — rather than a redesign of either. The menu bar
-     itself (File/View/Account) needs no mobile-specific collapse at all: its three short
-     trigger labels plus the existing `flex-wrap: wrap` on `header` already fit a narrow
-     header without the "too many, too large" problem D-068's old toolbar-more collapse
-     existed to solve (confirmed at 390px, D-103). */
+  /* Desktop-first: the two-pane code+viewer split (D-006), the always-visible header
+     actions, and their sizing are all the default and stay unchanged above this width.
+     Below it: the two panes become tabs — showing both panes at once, even stacked, leaves
+     neither one tall enough to be usable — rather than a redesign of either. */
   @media (max-width: 760px) {
     header { padding: 0.4rem 0.5rem; gap: 0.4rem; }
     button, select { font-size: 0.78rem; padding: 0.32rem 0.55rem; }
-    .saved-note { display: none; } /* the toolbar's own least essential line, cut first */
     header .spacer { display: none; }
 
     .mobile-tabs { display: flex; gap: 0.4rem; padding: 0.5rem 0.5rem 0; background: #fff; border-bottom: 1px solid #ddd; }
@@ -209,79 +198,57 @@
   <select id="plan-switcher"></select>
   <button id="undo-btn" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
   <button id="redo-btn" title="Redo (Ctrl+Shift+Z)" aria-label="Redo">↷</button>
-  <!-- F-032/D-103/D-104: one menu bar (File/View/Account), small triggers with a
-       ribbon-style panel underneath (icon on top, label below, grouped) -- "modern Word"
-       rather than a classic vertical dropdown list. Same markup and behavior on desktop
-       and mobile -- see docs/index.html's own script for the click-to-open/close wiring. -->
-  <nav class="menu-bar">
-    <div class="menu">
-      <button class="menu-trigger" id="menu-file-btn" aria-haspopup="true" aria-expanded="false">File ▾</button>
-      <div class="menu-dropdown ribbon-panel">
-        <div class="ribbon-group">
-          <button class="ribbon-btn" id="rename-btn" title="Rename the current plan">
-            <span class="ribbon-icon">✎</span><span class="ribbon-label">Rename…</span>
-          </button>
-          <button class="ribbon-btn" id="open-btn">
-            <span class="ribbon-icon">⇩</span><span class="ribbon-label">Import…</span>
-          </button>
-          <!-- Export's own three formats stay a plain flyout, not three more ribbon
-               buttons -- rarely used, and a compact list undersells them less awkwardly
-               than shrinking the ribbon row to fit five same-sized buttons would. -->
-          <div class="ribbon-btn has-submenu">
-            <span class="ribbon-icon">⇧</span><span class="ribbon-label">Export ▸</span>
-            <ul class="submenu">
-              <li><button id="save-btn">Plan file (.planagon)…</button></li>
-              <li><button id="export-png-btn" title="Save the current plan as a PNG image">PNG image…</button></li>
-              <li><button id="export-svg-btn" title="Save the current plan as an SVG image">SVG image…</button></li>
-            </ul>
-          </div>
-        </div>
-        <div class="ribbon-divider"></div>
-        <div class="ribbon-group">
-          <button class="ribbon-btn danger" id="delete-btn" title="Delete the current plan">
-            <span class="ribbon-icon">✕</span><span class="ribbon-label">Delete</span>
-          </button>
-        </div>
-      </div>
-    </div>
-    <div class="menu">
-      <button class="menu-trigger" id="menu-view-btn" aria-haspopup="true" aria-expanded="false">View ▾</button>
-      <div class="menu-dropdown ribbon-panel">
-        <!-- F-042: the one setting with a genuine on/off state today (F-014's grid is
-             either present or absent in `settings`) -- see toggleGridSetting()/
-             updateGridToggleUi() below. Style presets and the always-injected AUTO_MODULES
-             have no real off-state to expose this same way (F-042's own noted caveat), so
-             they're deliberately not offered here. A pressed/highlighted background marks
-             the active state (matching Word's own Bold/Italic toggle-button convention),
-             not a checkmark. -->
-        <div class="ribbon-group">
-          <button class="ribbon-btn" id="grid-toggle-btn">
-            <span class="ribbon-icon">⊞</span><span class="ribbon-label">Grid</span>
-          </button>
-        </div>
-      </div>
-    </div>
-    <div class="menu menu-right">
-      <button class="menu-trigger" id="menu-account-btn" aria-haspopup="true" aria-expanded="false">Account ▾</button>
-      <div class="menu-dropdown ribbon-panel">
-        <div class="ribbon-group">
-          <button class="ribbon-btn" id="cloud-signin-btn" title="Sign in to save/load plans in the cloud">
-            <span class="ribbon-icon">⇥</span><span class="ribbon-label">Sign in…</span>
-          </button>
-          <button class="ribbon-btn" id="cloud-save-btn" title="Save the current plan to the cloud" hidden>
-            <span class="ribbon-icon">☁</span><span class="ribbon-label">Save to Cloud</span>
-          </button>
-          <button class="ribbon-btn" id="cloud-signout-btn" title="Sign out" hidden>
-            <span class="ribbon-icon">⇤</span><span class="ribbon-label">Sign out</span>
-          </button>
-        </div>
-        <div class="ribbon-status" id="cloud-status"></div>
-      </div>
-    </div>
-  </nav>
+  <!-- D-105: every action directly in the header, always visible -- no dropdowns/triggers
+       at all, reported directly right after D-104's click-to-open ribbon panels. Still the
+       same icon-on-top/label-below ribbon-button look, just laid out flat. -->
+  <div class="ribbon-group">
+    <button class="ribbon-btn" id="rename-btn" title="Rename the current plan">
+      <span class="ribbon-icon">✎</span><span class="ribbon-label">Rename…</span>
+    </button>
+    <button class="ribbon-btn" id="open-btn">
+      <span class="ribbon-icon">⇩</span><span class="ribbon-label">Import…</span>
+    </button>
+    <button class="ribbon-btn" id="save-btn">
+      <span class="ribbon-icon">⇧</span><span class="ribbon-label">Export…</span>
+    </button>
+    <button class="ribbon-btn" id="export-png-btn" title="Save the current plan as a PNG image">
+      <span class="ribbon-icon">⇧</span><span class="ribbon-label">PNG…</span>
+    </button>
+    <button class="ribbon-btn" id="export-svg-btn" title="Save the current plan as an SVG image">
+      <span class="ribbon-icon">⇧</span><span class="ribbon-label">SVG…</span>
+    </button>
+    <button class="ribbon-btn danger" id="delete-btn" title="Delete the current plan">
+      <span class="ribbon-icon">✕</span><span class="ribbon-label">Delete</span>
+    </button>
+  </div>
+  <div class="ribbon-divider"></div>
+  <!-- F-042: the one setting with a genuine on/off state today (F-014's grid is either
+       present or absent in `settings`) -- see toggleGridSetting()/updateGridToggleUi()
+       below. Style presets and the always-injected AUTO_MODULES have no real off-state to
+       expose this same way (F-042's own noted caveat), so they're deliberately not offered
+       here. A pressed/highlighted background marks the active state (matching Word's own
+       Bold/Italic toggle-button convention), not a checkmark. -->
+  <div class="ribbon-group">
+    <button class="ribbon-btn" id="grid-toggle-btn">
+      <span class="ribbon-icon">⊞</span><span class="ribbon-label">Grid</span>
+    </button>
+  </div>
+  <div class="ribbon-divider"></div>
+  <div class="ribbon-group">
+    <!-- D-105: opens the login/register popup (openAuthModal()) instead of native prompt()s. -->
+    <button class="ribbon-btn" id="cloud-signin-btn" title="Sign in to save/load plans in the cloud">
+      <span class="ribbon-icon">⇥</span><span class="ribbon-label">Sign in…</span>
+    </button>
+    <button class="ribbon-btn" id="cloud-save-btn" title="Save the current plan to the cloud" hidden>
+      <span class="ribbon-icon">☁</span><span class="ribbon-label">Save to Cloud</span>
+    </button>
+    <button class="ribbon-btn" id="cloud-signout-btn" title="Sign out" hidden>
+      <span class="ribbon-icon">⇤</span><span class="ribbon-label">Sign out</span>
+    </button>
+  </div>
+  <span class="ribbon-status" id="cloud-status"></span>
   <input type="file" id="file-input" accept=".planagon,.2dplan,.txt,text/plain">
   <div class="spacer"></div>
-  <span class="saved-note" style="font-size: 0.8rem; color: #888;">Saved automatically in this browser</span>
 </header>
 <div class="mobile-tabs">
   <button class="tab-btn" id="tab-code" data-tab="code">Code</button>
@@ -301,6 +268,34 @@
   </div>
 </main>
 
+<!-- D-105: a real popup instead of native prompt()s, ported from profile/index.html's own
+     sign-in/register card so both stay the same flow, same copy, same endpoints. -->
+<div id="auth-modal" class="modal-overlay" hidden>
+  <div class="modal">
+    <button class="modal-close" id="auth-modal-close" aria-label="Close">✕</button>
+    <h2 id="auth-modal-heading">Sign in</h2>
+    <form id="app-signin-form">
+      <label for="modal-username">Username</label>
+      <input type="text" id="modal-username" autocomplete="username" required>
+      <label for="modal-password">Password</label>
+      <input type="password" id="modal-password" autocomplete="current-password" required>
+      <p class="hint">Not the password you chose when registering — the real sign-in credential was generated for you once you verified your email, and shown once on that confirmation page alongside your username.</p>
+      <button type="submit" class="btn-primary">Sign in</button>
+      <p id="app-signin-msg" class="auth-msg" role="status"></p>
+    </form>
+    <form id="app-register-form" hidden>
+      <label for="modal-reg-email">Email</label>
+      <input type="text" id="modal-reg-email" autocomplete="email" inputmode="email" required>
+      <label for="modal-reg-password">Password</label>
+      <input type="password" id="modal-reg-password" autocomplete="new-password" minlength="8" required>
+      <p class="hint">At least 8 characters. No username to invent — we'll assign you one and show it on the confirmation page after you verify your email; you won't need this password again day to day, since signing in uses a separate credential generated at that point.</p>
+      <button type="submit" class="btn-primary">Create account</button>
+      <p id="app-register-msg" class="auth-msg" role="status"></p>
+    </form>
+    <p class="toggle-mode"><a id="auth-modal-toggle" href="#">Don't have an account? Register</a></p>
+  </div>
+</div>
+
 <div id="cookie-notice" class="cookie-notice" hidden>
   <p>This site saves your plans and sign-in state using your browser's own local storage — no tracking, no third-party cookies.</p>
   <button id="cookie-notice-dismiss">Got it</button>
@@ -318,6 +313,99 @@
 </script>
 
 <script>
+  // D-105: the sign-in/register popup. cloudSignIn()/CLOUD_API_BASE/updateCloudUi()/
+  // refreshCloudGroup() are declared later in the document, in the main app script — safe
+  // to reference here anyway, since these run only from event listeners fired after every
+  // script on the page has already executed once, and classic (non-module) <script> tags
+  // in one document share a single top-level scope regardless of source order.
+  (function () {
+    var overlay = document.getElementById("auth-modal");
+    var signinForm = document.getElementById("app-signin-form");
+    var registerForm = document.getElementById("app-register-form");
+    var heading = document.getElementById("auth-modal-heading");
+    var toggleLink = document.getElementById("auth-modal-toggle");
+
+    window.openAuthModal = function () {
+      overlay.hidden = false;
+      document.getElementById("modal-username").focus();
+    };
+    function closeAuthModal() {
+      overlay.hidden = true;
+      signinForm.reset();
+      registerForm.reset();
+      document.getElementById("app-signin-msg").textContent = "";
+      document.getElementById("app-register-msg").textContent = "";
+      // Always land back on the sign-in half next time it's opened.
+      signinForm.hidden = false;
+      registerForm.hidden = true;
+      heading.textContent = "Sign in";
+      toggleLink.textContent = "Don't have an account? Register";
+    }
+
+    document.getElementById("auth-modal-close").addEventListener("click", closeAuthModal);
+    overlay.addEventListener("click", function (e) {
+      if (e.target === overlay) closeAuthModal();
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && !overlay.hidden) closeAuthModal();
+    });
+
+    // Toggles between the two forms sharing this popup rather than a separate step —
+    // matches profile/index.html's own toggle-auth-mode behavior exactly.
+    toggleLink.addEventListener("click", function (e) {
+      e.preventDefault();
+      var toRegister = signinForm.hidden === false;
+      signinForm.hidden = toRegister;
+      registerForm.hidden = !toRegister;
+      heading.textContent = toRegister ? "Create an account" : "Sign in";
+      toggleLink.textContent = toRegister ? "Already have an account? Sign in" : "Don't have an account? Register";
+    });
+
+    signinForm.addEventListener("submit", async function (e) {
+      e.preventDefault();
+      var username = document.getElementById("modal-username").value.trim();
+      var password = document.getElementById("modal-password").value.trim();
+      var msgEl = document.getElementById("app-signin-msg");
+      msgEl.className = "auth-msg";
+      msgEl.textContent = "Signing in…";
+      try {
+        await cloudSignIn(username, password);
+        updateCloudUi();
+        refreshCloudGroup();
+        closeAuthModal();
+      } catch (err) {
+        msgEl.className = "auth-msg error";
+        msgEl.textContent = err.message;
+      }
+    });
+
+    registerForm.addEventListener("submit", async function (e) {
+      e.preventDefault();
+      var email = document.getElementById("modal-reg-email").value.trim();
+      var password = document.getElementById("modal-reg-password").value;
+      var msgEl = document.getElementById("app-register-msg");
+      msgEl.className = "auth-msg";
+      msgEl.textContent = "Creating your account…";
+      try {
+        var res = await fetch(`${CLOUD_API_BASE}/register.php`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: email, password: password }),
+        });
+        var body = await res.json().catch(function () { return {}; });
+        if (!res.ok) throw new Error(body.error || `Registration failed (${res.status})`);
+        registerForm.reset();
+        msgEl.className = "auth-msg ok";
+        msgEl.textContent = body.message;
+      } catch (err) {
+        msgEl.className = "auth-msg error";
+        msgEl.textContent = err.message;
+      }
+    });
+  })();
+</script>
+
+<script>
   // Mobile-only chrome: code/viewer tabs in place of the always-both-visible desktop
   // layout. A no-op above the 760px breakpoint (.layout's data-mobile-tab attribute has
   // nothing to select against there) — this script only ever changes what's shown, never
@@ -330,40 +418,6 @@
         layout.dataset.mobileTab = btn.dataset.tab;
         tabButtons.forEach(function (b) { b.classList.toggle("active", b === btn); });
       });
-    });
-  })();
-</script>
-
-<script>
-  // F-032/D-103: the header's own menu bar (File/View/Account) — click a trigger to open
-  // its dropdown, closing any other open one first (only one open at a time, matching a
-  // native menu bar); click anywhere else, or Escape, closes whichever is open. Every real
-  // action's own click (Rename/Delete/Import/...) bubbles up to the same document-level
-  // listener below, so clicking one of them closes its dropdown right after — no change
-  // needed to any of those buttons' own existing click handlers to make that happen.
-  (function () {
-    var menus = document.querySelectorAll(".menu-bar > .menu");
-    function closeAll() {
-      menus.forEach(function (m) {
-        m.classList.remove("open");
-        m.querySelector(".menu-trigger").setAttribute("aria-expanded", "false");
-      });
-    }
-    menus.forEach(function (menu) {
-      var trigger = menu.querySelector(".menu-trigger");
-      trigger.addEventListener("click", function (e) {
-        e.stopPropagation();
-        var wasOpen = menu.classList.contains("open");
-        closeAll();
-        if (!wasOpen) {
-          menu.classList.add("open");
-          trigger.setAttribute("aria-expanded", "true");
-        }
-      });
-    });
-    document.addEventListener("click", closeAll);
-    document.addEventListener("keydown", function (e) {
-      if (e.key === "Escape") closeAll();
     });
   })();
 </script>
@@ -1793,20 +1847,7 @@ document.getElementById("plan-switcher").addEventListener("change", (e) => {
   }
 });
 
-document.getElementById("cloud-signin-btn").addEventListener("click", async () => {
-  const username = prompt("Username:");
-  if (!username) return;
-  const password = prompt("Password (the one generated for you when you verified your email — not the one you chose when registering):");
-  if (!password) return;
-  try {
-    await cloudSignIn(username.trim(), password.trim());
-    updateCloudUi();
-    showCloudMessage(`signed in as ${username.trim()}.`);
-    refreshCloudGroup();
-  } catch (e) {
-    showCloudMessage(`sign-in failed — ${e.message}`);
-  }
-});
+document.getElementById("cloud-signin-btn").addEventListener("click", openAuthModal);
 
 document.getElementById("cloud-signout-btn").addEventListener("click", () => {
   setCloudSession(null, null);
