@@ -830,7 +830,7 @@ function renderShape(node, positions, cornerUsers, shapesOut, anchorsOut, bboxes
     const ptsStr = absPts.map(([x, y]) => `${x*M},${y*M}`).join(" ");
     const dashAttr = style.strokeDash ? `stroke-dasharray="${style.strokeDash.split(",").map(v => v*M).join(",")}"` : "";
     const tag = shape === "polygon" ? "polygon" : "polyline";
-    shapesOut.push(`<${tag} class="obj" ${idAttr} pointer-events="all" points="${ptsStr}" fill="${style.fill ?? "none"}" stroke="${style.stroke}" stroke-width="${numOf(style.strokeWidth)*M}" ${dashAttr} />`);
+    shapesOut.push(`<${tag} class="obj" ${idAttr} pointer-events="all" points="${ptsStr}" fill="${style.fill ?? "none"}" stroke="${style.stroke ?? "none"}" stroke-width="${numOf(style.strokeWidth ?? 0.02)*M}" ${dashAttr} />`);
   } else if (shape === "circle" && hasStyle) {
     const r = numOf(node.props.radius ?? 0.1);
     shapesOut.push(`<circle class="obj" ${idAttr} pointer-events="all" cx="${ownAbs[0]*M}" cy="${ownAbs[1]*M}" r="${r*M}"

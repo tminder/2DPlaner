@@ -58,6 +58,8 @@ The cleanup comment says it "undoes exactly what setup above did," but only rese
 
 `renderShape`'s rect/circle branches default a missing `stroke`/`fill` to `"none"` and `strokeWidth` to `0.02`; the polygon/polyline branch emits `style.stroke` and `numOf(style.strokeWidth)*M` raw, with no fallback. A polygon whose `style` object omits `stroke`/`strokeWidth` renders literal `stroke="undefined"` and `stroke-width="NaN"` in the actual SVG output — not a style regression, a broken/invalid attribute. The only item in this file classified as an active bug rather than a maintainability risk.
 
+**Built — [decisions.md D-094](decisions.md#d-094-s-012-polygonpolyline-now-falls-back-like-rectcircle-when-style-omits-strokestrokewidth).** A one-line fix, applying the exact fallback pattern `rect`/`circle` already had. Now covered by two permanent tests in `tests/test_rendering.py`.
+
 ## S-013 `isTrustedModule` and `hasModuleDeclared` use incompatible matching rules
 
 `isTrustedModule` does exact string equality against `AUTO_MODULES`; `hasModuleDeclared` matches by a path-tolerant substring regex. A plan declaring e.g. `module "modules/grid-module.js"` would be treated as "already declared" (skipping auto-injection) yet still trigger the untrusted-module `confirm()` dialog every session, since the exact string differs from `"grid-module.js"`.

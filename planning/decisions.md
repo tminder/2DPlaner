@@ -1314,3 +1314,11 @@ Chosen directly over continuing with another F-number — `planning/tech-debt.md
 2. A click-cycling test assumed a *single* click after a hover would already advance to the second element in a stack; actually confirmed by reading `handlePointerDown` again: a fresh click (no continuing `clickCycle`) always selects whatever's already topmost, matching the hover default — cycling only advances on a *second* click at the same point. Test fixed to match the real, documented (D-077) mechanism.
 
 **Verified:** `pytest tests/ -v` — 27 tests, all passing, against the current, live app code, zero console errors reported by the fixture across any of them.
+
+## D-094 S-012: `polygon`/`polyline` now falls back like `rect`/`circle` when `style` omits `stroke`/`strokeWidth`
+
+The one item in the tech-debt audit classified as an active, shipped bug rather than a maintainability risk — chosen first for exactly that reason, over S-001's/S-002's larger refactors, once S-030 gave a place to put a regression test for it.
+
+`renderShape` (`docs/index.html`): the `rect` and `circle` branches both default a missing `stroke`/`fill` to `"none"` and a missing `strokeWidth` to `0.02`; the `polygon`/`polyline` branch emitted `style.stroke` and `numOf(style.strokeWidth)*M` raw, with no fallback at all. Confirmed live before fixing: a polygon with `style: {}` rendered literal `stroke="undefined"` and `stroke-width="NaN"` in the actual SVG output, not merely a missing color. Fixed by giving the polygon/polyline branch the identical `?? "none"` / `?? 0.02` fallbacks the other two branches already have — a one-line change, no new behavior invented, just applying the existing pattern uniformly.
+
+**Verified:** a polygon and a polyline, each with `style: {}` (present, but empty) — both now render `stroke="none"` and a valid positive numeric `stroke-width` (`1.2`, i.e. `0.02 * M`) instead of `"undefined"`/`"NaN"`. Added as two permanent tests in `tests/test_rendering.py` (new file, S-030's suite) rather than only checked once by hand — the full suite (29 tests total now) still passes.
