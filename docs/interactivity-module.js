@@ -38,12 +38,15 @@
       #plan-root:not(.dragging) .anchor-hit:hover { fill: #e33; opacity: 0.7; }
       svg .obj.corner-preview { stroke: #e33 !important; filter: drop-shadow(0 0 2px #e33); }
       /* F-021's remaining half: discovering a hidden element exists at all, not just
-         reaching it (D-077's click-cycling already covers reaching it). Fading the topmost
-         shape partway on hover — only when handlePointerOver has actually confirmed
-         something else is stacked there, never unconditionally — gives an immediate,
-         literal glimpse of what's underneath, which is more informative than a plain badge
-         alone would be; the badge (below) then names how many and hints at the gesture. */
-      #plan-root:not(.dragging) svg .obj.stacked-hint:hover { opacity: 0.55; }
+         reaching it (D-077's click-cycling already covers reaching it). Dimming *every*
+         element in the stack together — not just the one literally under the cursor — only
+         when handlePointerOver has actually confirmed something else is stacked there, never
+         unconditionally — gives an immediate, literal glimpse of the whole layering at once,
+         which is more informative than dimming one layer at a time would be; the badge
+         (below) then names each one and marks which is currently selected. Applied directly
+         via a JS-toggled class, not a :hover selector, since the mouse is only ever literally
+         over one of these elements even though every one of them needs to dim together. */
+      #plan-root:not(.dragging) svg .obj.stacked-dim { opacity: 0.55; }
       #interactivity-stack-badge { position: fixed; z-index: 1001; pointer-events: none;
         transform: translate(14px, 14px); background: rgba(30,68,87,0.94); color: #fff;
         font-family: system-ui, sans-serif; font-size: 12px; font-weight: 600;
@@ -1465,18 +1468,17 @@
       { label: "Duplicate", action: () => duplicateElement(nodeId) },
       { label: "Delete Element", danger: true, action: () => deleteElement(nodeId) },
     ];
-    // Front/back items only offered when there's an actual same-parent stack at this exact
-    // point to resolve — an ordinary, non-overlapping element's menu stays exactly as before.
+    // Front/back items offered whenever the element has any sibling at all — not gated on
+    // detecting an actual overlap at this exact pixel (found not to be intuitive: an author
+    // may want to set stacking order pre-emptively, or the one-point sample simply might not
+    // land where two siblings currently overlap even though they do elsewhere). Each item
+    // still hides itself once it would be a no-op (already first/last).
     const node = program.nodesById[nodeId];
     const parent = node?.parentId ? program.nodesById[node.parentId] : null;
-    if (parent) {
-      const stackedSiblings = resolvedCandidatesAtPoint(x, y)
-        .some((id) => id !== nodeId && program.nodesById[id]?.parentId === node.parentId);
-      if (stackedSiblings) {
-        const idx = parent.children.indexOf(node);
-        if (idx < parent.children.length - 1) contextMenuItems.push({ label: "Bring to Front", action: () => reorderSibling(nodeId, true) });
-        if (idx > 0) contextMenuItems.push({ label: "Send to Back", action: () => reorderSibling(nodeId, false) });
-      }
+    if (parent && parent.children.length > 1) {
+      const idx = parent.children.indexOf(node);
+      if (idx < parent.children.length - 1) contextMenuItems.push({ label: "Bring to Front", action: () => reorderSibling(nodeId, true) });
+      if (idx > 0) contextMenuItems.push({ label: "Send to Back", action: () => reorderSibling(nodeId, false) });
     }
     contextMenuEl.innerHTML = contextMenuItems.map((item, i) =>
       `<li data-i="${i}"${item.danger ? ' class="danger"' : ""}>${escapeHtml(item.label)}</li>`
@@ -1720,7 +1722,17 @@
     const el = e.target.closest("[data-id]");
     if (!el || !program) return;
     e.preventDefault();
-    openContextMenu(el.dataset.id, e.clientX, e.clientY);
+    // Right-clicking a point can only ever DOM-hit-test whatever's visually topmost there —
+    // there's no right-click equivalent of D-077's click-cycling. Without this, a fully
+    // covered element (already reached and selected via a left-click cycle) could never be
+    // right-clicked directly at all: only the element currently on top of it, needing an
+    // indirect "select the wrong one and send IT to back" workaround instead of directly
+    // acting on the one actually intended. Prefers the current selection whenever it's
+    // still genuinely part of the stack at this exact point — a stale selection from
+    // somewhere else in the plan is never substituted in for an unrelated right-click.
+    const targetId = selectedId && resolvedCandidatesAtPoint(e.clientX, e.clientY).includes(selectedId)
+      ? selectedId : el.dataset.id;
+    openContextMenu(targetId, e.clientX, e.clientY);
   }
 
   function handleMenuClick(e) {
@@ -1904,14 +1916,20 @@
     const allCandidates = resolvedCandidatesAtPoint(e.clientX, e.clientY);
     const nonRootCandidates = allCandidates.filter((id) => id !== program.root.id);
     if (nonRootCandidates.length > 1) {
-      el.classList.add("stacked-hint");
-      // The badge's own list shows every reachable candidate, root included — unlike the
-      // trigger check just above, which stays root-excluded (so hovering an ordinary
+      // Every element in the group dims together, not just `el` — requested directly:
+      // seeing the whole layering at once (each one partially see-through) is more useful
+      // than one layer fading at a time, and reduces how much someone needs to already
+      // trust click-cycling/right-click's own targeting before they can even tell what's
+      // there. The badge's own list shows every reachable candidate, root included — unlike
+      // the trigger check just above, which stays root-excluded (so hovering an ordinary
       // element still doesn't fire the hint on every element in the plan). Excluding root
       // from the list too would let click-cycling (which never excludes it) land on
       // something this list doesn't even mention, leaving the ">" marker with nothing to
       // point at — a real bug, found by testing selecting the root via a full cycle, not
       // assumed safe.
+      for (const id of allCandidates) {
+        core.rootEl.querySelector(`[data-id="${CSS.escape(id)}"]`)?.classList.add("stacked-dim");
+      }
       stackHintCandidates = allCandidates;
       stackBadgeEl.innerHTML = stackHintMarkup(allCandidates);
       stackBadgeEl.style.left = `${e.clientX}px`;
@@ -1935,7 +1953,11 @@
       el.classList.remove("connected-highlight");
       core.rootEl.querySelector(`[data-id="${CSS.escape(partnerId)}"]`)?.classList.remove("connected-highlight");
     }
-    el.classList.remove("stacked-hint");
+    if (stackHintCandidates) {
+      for (const id of stackHintCandidates) {
+        core.rootEl.querySelector(`[data-id="${CSS.escape(id)}"]`)?.classList.remove("stacked-dim");
+      }
+    }
     stackHintCandidates = null;
     stackBadgeEl.hidden = true;
   }
