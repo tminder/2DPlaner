@@ -1462,6 +1462,153 @@
     core.commitUndoStep();
   }
 
+  // ---------- F-035: setting placement/flush directly from the context menu ----------
+  // No existing mechanism finds an element's own top-level `key: value` line by text
+  // position — parseValue's STRING branch (docs/index.html) carries no span the way a
+  // numeric literal does (confirmed directly, not assumed). Scans for the first `key:` line
+  // inside the node's own text that ISN'T inside one of its children's own spans, rather
+  // than a naive whole-slice regex — a nested child could have its own same-named property,
+  // and a naive scan would silently rewrite the wrong one.
+  function findOwnPropertyLine(text, node, key) {
+    const re = new RegExp(`^([ \\t]*)${key}\\s*:.*$`, "gm");
+    const slice = text.slice(node.start, node.end);
+    let m;
+    while ((m = re.exec(slice))) {
+      const absStart = node.start + m.index;
+      if (!node.children.some((c) => absStart >= c.start && absStart < c.end)) {
+        return { start: absStart, end: absStart + m[0].length, indent: m[1] };
+      }
+    }
+    return null;
+  }
+
+  function lineIndentAt(text, pos) {
+    let start = pos;
+    while (start > 0 && text[start - 1] !== "\n") start--;
+    return text.slice(start, pos).match(/^[ \t]*/)[0];
+  }
+
+  // Right after the node's own opening `element id {` line — where every shipped example
+  // already puts its first property.
+  function afterHeaderLine(text, node) {
+    let i = node.start;
+    while (i < node.end && text[i] !== "\n") i++;
+    return i < node.end ? i + 1 : i;
+  }
+
+  // Reuses the exact clamp math a drag already applies (dx=dy=0 against the *current*
+  // position), so setting the property from the menu doesn't leave an element sitting
+  // wherever it happened to be until the next drag finally corrects it — only meaningful
+  // for the rect-in-rect case this project's own containment clamp actually supports
+  // (clampToContainment's own established scope); anything else just gets the property.
+  function snapPositionEdits(node, containerNode, positions, clampFn, warnings) {
+    if (node.props.shape !== "rect" || !node.props.size) return [];
+    if (containerNode.props.shape !== "rect" || !containerNode.props.size) return [];
+    if (!node.props.position) return [];
+    const containerAbs = positions[containerNode.id];
+    const containerSize = [core.numOf(containerNode.props.size[0]), core.numOf(containerNode.props.size[1])];
+    const childSize = [core.numOf(node.props.size[0]), core.numOf(node.props.size[1])];
+    const [dx, dy] = clampFn(node.id, 0, 0, positions, containerAbs, containerSize, childSize, warnings);
+    if (!dx && !dy) return [];
+    const [x0, y0] = node.props.position;
+    const edits = [];
+    if (core.isEditable(x0)) edits.push({ start: x0.start, end: x0.end, text: core.formatNumber(x0.value + dx, x0.unit) });
+    if (core.isEditable(y0)) edits.push({ start: y0.start, end: y0.end, text: core.formatNumber(y0.value + dy, y0.unit) });
+    return edits;
+  }
+
+  function applyEditsDescending(text, edits) {
+    let out = text;
+    for (const e of [...edits].sort((a, b) => b.start - a.start)) out = out.slice(0, e.start) + e.text + out.slice(e.end);
+    return out;
+  }
+
+  // "Place Inside" always means the node's own *immediate* parent, per F-020's own
+  // confirmed rule (an explicit `placement` never consults an ancestor's `childPlacement`)
+  // — never resolveContainer's ancestor search, which only applies to a node with no
+  // explicit placement of its own.
+  function setPlacementInside(nodeId) {
+    const text = core.sourceEl.value;
+    let base;
+    try { base = core.parseExpanded(text); } catch (e) { return; }
+    const node = base.nodesById[nodeId];
+    const parent = node?.parentId ? base.nodesById[node.parentId] : null;
+    if (!parent) return;
+
+    const edits = [];
+    const existing = findOwnPropertyLine(text, node, "placement");
+    if (existing) edits.push({ start: existing.start, end: existing.end, text: `${existing.indent}placement: "inside"` });
+    else edits.push({ start: afterHeaderLine(text, node), end: afterHeaderLine(text, node), text: `${lineIndentAt(text, node.start)}  placement: "inside"\n` });
+
+    const positions = {};
+    core.computePositions(base.root, null, [0, 0], positions);
+    const warnings = [];
+    // clampRectToStayInsideRect takes no `warnings` param (it's exact, never needs to warn)
+    // — the extra argument snapPositionEdits always passes is simply unused here.
+    const isRectPair = node.props.shape === "rect" && node.props.size && parent.props.shape === "rect" && parent.props.size;
+    edits.push(...snapPositionEdits(node, parent, positions, clampRectToStayInsideRect, warnings));
+
+    core.sourceEl.value = applyEditsDescending(text, edits);
+    core.dragmsgEl.textContent = isRectPair
+      ? `'${nodeId}': placed inside '${parent.id}'.`
+      : `'${nodeId}': placement set to "inside" (position unchanged — containment only checked for rect children).`;
+    core.rerender();
+    core.commitUndoStep();
+  }
+
+  // Flush can sit on top of an *inherited* "inside" (a distant ancestor's childPlacement),
+  // not only an explicit one on this node — resolveContainer (F-020) finds the actual
+  // container either way, unlike setPlacementInside's own always-immediate-parent rule.
+  function toggleFlush(nodeId) {
+    const text = core.sourceEl.value;
+    let base;
+    try { base = core.parseExpanded(text); } catch (e) { return; }
+    const node = base.nodesById[nodeId];
+    const parent = node?.parentId ? base.nodesById[node.parentId] : null;
+    if (!parent) return;
+    const { container, placement } = resolveContainer(node, parent, base);
+    if (placement !== "inside" || !container) return;
+    const turningOn = node.props.flush !== true;
+
+    const edits = [];
+    const existing = findOwnPropertyLine(text, node, "flush");
+    if (turningOn) {
+      if (existing) edits.push({ start: existing.start, end: existing.end, text: `${existing.indent}flush: true` });
+      else edits.push({ start: afterHeaderLine(text, node), end: afterHeaderLine(text, node), text: `${lineIndentAt(text, node.start)}  flush: true\n` });
+    } else if (existing) {
+      const span = toLineSpan(text, existing.start, existing.end);
+      edits.push({ start: span.start, end: span.end, text: "" });
+    }
+
+    const isRectPair = node.props.shape === "rect" && node.props.size && container.props.shape === "rect" && container.props.size;
+    if (turningOn) {
+      const positions = {};
+      core.computePositions(base.root, null, [0, 0], positions);
+      edits.push(...snapPositionEdits(node, container, positions, clampFlushInsideRect, []));
+    }
+
+    core.sourceEl.value = applyEditsDescending(text, edits);
+    core.dragmsgEl.textContent = !turningOn ? `'${nodeId}': flush removed.`
+      : isRectPair ? `'${nodeId}': now flush against '${container.id}'.`
+      : `'${nodeId}': flush set (position unchanged — flush only checked for a rect parent).`;
+    core.rerender();
+    core.commitUndoStep();
+  }
+
+  function clearPlacement(nodeId) {
+    const text = core.sourceEl.value;
+    let base;
+    try { base = core.parseExpanded(text); } catch (e) { return; }
+    const node = base.nodesById[nodeId];
+    if (!node) return;
+    const spans = ["placement", "flush"].map((key) => findOwnPropertyLine(text, node, key)).filter(Boolean);
+    if (!spans.length) return;
+    core.sourceEl.value = deleteSpans(text, spans);
+    core.dragmsgEl.textContent = `'${nodeId}': placement cleared.`;
+    core.rerender();
+    core.commitUndoStep();
+  }
+
   // ---------- Context menu ----------
   function openContextMenu(nodeId, x, y) {
     contextMenuItems = [
@@ -1479,6 +1626,27 @@
       const idx = parent.children.indexOf(node);
       if (idx < parent.children.length - 1) contextMenuItems.push({ label: "Bring to Front", action: () => reorderSibling(nodeId, true) });
       if (idx > 0) contextMenuItems.push({ label: "Send to Back", action: () => reorderSibling(nodeId, false) });
+    }
+    // F-035: setting placement/flush directly, instead of hand-typing the exact property
+    // names into the source. "Outside" deliberately isn't offered here yet — unlike
+    // "inside", it has no existing cold-start positioning logic anywhere in this codebase
+    // (D-032's connected-point mode only ever activates once an element is *already*
+    // resting against a target edge mid-drag), so offering it now would silently do
+    // nothing for the common case of an element that isn't already touching anything.
+    if (parent) {
+      if (node.props.placement !== "inside") {
+        contextMenuItems.push({ label: "Place Inside", action: () => setPlacementInside(nodeId) });
+      }
+      const { placement: resolvedPlacement } = resolveContainer(node, parent, program);
+      if (resolvedPlacement === "inside") {
+        contextMenuItems.push({
+          label: node.props.flush === true ? "Un-flush" : "Make Flush",
+          action: () => toggleFlush(nodeId),
+        });
+      }
+      if (node.props.placement !== undefined || node.props.flush !== undefined) {
+        contextMenuItems.push({ label: "Clear Placement", action: () => clearPlacement(nodeId) });
+      }
     }
     contextMenuEl.innerHTML = contextMenuItems.map((item, i) =>
       `<li data-i="${i}"${item.danger ? ' class="danger"' : ""}>${escapeHtml(item.label)}</li>`
