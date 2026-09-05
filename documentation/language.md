@@ -477,6 +477,18 @@ violation is checked against the *proposed* position before it's committed, so a
 drag that would cross the shape simply stops being applied (with a message), rather than
 being allowed and flagged afterward like D-015's unsolvable-expression case.
 
+**`version` (F-025) — which revision of this language a plan was written against, purely a
+forward-compatibility marker.** `settings { version: 1 }` is the current value; every
+plan the app itself creates (new plans, the three shipped examples) now sets it. Nothing
+in the parser or renderer branches on it yet, and an omitted `version` is treated exactly
+like `version: 1` — the language hasn't had a breaking change since this field was
+introduced, so there's nothing yet for it to disambiguate. It exists because the language
+has already changed shape more than once since the first real plans existed (`placement`,
+`flush`, `compose`, and `childPlacement` were all added after that point) with no way at
+all to tell which revision an old saved plan assumed — costless to add now, expensive to
+retrofit once plans are saved somewhere longer-lived than a single browser's own
+`localStorage`.
+
 ## Worked examples
 
 Prototypes 01–14 predate the D-033 renames and use the original names throughout

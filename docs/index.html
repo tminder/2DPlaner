@@ -242,7 +242,11 @@
 <script>
 // ---------- Example plans ----------
 const EXAMPLES = {
-  blank: `element plan {
+  blank: `settings {
+  version: 1
+}
+
+element plan {
   shape: "rect"
   size: [4m, 3m]
   position: [0m, 0m]
@@ -250,6 +254,7 @@ const EXAMPLES = {
 }
 `,
   apartment: `settings {
+  version: 1
   allowSelfIntersectingPolygons: false
 }
 
@@ -341,6 +346,7 @@ element room {
 connection stove counter
 `,
   utility: `settings {
+  version: 1
   allowSelfIntersectingPolygons: false
 }
 

@@ -1139,3 +1139,13 @@ Requested directly, picked over F-025/F-021's remaining half as the next step. F
 **Verified live, three scenarios plus the full regression suite:** an SVG export's XML parsed as well-formed, contained the expected shapes and only the `"always"` label text, and its `viewBox` matched the natural full-content fit rather than the artificially panned/zoomed view active at export time; the matching PNG opened as a valid image at the expected 2× dimensions, visually confirmed clean (white background, no icon buttons, no hover-label clutter) via screenshot; the full existing regression suite (drag/placement/collision/duplicate/undo/click-cycling/mobile) re-run afterward, unaffected — this only added two new buttons and their own handlers, touching nothing already wired up.
 
 **Status: built and deployed.**
+
+## D-081 F-025: a version marker (`settings { version: 1 }`), purely a forward-compatibility placeholder
+
+Requested directly after the 2026-09-05 project-overview refresh found no single urgent item left — picked as the cheaper of the two genuine options offered (this, or F-023's much larger schema question), on cost alone: minutes of work now against a real, if not urgent, cost later once a plan is saved somewhere longer-lived than one browser's own `localStorage`.
+
+**Resolved exactly as F-025 itself had scoped the three open choices: `settings { version: 1 }`, a plain number, purely a placeholder — nothing branches on it yet.** No parser change was needed at all: `settings { ... }` was already parsed as a generic object literal (D-020), so an unrecognized key like `version` already parses for free, confirmed directly rather than assumed — the exact same reason F-025 called this "costless" in the first place. The app's three shipped examples (`blank`, `apartment`, `utility`) now set it explicitly; an absent `version` on any older or hand-authored plan is treated as `1` by convention (documented in `language.md`, not enforced anywhere), since the language hasn't had a breaking change since this field was introduced — there's nothing yet for a real check to disambiguate.
+
+**Verified live:** all three shipped examples parse with `settings.version === 1`, load-time validation panel stays clean, and the full regression suite (drag/placement/collision/duplicate/undo/click-cycling/mobile) re-run afterward shows zero behavior change anywhere — expected, since this is intentionally inert infrastructure, not a feature with an effect of its own yet.
+
+**Status: built and deployed.**
