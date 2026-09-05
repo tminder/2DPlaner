@@ -24,7 +24,13 @@
          be in progress; this overrides it with higher specificity while #plan-root carries
          "dragging", rather than making core aware of interactivity state. */
       #plan-root.dragging svg .obj:hover + .annotation[data-show="hover"] { opacity: 0 !important; }
-      svg .obj.connected-highlight { filter: drop-shadow(0 0 3px #e80) drop-shadow(0 0 3px #e80); }
+      /* Reported directly: hovering an element showed it in hover's own blue (:hover, above,
+         wins on specificity there) while its connected partner — lit up via this class alone,
+         since the pointer isn't actually over it — showed a different, orange glow. The two
+         are the same interaction (hovering either one highlights the pair together) and read
+         as unrelated features while they didn't match; same color/size as hover now, so a
+         connected partner reads as "also part of what's being hovered," not a separate thing. */
+      svg .obj.connected-highlight { filter: drop-shadow(0 0 2px rgba(51,119,255,0.55)); }
       /* A fixed stroke-width doesn't scale with the shape's own — a wall already stroked
          thicker than 3px actually looked *thinner* once selected, backwards from what a
          selection indicator should do. A glow (matching hover's own pattern above, same
