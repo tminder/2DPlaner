@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Two AIs, One Camper Van: Stress-Testing Planagonia's Core Idea — Blog</title>
+<title>The Toolbar We Redesigned Three Times in One Afternoon — Blog</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="alternate icon" href="favicon.ico">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<meta name="description" content="Planagonia's whole pitch is that an AI can write your floor plan for you. We'd never tested that against a second, independent AI — so we had two design the same camper van and compared notes.">
+<meta name="description" content="We rebuilt Planagonia's toolbar three different ways in one afternoon before landing on the simplest one — plus a real sign-in popup, an automated test suite, and a showcase example built from named style presets.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@400;600&display=swap" rel="stylesheet">
@@ -148,46 +148,37 @@
 <div class="wrap">
   <main>
     <a class="back-link" href="/blog/">← Back to the blog</a>
-    <p class="eyebrow">Behind the scenes</p>
-    <h1 class="post-title">Two AIs, One Camper Van: Stress-Testing Planagonia's Core Idea</h1>
-    <p class="dateline">September 3, 2026</p>
+    <p class="eyebrow">Design notes</p>
+    <h1 class="post-title">The Toolbar We Redesigned Three Times in One Afternoon</h1>
+    <p class="dateline">September 5, 2026</p>
 
     <div class="post">
-      <p class="lede">Planagonia's whole pitch is that a floor plan can be written, not just drawn — by you, or by an AI on your behalf, in a small language built to be easy to get right. We'd said that since day one. What we hadn't done was actually test it against a second, independent AI with no connection to this project at all. So we did: two AIs, the same brief, the same camper van, zero coordination between them. Here's what comparing their two attempts taught us, and what it led us to build.</p>
+      <p class="lede">Most software doesn't get to visibly change its mind. We do — Planagonia is small enough, and moves fast enough, that we can rebuild something the same day we start disliking it. This week that happened to the row of buttons across the top of the app: we redesigned it three separate times before landing on the version that's live now, and each attempt taught us something the last one hadn't.</p>
 
-      <h2>The claim we'd never actually put to the test</h2>
-      <p>The idea behind Planagonia's own language is specific: it's not meant to be merely readable by an AI, the way most file formats technically are if you feed them in whole. It's meant to be a format an AI can <em>write correctly</em>, on the first try, from a plain description of a room — because that's the entire point of separating "what a plan looks like" (a drawing) from "what a plan is" (a small, plain-text program). We'd used it ourselves constantly. We'd documented it carefully. Neither of those is the same as watching someone with zero context reach for it cold.</p>
+      <h2>Take one: everything behind three menus</h2>
+      <p>The toolbar had grown the ordinary way software grows: one button added at a time, in whatever order they were built, with no grouping and no visual hierarchy at all. Rename, Delete, three flavors of Export, and a whole separate sign-in flow, all sitting in a flat row. The first fix looked obvious — group them. We built a small menu bar: <strong>File</strong>, <strong>View</strong>, <strong>Account</strong>, each opening its own dropdown, closing on an outside click or Escape, only one open at a time. Tidier immediately, and every existing button kept its own id and its own click handler — only the wrapper around it changed.</p>
 
-      <h2>The experiment: same brief, two AIs, no coordination</h2>
-      <p>We picked a real, specific task — design the interior of a camper van, bed, kitchenette, storage, the works — and wrote it up as a plain brief, the kind of instructions you'd hand anyone. One attempt we did ourselves, directly. The other we handed, unmodified, to a completely separate AI system with no history with Planagonia and no way to ask us questions mid-task.</p>
-      <p>The goal was never to see which attempt was "better." It was to see where two honest, independent attempts at the same real task would snag on the <em>same</em> rough edges — the specific kind of gap that only shows up once a tool meets a task it wasn't specifically rehearsed for, not one you can find by rereading your own documentation.</p>
+      <h2>Take two: dressing it up like a ribbon</h2>
+      <p>Grouped wasn't the same as clear. A plain vertical list of text still asked you to read every label to find anything. So we rebuilt the inside of each dropdown as a small ribbon panel — an icon on top, a short label underneath, grouped with a thin divider, the same visual language a modern office suite uses for its own toolbar. The "show grid" option stopped being a line with a checkmark next to it and became an actual toggle button, pressed and highlighted when it's on, the same way a Bold button looks pressed in a word processor.</p>
 
-      <h2>What the comparison actually revealed</h2>
-      <p>Lined up side by side, the two vans disagreed in plenty of small ways — but they converged on the same handful of missing pieces, which turned out to be more useful than any single bug report. A few of the patterns that stood out:</p>
+      <h2>Take three: just show everything</h2>
+      <p>Here's the part we didn't expect going in: once every action had a proper icon and a short label, none of them needed to be hidden behind anything anymore. Planagonia only has about eight real toolbar actions total — nowhere near enough to justify a click just to reveal them. So we removed the menu layer entirely. Every action now sits directly in the toolbar, all the time, icon and label together, grouped with the same dividers as before. Nothing to open, nothing to close, nothing that behaves differently the first time you find it versus the tenth. The row is a little longer now, and on a phone it simply wraps onto a second line — a trade we're happy with, since nothing is ever more than one glance and one tap away.</p>
+
+      <h2>A real popup instead of browser prompts</h2>
+      <p>Signing in used to mean answering two of your browser's own plain <code>prompt()</code> boxes, one for a username and one for a password — functional, but the kind of thing that makes a product look unfinished. That's gone now too. Signing in and creating an account both happen in an actual popup inside the app, built to match the same sign-in form already used on your account page, so it's the same flow and the same wording whichever way you get there — and a genuine error message if something goes wrong, instead of nothing at all.</p>
+
+      <h2>A few other things that shipped alongside it</h2>
       <ul>
-        <li><strong>A plan's own name is basically a variable.</strong> Give two pieces of furniture the same internal name by accident, and Planagonia would silently start editing the <em>wrong</em> one when you dragged the other — a direct consequence of treating a plan as real, structured text rather than a drawing, with all the classic hazards of source code (like reusing an identifier) that come with that choice. Both attempts eventually hit it independently, which is what convinced us it needed to be caught immediately, not eventually.</li>
-        <li><strong>A rule like "keep everything inside this room" is really a tree, not a list.</strong> Setting a container to hold its contents only ever checked one level down — an object nested two levels deep (an appliance inside a cabinet inside the van) had no such guarantee at all. A one-level check is an easy thing to write and an easy thing to not notice is one level short, until a real, deeply-nested layout — exactly what a camper van's cabinetry naturally produces — walks straight into it.</li>
-        <li><strong>Checking-while-editing isn't the same as checking.</strong> Planagonia already knew how to flag two overlapping objects that shouldn't overlap — but only while a drag was actually in progress. A plan that already had the overlap baked in, untouched since the moment it was written, was never re-examined at all. Both vans, generated in one pass rather than nudged into place by hand, exposed exactly that gap.</li>
-      </ul>
-      <p>None of these were things a quick read of either van's code would have caught on its own — each one only became visible by comparing two independent, complete attempts at the same real task against each other.</p>
-
-      <h2>What we built in response</h2>
-      <p>Every pattern above turned directly into a feature, not just a patch:</p>
-      <ul>
-        <li>Validation now runs the moment any plan loads, not only while something is being dragged — so a plan generated in one shot gets exactly the same scrutiny as one built by hand, click by click.</li>
-        <li>"Keep contents inside" now applies at every nesting depth, not just the first — an object inside a cabinet inside a van is held to the same rule as the cabinet itself.</li>
-        <li>Duplicate names are now caught and flagged the instant they'd cause a conflict, rather than silently redirecting an edit to the wrong object.</li>
-        <li>You can now <strong>undo</strong> a mistake — a drag gone wrong, an accidental delete — with Ctrl+Z, the way you'd expect from any editor.</li>
-        <li>Right-clicking a piece of furniture now lets you <strong>duplicate</strong> it, instead of retyping the whole thing to add a second identical chair.</li>
-        <li>Windows and doors can now be built directly into a wall, staying flush against it as you slide them along, instead of floating independently over it.</li>
-        <li>You can now <strong>export a plan as an image</strong> (PNG or SVG), not just as code — handy for dropping a floor plan straight into a chat or a document.</li>
+        <li>Planagonia now has a real, automated test suite — a growing set of checks that actually launch the app in a browser and interact with it, run before anything ships. It's the kind of infrastructure you don't see, but it's the reason we can rebuild something like the toolbar three times in a day and still be confident nothing else quietly broke along the way.</li>
+        <li>One of the app's built-in starter examples, previously a single house with one power line, is now a small electrical grid — three connected parcels, each with its own house, all wired to a shared distribution cabinet, styled entirely through a handful of named, reusable style definitions rather than repeating the same colors on every shape. A good look at what that feature is actually for once a plan gets bigger than a single room.</li>
+        <li>The right-click menu on any object picked up a proper "Placement" submenu — options for keeping something inside its container, snapped flush to its edge, or set free of both, each shown with a checkmark for whichever is currently active, worded in plain terms instead of the underlying property names.</li>
       </ul>
 
       <div class="callout">
-        Want to see any of this yourself? <a href="/app/">Open the app</a> — everything above is already live, no update needed on your end.
+        Want to see where it landed? <a href="/app/">Open the app</a> — the toolbar at the top is exactly what's described here, live right now.
       </div>
 
-      <p>This kind of test — handing the same real task to a second, independent AI and comparing what comes back — is staying part of how we check Planagonia going forward, alongside building it. A tool meant to be trusted with a real decision should be able to survive someone actually putting it to work on one. Thanks for reading, and for trying something this new.</p>
+      <p>We're not precious about a first attempt here, or a second one — if a real look at something reveals it isn't quite right, we'd rather rebuild it the same day than leave it as-is until "later." Thanks for reading, and for putting up with a toolbar that occasionally changes shape underneath you.</p>
     </div>
   </main>
 </div>

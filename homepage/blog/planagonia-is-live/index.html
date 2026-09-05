@@ -7,7 +7,7 @@
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="alternate icon" href="favicon.ico">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<meta name="description" content="In two days, Planagonia went from a set of experiments to a real website you can sign up for and use. Here's what changed, in plain language.">
+<meta name="description" content="Planagonia's whole idea is that a floor plan can be a small program, not a drawing — one an AI can write for you and you can still drag around by hand. Here's what that looks like now that it's live.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@400;600&display=swap" rel="stylesheet">
@@ -72,6 +72,10 @@
   .post ul { margin: 0 0 1.3rem; padding-left: 1.3rem; }
   .post li { margin-bottom: 0.55rem; }
   .post strong { color: var(--ink); }
+  .post code {
+    font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 0.82em;
+    background: var(--amber-soft); color: var(--ink); padding: 0.1em 0.4em; border-radius: 4px;
+  }
 
   .callout {
     background: var(--amber-soft); border-left: 3px solid var(--amber); border-radius: 0 8px 8px 0;
@@ -149,18 +153,21 @@
     <p class="dateline">August 31, 2026</p>
 
     <div class="post">
-      <p class="lede">Two days ago, Planagonia was a pile of experiments living only on one computer. Today it's a real website — one you can visit, sign up for, and use to sketch out a floor plan, with your work following you between devices instead of being stuck in a single browser tab. Here's what changed, and why it should matter to you rather than just to us.</p>
+      <p class="lede">Two days ago, Planagonia was a pile of experiments living only on one computer. Today it's a real website — built on one simple idea: a floor plan doesn't have to be a drawing. It can be a small, plain-text program, one short enough for an AI to write correctly and simple enough for you to read yourself, kept perfectly in sync with a drawing you can still drag around by hand. Here's what that idea actually looks like now that you can visit it.</p>
+
+      <h2>A plan you can write, or draw — and both stay true</h2>
+      <p>Open the app and you'll see two things side by side: a small language on the left, and a live 2D drawing on the right. Type <code>element room { shape: "rect", size: [4m, 3m] }</code> and a room appears. Drag that room around on the right, and the numbers on the left update themselves — not a separate "export" step, the same document, edited two ways at once.</p>
+      <p>The point of writing it this way, rather than as a drag-and-drop tool with nothing underneath, is that the language is the part an AI is actually good at. Describe a studio apartment in your own words to an AI assistant, and it can write the plan directly — rooms, furniture, a door connected to a wall — because the language was designed from day one to be small and unambiguous enough for that to work reliably, not just for a human typing carefully.</p>
 
       <h2>You can finally create an account</h2>
       <p>Until now, whatever you drew in Planagonia only ever lived in the one browser you drew it in — close it on a different computer and your plan simply wasn't there. That's fixed. You can now sign up with just an email address and a password, confirm your email with one click, and save your plans to your account instead of just to your browser. Start a layout on your laptop at home, check it later on your phone — it'll be right there.</p>
       <p>We kept the sign-up itself as small as we could: no username to invent, no extra fields. Just an email and a password, and we take care of the rest.</p>
 
       <h2>The whole site now actually works on a phone</h2>
-      <p>Until this week, Planagonia was designed with a full-size computer screen in mind — which meant it was genuinely awkward to use on a phone. We went through the entire site and fixed that, without changing how it looks or works on a real computer:</p>
+      <p>Until this week, Planagonia was designed with a full-size computer screen in mind. Rather than build a separate mobile version, we kept the desktop layout as the one source of truth and layered phone-specific rules on top of it, so nothing about the computer experience changed:</p>
       <ul>
         <li>The menu at the top of every page now tucks neatly behind a small ☰ icon instead of spilling across the screen.</li>
         <li>Inside the app itself, the code and the drawing — previously squeezed on top of each other, both too small to actually use on a small screen — are now separate <strong>Code</strong> and <strong>Viewer</strong> tabs you can switch between with a tap.</li>
-        <li>The row of buttons along the top of the app is shorter and calmer. The everyday ones stay put; the occasional ones (Rename, Delete, and the rest) now live behind a small "···" button, out of the way until you actually need them.</li>
       </ul>
 
       <h2>A few small, honest additions</h2>
@@ -168,13 +175,6 @@
         <li>A proper legal notice page, with our real contact details.</li>
         <li>A short, plain note about what the site actually stores in your browser — your plans and your sign-in state, nothing more, and no tracking or third-party cookies involved.</li>
         <li>A small "Beta" label on the app itself. It's still evolving quickly, and we'd rather say so than let you find out the hard way.</li>
-      </ul>
-
-      <h2>Squashing what wasn't quite right</h2>
-      <p>Even a young product picks up rough edges fast, and two were worth calling out:</p>
-      <ul>
-        <li>Dragging certain shapes around a plan could silently stop working, with nothing on screen telling you why. Found and fixed.</li>
-        <li>The button that recenters your view on your whole plan wasn't reliably doing that — sometimes doing nothing at all, sometimes leaving part of your plan cropped out of view. It now reliably shows your entire plan again, however far you'd zoomed or scrolled around.</li>
       </ul>
 
       <div class="callout">
