@@ -128,9 +128,9 @@ The module's own comment states the composite's `position` isn't factored into i
 
 ## Already-shipped, currently-broken behavior (not a style/maintainability item)
 
-## S-029 Collision-avoidance sliding against a circle or non-axis-aligned polygon edge — recorded as "not fully working"
+## S-029 ~~Collision-avoidance sliding against a circle or non-axis-aligned polygon edge~~ — retracted, not a real bug
 
-`decisions.md` D-041 itself documents four rounds of fixes (reject → uniform-scale clamp → X/Y-separated clamp → general surface-normal slide) and states the session stopped mid-fix without a captured repro. This is a genuinely open, shipped bug in collision-clamping — distinct from every other entry here, which is about code shape, not incorrect behavior a user can already trigger today.
+**Retracted after re-reading `decisions.md` D-041 in full, not just the middle of it.** The original audit stopped at D-041's own "paused here, not fully working" paragraph (a genuine mid-session pause, honestly written) and reported it as an open bug — but D-041 continues past that point with a "Fifth correction" and a final status revision that supersedes it: the shipped `clampToNoCollision` (`docs/interactivity-module.js`) uses X/Y-axis-separated clamping, which the code's own comment states plainly is "exact for the common case (rect furniture against rect furniture)" and, for a circle or polygon, "merely safe, if not perfectly smooth... never lets an overlap through, just may not track a curved boundary as fluidly — an accepted limitation rather than an unvalidated attempt at solving it." Confirmed directly against the current source, not just the decision log: the abandoned tangent-slide approach (`contactNormal`, the actual buggy code D-041 describes) is gone from `clampToNoCollision` entirely; a tangent-slide function does still exist (`clampToStayInside`) but is a *different* mechanism (containment against a polygon *parent*, D-032, not sibling collision-avoidance) with its own, separately-documented accepted limitation. Left in this document, struck through, as a record that the finding was checked and found wrong — not silently deleted, so nobody re-derives the same false alarm from a partial read later.
 
 ## Project structure / process
 

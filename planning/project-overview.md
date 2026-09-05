@@ -65,11 +65,14 @@ came from real use of what was just shipped:
 - **A full technical-debt audit (new, `planning/tech-debt.md`, 34 numbered `S-x` entries)**
   — three parallel deep reads of `docs/index.html`, `docs/interactivity-module.js`, the
   three smaller modules, and the project's own top-level structure. Found one genuinely
-  shipped, currently-live bug (a missing style fallback on `polygon`/`polyline` renders
-  literal `stroke="undefined"`/`stroke-width="NaN"`), one already-acknowledged still-broken
-  behavior (D-041's collision-slide against circles/non-rect polygons), and a cluster of
-  real maintainability risk in the stacked-element subsystem specifically — five
-  interacting pieces of state that needed four same-day bug-fix rounds this stretch alone
+  shipped, currently-live bug (a missing style fallback on `polygon`/`polyline` rendered
+  literal `stroke="undefined"`/`stroke-width="NaN"` — since fixed, D-094), one initially
+  flagged but retracted after a fuller re-read (D-041's collision-slide against
+  circles/non-rect polygons is a deliberate, documented "safe but not perfectly smooth"
+  trade-off, not an open bug — the audit's first pass had stopped partway through D-041's
+  own entry), and a cluster of real maintainability risk in the stacked-element subsystem
+  specifically — five interacting pieces of state that needed four same-day bug-fix rounds
+  this stretch alone
   (D-086, D-088, D-090, D-091) before settling.
 - **Eight new open questions logged, none built** (F-036 through F-042, plus a stray
   misplaced paragraph in `open-questions.md` found and fixed along the way): mobile
@@ -128,10 +131,13 @@ choice), and F-036 through F-042 (this stretch's own new findings, all log-only)
 (`docs/index.html`, S-012 through S-022), code-level debt in the interactivity module
 (S-001 through S-011 — the largest, most organically-grown file in the project, and where
 most of the real risk concentrates), debt in the three smaller modules (S-023 through
-S-028), one already-shipped-and-broken behavior (S-029), and five items about the project's
-own structure and process rather than any single file (S-030 through S-034). This audit is
-what prompted Core Aim 4 above — the intent is for this list to actually shrink over time
-alongside feature work, not sit as a permanent, ignored appendix.
+S-028), one item since retracted after a fuller re-read found it wasn't actually a bug
+(S-029), and five items about the project's own structure and process rather than any
+single file (S-030 through S-034). This audit is what prompted Core Aim 4 above — the
+intent is for this list to actually shrink over time alongside feature work, not sit as a
+permanent, ignored appendix. (Since this section was written: S-030 and S-012 are both
+built, D-093/D-094 — see `tech-debt.md` itself for current status; this snapshot is not
+kept in sync.)
 
 ## What's going well, for balance
 
