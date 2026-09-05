@@ -48,5 +48,9 @@ built: a homepage at the root, the app under `/app`, human-facing documentation 
   overview and independent risk assessment
 - [planning/site-structure.md](planning/site-structure.md) — the `planagonia.com` site
   plan; all four named sections are now built, a couple of small follow-ups remain open
+- [planning/tech-debt.md](planning/tech-debt.md) — numbered technical-debt items (S-001...),
+  tracked and paid down alongside feature work per core-aims.md's fourth aim
 - [documentation/](documentation/) — reference docs: [language.md](documentation/language.md) (the plan language), [architecture.md](documentation/architecture.md) (system components)
+- [tests/](tests/) — the committed regression suite (Python + pytest + Playwright, D-093);
+  `pip install -r tests/requirements.txt && playwright install chromium`, then `pytest tests/`
 - [Prototypes/](Prototypes/) — throwaway experiments/sketches, not a staged build plan; superseded by [docs/](docs/) as the thing to actually run

@@ -4,24 +4,27 @@
 Unlike [core-aims.md](core-aims.md), [decisions.md](decisions.md), and
 [open-questions.md](open-questions.md), which are kept continuously in sync with the
 project, this file describes where things stood when it was written and will drift out of
-date. Supersedes the 2026-09-03 revision: every item that snapshot recommended or flagged
-as high-severity is now built — the load-time validation pass, the click-cycling fix, the
-`childPlacement` ancestor search, the label-overlap nudge, and image export — plus a
-favicon, a link from the App back to the marketing site, a second blog post, and three more
-open questions recorded. Prefer `decisions.md`/`open-questions.md` for current state; treat
-this file as a snapshot of where things stand and what's worth doing next, not a standing
-to-do list that updates itself.
+date. Supersedes the same-day earlier revision: every item that one flagged as unresolved
+is now built — F-021 is fully closed (four more rounds beyond its "core case"), F-023 (a
+real property schema) is built, F-035 (placement/flush from the right-click menu) is built,
+F-014 (the background grid) is built — plus a full technical-debt audit and a new, fourth
+core aim adopted as a direct result of it. Prefer `decisions.md`/`open-questions.md` for
+current state; treat this file as a snapshot of where things stand and what's worth doing
+next, not a standing to-do list that updates itself.
 
 ## What the project is
 
 A browser-based 2D plan generator: plans are defined in a purpose-built language as code,
 and the code and the rendered plan stay in sync — editing the code updates the plan;
-dragging the plan writes the code back (D-013, D-012). Three core aims
+dragging the plan writes the code back (D-013, D-012). Four core aims
 ([core-aims.md](core-aims.md)):
 
 1. Code and plan never drift apart.
 2. A purpose-built language, not general-purpose code.
 3. Extensible via modules loaded from within the plan itself.
+4. **Built to last, not just to work** — new — technical debt is avoided where possible and
+   paid down alongside ongoing feature work, not left to accumulate. Adopted directly off
+   the back of this stretch's own technical-debt audit (below), not stated in the abstract.
 
 The plan's code is meant to be primarily *authored by an AI* (D-003), with a technical
 human reviewing and directing — this shapes the language toward low-ambiguity,
@@ -29,116 +32,142 @@ token-efficient generation over hand-typing ergonomics (D-017).
 
 ## What's actually built and live
 
-The whole site is live and public at [planagonia.com](https://www.planagonia.com/) —
-homepage, `/app/`, `/docs/`, `/profile/`, `/blog/` (now two posts), and `/impressum/`.
-Everything the 2026-09-03 snapshot flagged as unresolved has since been built:
+The whole site is live and public at [planagonia.com](https://www.planagonia.com/). Since
+the last snapshot, every remaining item it flagged has been built, plus a great deal that
+came from real use of what was just shipped:
 
-- **All three placement modes** (free, outside-attached, inside-flush) and **both of
-  F-002's module promises** (new rendering/interactivity, and drag-editable
-  module-generated compositions) — closed out before this stretch began, unchanged since.
-- **Undo/redo and Duplicate** — also unchanged since the last snapshot; Scale remains
-  deliberately deferred.
-- **A load-time validation pass (F-022/F-028, D-075).** Collision and containment are no
-  longer only checked mid-drag — the same already-correct checks now also run once against
-  every freshly loaded plan's own resting layout, surfacing every violation (including
-  duplicate element ids) in a dedicated panel. Re-run against this session's own
-  independently-AI-generated comparison plan, it found 36 real overlaps, not the two
-  originally spot-checked by hand.
-- **Click-cycling through stacked elements (F-019 + F-021's core case, D-077).** A container
-  fully hidden behind its own children — or any two elements that merely happen to overlap
-  — can now be reached by clicking the same point again, stepping through everything
-  actually painted there via the browser's own paint order, wrapping back to the top.
-- **`childPlacement` now searches every ancestor, not just the immediate parent
-  (F-020, D-078).** A grandchild nested two levels under a container could previously
-  escape its bounds with zero warning; both the drag-time clamp and the load-time
-  validation pass shared this exact bug and are now both fixed via one shared function.
-- **Always-shown labels nudge apart instead of overlapping (F-018, D-079).** Measures each
-  label's real rendered size and separates any two that collide, a few iterations,
-  leaving per-edge length labels (a separate concern, sharing the same markup group until
-  this fix) untouched.
-- **Export as image (F-033, D-080).** Two new buttons, `Export PNG…`/`Export SVG…`, always
-  capturing the full plan regardless of the editor's current pan/zoom, with editor-only
-  chrome (icons, selection state, hover-only labels) stripped from the output.
-- **A real favicon and a link back to the marketing site (D-076).** Designed from the
-  site's own existing visual language rather than borrowed; the App's own header title now
-  links to `planagonia.com`.
-- **A second blog post**, a non-technical rewrite of this stretch's own work — leading with
-  the deliberate campervan/independent-AI comparison test and the six bugs it surfaced,
-  not a trimmed changelog.
-- **Backend, live and tested, unchanged since the last snapshot**: self-hosted WordPress
-  auth plus a PHP/MySQL storage service, both exercised against the real, running
-  infrastructure.
-- **Zero automated tests, zero CI, zero build step**, still deliberate (D-034). Every fix
-  this stretch was verified with Playwright against a real, running browser (or the live
-  deployed site directly) before being called done — no exceptions.
+- **F-021 fully closed, five decisions deep (D-077, D-086 through D-091).** Reaching a
+  hidden element (click-cycling) and discovering one exists (a hover badge) were already
+  built; this stretch added a *persistent* front/back swap via right-click that actually
+  reorders an element's declaration in the source (there's no z-index in this language —
+  paint order is declaration order), then fixed it twice more after real use surfaced that
+  right-click could only ever reach whatever was already visually on top, and that the
+  hover-dim/badge check only ever sampled once at element-entry rather than continuously —
+  both traced to root cause and fixed, not patched around.
+- **F-023: a real property schema (D-084).** A per-shape allow-list, checked as three more
+  functions in the existing load-time validation pass — no parser rewrite. Catches an
+  unrecognized `shape`, a property a shape doesn't use, and `flush` without a resolved
+  `"inside"` placement. Found two more real, previously undetected instances of its own
+  named problem while building it (`dimensions` on a `polygon`, `edgeLengths` on a
+  `circle` — both already documented as unsupported in prose, neither ever enforced).
+- **F-014: a background grid (D-085), plus a second style added the same day.** A new
+  auto-loaded, settings-driven module (`settings { grid: { size, type } }`) — a checkerboard
+  by default, plain grid lines as a second `type` option requested right after the first
+  shipped. Deliberately settings-only, not a viewer toggle, matching how `styles`/`version`
+  already work.
+- **F-035: placement/flush from the right-click menu (D-092).** "Place Inside," "Make
+  Flush"/"Un-flush," and "Clear Placement" — each immediately snaps the element into a
+  valid resting position when set, reusing the exact clamp math a drag already applies,
+  rather than leaving it wherever it was until the next manual drag. "Outside" deliberately
+  not built: confirmed directly that it has no cold-start positioning logic anywhere in
+  this codebase at all, only ever activating once an element is already touching a target
+  edge mid-drag.
+- **A full technical-debt audit (new, `planning/tech-debt.md`, 34 numbered `S-x` entries)**
+  — three parallel deep reads of `docs/index.html`, `docs/interactivity-module.js`, the
+  three smaller modules, and the project's own top-level structure. Found one genuinely
+  shipped, currently-live bug (a missing style fallback on `polygon`/`polyline` renders
+  literal `stroke="undefined"`/`stroke-width="NaN"`), one already-acknowledged still-broken
+  behavior (D-041's collision-slide against circles/non-rect polygons), and a cluster of
+  real maintainability risk in the stacked-element subsystem specifically — five
+  interacting pieces of state that needed four same-day bug-fix rounds this stretch alone
+  (D-086, D-088, D-090, D-091) before settling.
+- **Eight new open questions logged, none built** (F-036 through F-042, plus a stray
+  misplaced paragraph in `open-questions.md` found and fixed along the way): mobile
+  pinch-zoom/touch-menu gaps, inline-in-code error display, style-preset-as-module
+  architecture, front-layer grid, a resizable code/viewer split, alternatives to the shared
+  selection/hover glow, and a menu that reads the plan's own parsed structure to offer
+  live module/settings toggles.
+- **Backend, everything from before, unchanged**: self-hosted WordPress auth plus a
+  PHP/MySQL storage service, both live and tested; undo/redo, Duplicate, all three
+  placement modes, module composition — none of it touched this stretch, none of it
+  regressed (confirmed by an explicit shipped-examples/drag/duplicate/delete regression
+  pass after nearly every change this stretch made).
+- **Zero automated tests, zero CI, zero build step — no longer just "deliberate" (D-034),
+  now flagged as this project's single highest-leverage piece of technical debt (S-030).**
+  Every fix this stretch was still verified with Playwright against a real, running browser
+  before being called done, same discipline as always — but every one of those checks was
+  written into a session-local scratchpad and thrown away afterward, never committed as a
+  regression suite. See Recommendation below.
 
 ## What's decided but not built
 
-- **D-025** — deployment topology as originally scoped, overtaken by what actually
-  happened (separate subdomains rather than one shared domain) — still not written up as
-  a formal decision update.
-- **F-016's Scale** — explicitly deferred by choice.
-- **F-032** (a Word-like icon menu for the App's toolbar) — recorded only, per direct
-  request, not designed.
+- **F-016's Scale** — explicitly deferred by choice, unchanged.
+- **F-032** (a Word-like icon menu for the App's toolbar) — recorded only, unchanged.
+- **F-036 through F-042** — all recorded only this stretch, per explicit instruction each
+  time ("nur notieren"), not designed or built.
+- **D-025** — deployment topology write-up, still not formally updated to match what
+  actually shipped (separate subdomains). Unchanged since the last snapshot; genuinely
+  low-priority (the deployment itself works and is documented in `README.md`/`site-structure.md`,
+  just not back-filled into a D-number).
 
-## Open questions: down to eleven from the language review, three new ones added
+## Open questions: forty-two now, most of this stretch's own additions still unbuilt
 
-Fourteen findings came out of the 2026-09-03 language review (F-018–F-031); six of the
-highest-severity ones are now built (F-018, F-019, F-020, F-021's core case, F-022, F-028).
-Three further requests were logged this stretch, unrelated to that review: F-032 (the icon
-menu above), **F-033** (export as image — now built, see above), and **F-034** (sharing a
-plan with someone else, split explicitly into a static view vs. handing over the editable
-plan+code — generalizes F-005's older "public viewing" question to a specific recipient).
+F-018 through F-035 (the two rounds of language review plus everything reached from real
+use of what got built) are now closed except F-024 (rotation/domain coverage), F-026 (the
+clamp/slide unification — now also tracked concretely as S-001 in the tech-debt audit,
+confirmed lower-risk to unify than the repeated-rebuilding history suggested), F-029
+(multi-select), F-030/F-031 (deliberately least-developed), F-032/F-034 (deferred by
+choice), and F-036 through F-042 (this stretch's own new findings, all log-only).
 
 **Still open, roughly by size:**
 
-- **Cheap, well-scoped:** F-025 (no version marker on the plan format — costless today,
-  expensive to retrofit once real saved plans exist outside `localStorage`), F-021's
-  remaining half (no persistent visual indicator that a point even *has* more than one
-  candidate to cycle through — the fix above only helps once you already suspect it).
-- **Real, but genuinely undesigned:** F-023 (no formal schema — the parser is the only
-  spec, which is exactly why an unrecognized `shape` or an orphaned `flush` fail silently),
-  F-024 (no rotation, domain coverage never audited against a real floor plan's needs),
-  F-026 (the same "pinned to an edge, slides, clamps" logic independently rebuilt four
-  times, no shared code), F-027 (no property/style reuse — a `styles: {}` preset direction
-  is sketched, not built), F-029 (no multi-select).
-- **Deliberately deferred, least developed:** F-030 (a reusable component/sub-plan
-  concept), F-031 (discrete/grid-snapped dragging, paired with F-014's still-unbuilt visual
-  grid), F-034 (sharing), F-032 (the icon menu), F-016's Scale.
+- **Cheap, well-scoped:** F-013 (metric/imperial display toggle), F-040 (resizable
+  code/viewer pane split — currently a fixed 420px with no handle at all).
+- **Real, but genuinely undesigned:** F-024 (rotation), F-026 (clamp/slide unification —
+  see S-001), F-029 (multi-select), F-037 (inline-in-code diagnostics — would need the
+  parser to start tracking per-property source spans, which it currently doesn't for any
+  string-valued property), F-038 (style-preset resolution's architectural inconsistency
+  with every other display module), F-041 (glow alternatives).
+- **Deliberately deferred, least developed:** F-030 (reusable components), F-031
+  (grid-snapped dragging), F-032 (icon menu), F-034 (sharing), F-036 (mobile touch gaps),
+  F-039 (front-layer grid), F-042 (a menu that reads the plan's own code), F-016's Scale.
+
+## Technical debt — now a first-class, tracked concern, not an afterthought
+
+`planning/tech-debt.md`, 34 `S-x` entries, split into three groups: code-level debt in core
+(`docs/index.html`, S-012 through S-022), code-level debt in the interactivity module
+(S-001 through S-011 — the largest, most organically-grown file in the project, and where
+most of the real risk concentrates), debt in the three smaller modules (S-023 through
+S-028), one already-shipped-and-broken behavior (S-029), and five items about the project's
+own structure and process rather than any single file (S-030 through S-034). This audit is
+what prompted Core Aim 4 above — the intent is for this list to actually shrink over time
+alongside feature work, not sit as a permanent, ignored appendix.
 
 ## What's going well, for balance
 
-The habit that made the 2026-09-03 review worth doing — testing a decision against reality
-rather than defending it once made — kept paying off through the fixes themselves, not just
-the review that found them. Two of the six fixes (D-078, D-079) surfaced a *second*, real
-bug while being built, not while being debugged afterward: fixing `childPlacement` revealed
-the exact same one-level gap already existed in the just-built validation pass; fixing
-label overlap revealed label text and edge-length text had always shared one markup group,
-so an early version of the nudge silently mispositioned edge labels too. Both were caught
-and fixed in the same pass specifically because every fix was checked in a real browser
-before being called done, not assumed correct from reading the diff.
+The same habit that made both language reviews worth doing kept paying off at a finer
+grain this stretch: nearly every feature request that touched the stacked-element subsystem
+(F-021's several rounds) surfaced a *second*, real bug while being built or immediately
+after shipping, not months later — each one traced to an actual root cause and fixed there,
+not patched at the symptom. The technical-debt audit itself is a continuation of that same
+instinct turned on the *whole codebase* deliberately, rather than only ever reacting to
+whatever the next feature request happens to touch.
 
 ## Recommendation
 
-**No single item stands out as urgently as F-022/F-028 did last time — the highest-severity
-findings from the language review are now cleared.** What's left splits cleanly into "cheap
-and clear" versus "real but needs its own concept pass first," and which to pick is
-genuinely a matter of preference now rather than a severity call:
+**This is the first snapshot where the honest answer isn't "the next feature" — it's to act
+on the sustainability principle this stretch itself just adopted, before the codebase grows
+any further without one.**
 
-1. **F-025 (a version marker) is close to a free action.** A single `settings { version }`
-   field, ignored until it's ever actually needed, costs nothing today and becomes
-   expensive to retrofit the moment a real plan is saved somewhere outside the authoring
-   browser's own `localStorage` (which the cloud storage service already makes possible).
-   Worth doing opportunistically rather than waiting for a reason.
-2. **F-023 (a real schema) is the highest-leverage item left, but it's a real design
-   project, not a quick fix** — it would retroactively explain three separate silent
-   failures found this session (an unrecognized `shape`, an ignored `rotation`, an orphaned
-   `flush`) with one mechanism instead of three ad-hoc checks, but deserves its own
-   concept pass rather than being started under momentum from smaller fixes.
-3. **Everything else is either explicitly your call to defer** (Scale, F-030, F-031,
-   F-032, F-034) **or a real but not urgent cleanup** (F-026's refactor, F-029's
-   multi-select, F-024's rotation/domain-coverage question) — none blocked, none pressing.
+1. **S-030 (a real, committed test suite) is the single highest-leverage thing to build
+   next, not another F-number.** Every fix this project has ever shipped was verified by
+   hand, in a throwaway session script, then discarded — there is no repeatable regression
+   check anywhere in the repository. The stacked-element subsystem alone needed four
+   same-day bug-fix rounds this stretch specifically because each fix's blast radius wasn't
+   mechanically checked against everything built before it — a committed suite (even a
+   modest one covering drag, containment, click-cycling, and the context-menu actions)
+   would make every future change in this area, and every item in `tech-debt.md`, cheaper
+   and safer to act on. This is the one recommendation in this document that isn't a
+   feature — it's infrastructure for building every feature after it more safely.
+2. **If a feature is wanted regardless, F-013 or F-040 are the cheapest, most contained
+   options left** — a display-only unit toggle and a resizable pane divider, neither
+   touching the parts of the codebase the audit flagged as fragile.
+3. **S-001 through S-003 (the clamp/slide duplication, the six near-identical action
+   functions, the three competing edit-apply idioms) are the best-scoped code-debt items to
+   pay down once a test suite exists to check the refactor against** — confirmed lower-risk
+   than assumed (each clamp function has only 1-2 call sites), but a refactor across
+   several call sites is exactly the kind of change a regression suite is for.
 
-If forced to pick one: F-025, purely on cost — it's minutes of work now against a real,
-if not urgent, cost later. But this is a genuinely open choice this time, not a severity
-call like last round's.
+If forced to pick one: S-030. Not because it's exciting, but because it's the one item
+that makes every other item on this page — the open questions, the debt list, whatever
+comes after — genuinely cheaper to act on correctly.
