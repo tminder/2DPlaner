@@ -45,11 +45,14 @@
          alone would be; the badge (below) then names how many and hints at the gesture. */
       #plan-root:not(.dragging) svg .obj.stacked-hint:hover { opacity: 0.55; }
       #interactivity-stack-badge { position: fixed; z-index: 1001; pointer-events: none;
-        transform: translate(14px, 14px); display: flex; align-items: center; gap: 0.35em;
-        background: rgba(30,68,87,0.94); color: #fff; font-family: system-ui, sans-serif;
-        font-size: 12px; font-weight: 600; padding: 0.25rem 0.6rem; border-radius: 999px;
+        transform: translate(14px, 14px); background: rgba(30,68,87,0.94); color: #fff;
+        font-family: system-ui, sans-serif; font-size: 12px; font-weight: 600;
+        padding: 0.35rem 0.55rem; border-radius: 8px;
         box-shadow: 0 3px 10px rgba(0,0,0,0.25); white-space: nowrap; }
       #interactivity-stack-badge[hidden] { display: none; }
+      #interactivity-stack-badge .stack-line { display: flex; gap: 0.5em; opacity: 0.55; padding: 0.05rem 0; }
+      #interactivity-stack-badge .stack-line.current { opacity: 1; }
+      #interactivity-stack-badge .stack-marker { width: 0.9em; flex: none; }
       .context-menu { position: fixed; z-index: 1000; margin: 0; padding: 4px 0; min-width: 170px;
         list-style: none; background: #fff; border: 1px solid #ccc; border-radius: 6px;
         box-shadow: 0 4px 14px rgba(0,0,0,0.18); font-family: system-ui, sans-serif; font-size: 13px; }
@@ -114,6 +117,22 @@
   stackBadgeEl.id = "interactivity-stack-badge";
   stackBadgeEl.hidden = true;
   document.body.appendChild(stackBadgeEl);
+
+  // The badge's own candidate order, frozen at hover-entry (handlePointerOver only ever
+  // fires once on entering an element, not continuously) — a small, stable list rather than
+  // one that reshuffles on every click, since D-086's bringToFront changes live paint order
+  // on every selection. Only the ">" marker moves; re-rendered from handleRendered (below)
+  // on every render so a stationary click-cycle click, which never re-fires pointerover,
+  // still shows the newly-selected line correctly.
+  let stackHintCandidates = null;
+  function stackHintMarkup(ids) {
+    const currentId = selectedId && ids.includes(selectedId) ? selectedId : ids[0];
+    return ids.map((id) => {
+      const label = program.nodesById[id]?.props.label ?? id;
+      const isCurrent = id === currentId;
+      return `<div class="stack-line${isCurrent ? " current" : ""}"><span class="stack-marker">${isCurrent ? "❯" : ""}</span><span>${escapeHtml(label)}</span></div>`;
+    }).join("");
+  }
 
   const scaleBarEl = document.createElement("div");
   scaleBarEl.id = "interactivity-scale-bar";
@@ -1501,6 +1520,15 @@
       delete core.rootEl.dataset.selectedId;
     }
 
+    // A stationary click-cycle click never re-fires pointerover (the hovered DOM node gets
+    // destroyed and replaced by this same rerender, but the pointer itself never moves), so
+    // the stack-hint badge's ">" marker would otherwise stay stuck on whichever line was
+    // current when the mouse first entered. Re-render just the marker against the frozen
+    // candidate list on every render instead, so it reflects selectedId's latest value.
+    if (stackHintCandidates && !stackBadgeEl.hidden) {
+      stackBadgeEl.innerHTML = stackHintMarkup(stackHintCandidates);
+    }
+
     const icons = [];
     for (const c of prog.connections) {
       if (c.from !== selectedId && c.to !== selectedId) continue;
@@ -1791,11 +1819,19 @@
     // hidden container (F-019's own case: a mid-tree container fully covered by its own
     // children, never visible *anywhere*). Excluding it turns this back into a signal for
     // the second, unexpected case rather than ambient noise on every single element.
-    const candidates = candidateIdsAtPoint(e.clientX, e.clientY).filter((id) => id !== program.root.id);
-    if (candidates.length > 1) {
+    const allCandidates = candidateIdsAtPoint(e.clientX, e.clientY);
+    const nonRootCandidates = allCandidates.filter((id) => id !== program.root.id);
+    if (nonRootCandidates.length > 1) {
       el.classList.add("stacked-hint");
-      const hiddenCount = candidates.length - 1;
-      stackBadgeEl.textContent = `⧉ ${hiddenCount} more here — click again`;
+      // The badge's own list shows every reachable candidate, root included — unlike the
+      // trigger check just above, which stays root-excluded (so hovering an ordinary
+      // element still doesn't fire the hint on every element in the plan). Excluding root
+      // from the list too would let click-cycling (which never excludes it) land on
+      // something this list doesn't even mention, leaving the ">" marker with nothing to
+      // point at — a real bug, found by testing selecting the root via a full cycle, not
+      // assumed safe.
+      stackHintCandidates = allCandidates;
+      stackBadgeEl.innerHTML = stackHintMarkup(allCandidates);
       stackBadgeEl.style.left = `${e.clientX}px`;
       stackBadgeEl.style.top = `${e.clientY}px`;
       stackBadgeEl.hidden = false;
@@ -1818,6 +1854,7 @@
       core.rootEl.querySelector(`[data-id="${CSS.escape(partnerId)}"]`)?.classList.remove("connected-highlight");
     }
     el.classList.remove("stacked-hint");
+    stackHintCandidates = null;
     stackBadgeEl.hidden = true;
   }
 
