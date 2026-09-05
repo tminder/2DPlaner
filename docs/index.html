@@ -27,11 +27,50 @@
   button:disabled { opacity: 0.4; cursor: default; }
   button:disabled:hover { background: #fff; }
   #undo-btn, #redo-btn { padding: 0.4rem 0.6rem; font-size: 1rem; line-height: 1; }
-  /* Desktop: invisible to layout, so every button inside is just a normal flex item of
-     header exactly as before — this wrapper only starts doing anything at the mobile
-     breakpoint below. */
-  .toolbar-more { display: contents; }
-  .toolbar-toggle, .mobile-tabs { display: none; }
+  #file-input { display: none; }
+  .mobile-tabs { display: none; }
+
+  /* F-032/D-103: the header's own menu bar (File/View/Account) -- a core-owned rule set,
+     deliberately separate from interactivity-module.js's own .context-menu styles even
+     though the visual language matches on purpose: this chrome has to work with no plan
+     module loaded at all, so it can't depend on one module's runtime-injected CSS just
+     because that module happens to always auto-load (D-034). Same markup and behavior on
+     desktop and mobile -- no separate collapsed shape needed, see the header's own script
+     block below for the click-to-open/close wiring. */
+  .menu-bar { display: flex; gap: 0.25rem; position: relative; }
+  .menu { position: relative; }
+  .menu-trigger { font-size: 0.85rem; }
+  .menu-dropdown { display: none; position: absolute; left: 0; top: 100%; margin: 4px 0 0;
+    padding: 4px 0; min-width: 190px; list-style: none; background: #fff; border: 1px solid #ccc;
+    border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,0.18); font-family: system-ui, sans-serif;
+    font-size: 13px; z-index: 20; }
+  .menu.menu-right .menu-dropdown { left: auto; right: 0; } /* stays on-screen at a narrow width */
+  .menu.open .menu-dropdown { display: block; }
+  .menu-dropdown li { padding: 0; white-space: nowrap; }
+  .menu-dropdown button { display: flex; align-items: center; width: 100%; padding: 6px 16px;
+    border: none; border-radius: 0; background: none; text-align: left; font-size: 13px; }
+  /* The cloud sign-in/out buttons are shown/hidden via the plain `hidden` attribute
+     (updateCloudUi(), unchanged by this menu) -- without this, the more specific rule
+     above would silently override the UA stylesheet's own `[hidden] { display: none }` and
+     show every cloud button at once regardless of sign-in state. */
+  .menu-dropdown button[hidden] { display: none; }
+  .menu-dropdown button:hover:not(:disabled) { background: #eef2ff; }
+  .menu-dropdown button.danger { color: #a11; }
+  .menu-icon { display: inline-block; width: 1.4em; opacity: 0.7; }
+  .menu-check { display: inline-block; width: 1.4em; }
+  .menu-divider { height: 1px; margin: 4px 8px; background: #e5e5e5; }
+  .menu-static { padding: 6px 16px; font-size: 0.8rem; color: #888; }
+  /* Export's own nested flyout -- same hover-flyout pattern the right-click context menu
+     already established (D-097), independently defined here since this menu doesn't share
+     that module's injected stylesheet either. */
+  .menu-dropdown li.has-submenu { position: relative; padding: 6px 16px; cursor: default; }
+  .menu-dropdown li.has-submenu::after { content: "▸"; float: right; opacity: 0.5; margin-left: 12px; }
+  .menu-dropdown .submenu { display: none; position: absolute; top: -5px; left: 100%; margin: 0;
+    padding: 4px 0; min-width: 190px; list-style: none; background: #fff; border: 1px solid #ccc;
+    border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,0.18); }
+  .menu-dropdown li.has-submenu:hover > .submenu { display: block; }
+  .menu-dropdown .submenu li { padding: 0; }
+  .menu-dropdown .submenu button { padding: 6px 16px; }
 
   /* main/.layout fill exactly the viewport height left after the header — nothing here
      should ever make the page itself scroll. Both panes stretch to that full height;
@@ -79,29 +118,19 @@
   #modlog { color: #366; background: rgba(255,255,255,0.92); white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace;
     font-size: 11px; padding: 0.3rem 0.55rem; border-radius: 6px; opacity: 0.9; }
 
-  #file-input { display: none; }
-
-  /* Desktop-first: the two-pane code+viewer split (D-006), the always-visible toolbar,
+  /* Desktop-first: the two-pane code+viewer split (D-006), the always-visible menu bar,
      and its button sizing are all the default and stay unchanged above this width. Below
-     it: the toolbar's rarely-needed actions collapse behind one "more" toggle instead of
-     wrapping the header across several rows of full-size buttons, and the two panes
-     become tabs — showing both panes at once, even stacked, leaves neither one tall
-     enough to be usable — rather than a redesign of either. */
+     it: the two panes become tabs — showing both panes at once, even stacked, leaves
+     neither one tall enough to be usable — rather than a redesign of either. The menu bar
+     itself (File/View/Account) needs no mobile-specific collapse at all: its three short
+     trigger labels plus the existing `flex-wrap: wrap` on `header` already fit a narrow
+     header without the "too many, too large" problem D-068's old toolbar-more collapse
+     existed to solve (confirmed at 390px, D-103). */
   @media (max-width: 760px) {
     header { padding: 0.4rem 0.5rem; gap: 0.4rem; }
     button, select { font-size: 0.78rem; padding: 0.32rem 0.55rem; }
     .saved-note { display: none; } /* the toolbar's own least essential line, cut first */
     header .spacer { display: none; }
-
-    .toolbar-toggle {
-      display: inline-flex; align-items: center; justify-content: center;
-      width: 2rem; height: 2rem; padding: 0; font-size: 1.05rem; line-height: 1;
-    }
-    .toolbar-more {
-      display: none; flex-basis: 100%; flex-direction: column; align-items: stretch; gap: 0.35rem;
-    }
-    .toolbar-more.open { display: flex; }
-    .toolbar-more button, .toolbar-more select { width: 100%; }
 
     .mobile-tabs { display: flex; gap: 0.4rem; padding: 0.5rem 0.5rem 0; background: #fff; border-bottom: 1px solid #ddd; }
     .tab-btn {
@@ -163,20 +192,49 @@
   <select id="plan-switcher"></select>
   <button id="undo-btn" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
   <button id="redo-btn" title="Redo (Ctrl+Shift+Z)" aria-label="Redo">↷</button>
-  <button class="toolbar-toggle" id="toolbar-toggle" aria-label="More actions" aria-expanded="false" aria-controls="toolbar-more">⋯</button>
-  <div class="toolbar-more" id="toolbar-more">
-    <button id="rename-btn" title="Rename the current plan">Rename…</button>
-    <button id="delete-btn" title="Delete the current plan">Delete</button>
-    <button id="open-btn">Import…</button>
-    <button id="save-btn">Export…</button>
-    <button id="export-png-btn" title="Save the current plan as a PNG image">Export PNG…</button>
-    <button id="export-svg-btn" title="Save the current plan as an SVG image">Export SVG…</button>
-    <input type="file" id="file-input" accept=".planagon,.2dplan,.txt,text/plain">
-    <button id="cloud-signin-btn" title="Sign in to save/load plans in the cloud">Sign in…</button>
-    <span id="cloud-status" style="font-size: 0.8rem; color: #888;"></span>
-    <button id="cloud-save-btn" title="Save the current plan to the cloud" hidden>Save to Cloud</button>
-    <button id="cloud-signout-btn" title="Sign out" hidden>Sign out</button>
-  </div>
+  <!-- F-032/D-103: one menu bar (File/View/Account) instead of a flat button row, same
+       markup and behavior on desktop and mobile -- see docs/index.html's own script for
+       the click-to-open/close wiring and D-103's own writeup for why this replaced
+       D-068's mobile-only "toolbar-more" collapse instead of keeping it alongside this. -->
+  <nav class="menu-bar">
+    <div class="menu">
+      <button class="menu-trigger" id="menu-file-btn" aria-haspopup="true" aria-expanded="false">File ▾</button>
+      <ul class="menu-dropdown">
+        <li><button id="rename-btn" title="Rename the current plan"><span class="menu-icon">✎</span>Rename…</button></li>
+        <li><button id="open-btn"><span class="menu-icon">⇩</span>Import…</button></li>
+        <li class="has-submenu"><span class="menu-icon">⇧</span>Export
+          <ul class="submenu">
+            <li><button id="save-btn">Plan file (.planagon)…</button></li>
+            <li><button id="export-png-btn" title="Save the current plan as a PNG image">PNG image…</button></li>
+            <li><button id="export-svg-btn" title="Save the current plan as an SVG image">SVG image…</button></li>
+          </ul>
+        </li>
+        <li class="menu-divider"></li>
+        <li><button id="delete-btn" class="danger" title="Delete the current plan"><span class="menu-icon">✕</span>Delete</button></li>
+      </ul>
+    </div>
+    <div class="menu">
+      <button class="menu-trigger" id="menu-view-btn" aria-haspopup="true" aria-expanded="false">View ▾</button>
+      <ul class="menu-dropdown">
+        <!-- F-042: the one setting with a genuine on/off state today (F-014's grid is
+             either present or absent in `settings`) -- see toggleGridSetting()/
+             updateGridToggleUi() below. Style presets and the always-injected AUTO_MODULES
+             have no real off-state to expose this same way (F-042's own noted caveat), so
+             they're deliberately not offered here. -->
+        <li><button id="grid-toggle-btn"><span class="menu-check" id="grid-toggle-check"></span>Show grid</button></li>
+      </ul>
+    </div>
+    <div class="menu menu-right">
+      <button class="menu-trigger" id="menu-account-btn" aria-haspopup="true" aria-expanded="false">Account ▾</button>
+      <ul class="menu-dropdown">
+        <li><button id="cloud-signin-btn" title="Sign in to save/load plans in the cloud">Sign in…</button></li>
+        <li class="menu-static"><span id="cloud-status"></span></li>
+        <li><button id="cloud-save-btn" title="Save the current plan to the cloud" hidden>Save to Cloud</button></li>
+        <li><button id="cloud-signout-btn" title="Sign out" hidden>Sign out</button></li>
+      </ul>
+    </div>
+  </nav>
+  <input type="file" id="file-input" accept=".planagon,.2dplan,.txt,text/plain">
   <div class="spacer"></div>
   <span class="saved-note" style="font-size: 0.8rem; color: #888;">Saved automatically in this browser</span>
 </header>
@@ -215,19 +273,11 @@
 </script>
 
 <script>
-  // Mobile-only chrome: a "more actions" toggle for the toolbar's rarely-needed buttons,
-  // and code/viewer tabs in place of the always-both-visible desktop layout. Both are
-  // no-ops above the 760px breakpoint (the toggle and tabs are display:none there, and
-  // .layout's data-mobile-tab attribute has nothing to select against) — this script
-  // only ever changes what's shown, never anything the rest of the app's own logic reads.
+  // Mobile-only chrome: code/viewer tabs in place of the always-both-visible desktop
+  // layout. A no-op above the 760px breakpoint (.layout's data-mobile-tab attribute has
+  // nothing to select against there) — this script only ever changes what's shown, never
+  // anything the rest of the app's own logic reads.
   (function () {
-    var toolbarToggle = document.getElementById("toolbar-toggle");
-    var toolbarMore = document.getElementById("toolbar-more");
-    toolbarToggle.addEventListener("click", function () {
-      var open = toolbarMore.classList.toggle("open");
-      toolbarToggle.setAttribute("aria-expanded", open ? "true" : "false");
-    });
-
     var layout = document.getElementById("layout");
     var tabButtons = document.querySelectorAll(".tab-btn");
     tabButtons.forEach(function (btn) {
@@ -235,6 +285,40 @@
         layout.dataset.mobileTab = btn.dataset.tab;
         tabButtons.forEach(function (b) { b.classList.toggle("active", b === btn); });
       });
+    });
+  })();
+</script>
+
+<script>
+  // F-032/D-103: the header's own menu bar (File/View/Account) — click a trigger to open
+  // its dropdown, closing any other open one first (only one open at a time, matching a
+  // native menu bar); click anywhere else, or Escape, closes whichever is open. Every real
+  // action's own click (Rename/Delete/Import/...) bubbles up to the same document-level
+  // listener below, so clicking one of them closes its dropdown right after — no change
+  // needed to any of those buttons' own existing click handlers to make that happen.
+  (function () {
+    var menus = document.querySelectorAll(".menu-bar > .menu");
+    function closeAll() {
+      menus.forEach(function (m) {
+        m.classList.remove("open");
+        m.querySelector(".menu-trigger").setAttribute("aria-expanded", "false");
+      });
+    }
+    menus.forEach(function (menu) {
+      var trigger = menu.querySelector(".menu-trigger");
+      trigger.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var wasOpen = menu.classList.contains("open");
+        closeAll();
+        if (!wasOpen) {
+          menu.classList.add("open");
+          trigger.setAttribute("aria-expanded", "true");
+        }
+      });
+    });
+    document.addEventListener("click", closeAll);
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") closeAll();
     });
   })();
 </script>
@@ -1517,6 +1601,7 @@ async function rerender(opts = {}) {
     rootEl.innerHTML = result.svg;
     errorEl.textContent = "";
     clearTimeout(errorHideTimer);
+    updateGridToggleUi();
     for (const cb of renderedCallbacks) cb(program, result);
     return result;
   } catch (e) {
@@ -1554,6 +1639,89 @@ function withAutoModules(text) {
   const missing = AUTO_MODULES.filter((name) => !hasModuleDeclared(text, name));
   const prefix = missing.map((name) => `module "${name}"\n`).join("") + (missing.length ? "\n" : "");
   return prefix + text;
+}
+
+// F-042: the View menu's "Show grid" toggle needs to find (and precisely edit) the
+// `settings { grid: {...} } ` entry directly in the raw source text — `parseObjectLiteral`
+// (unlike `parseElementDecl`) never records a `start`/`end` span for any key it parses, so
+// there's no ready-made node to splice like every other menu-driven edit in this app uses.
+// Re-tokenizing here and depth-counting real LBRACE/RBRACE tokens (not a hand-rolled
+// character scan, which a `}` inside some future string-valued setting could fool) finds
+// both spans precisely, reusing the exact tokenizer the real parser already trusts.
+function findSettingsSpan(text) {
+  const tokens = tokenize(text);
+  const settingsIdx = tokens.findIndex((t) => t.type === "SETTINGS");
+  if (settingsIdx === -1 || tokens[settingsIdx + 1]?.type !== "LBRACE") return null;
+  const openIdx = settingsIdx + 1;
+  let depth = 0;
+  for (let i = openIdx; i < tokens.length; i++) {
+    if (tokens[i].type === "LBRACE") depth++;
+    else if (tokens[i].type === "RBRACE") {
+      depth--;
+      if (depth === 0) return { tokens, openIdx, closeIdx: i, start: tokens[openIdx].start, end: tokens[i].end };
+    }
+  }
+  return null;
+}
+
+function findGridKeySpan(settingsSpan) {
+  const { tokens, openIdx, closeIdx } = settingsSpan;
+  let depth = 0;
+  for (let i = openIdx; i <= closeIdx; i++) {
+    const t = tokens[i];
+    if (t.type === "LBRACE") depth++;
+    else if (t.type === "RBRACE") depth--;
+    else if (depth === 1 && t.type === "IDENT" && t.value === "grid" && tokens[i + 1]?.type === "COLON") {
+      let j = i + 2;
+      let end = tokens[j]?.end ?? t.end;
+      if (tokens[j]?.type === "LBRACE") {
+        let vdepth = 0;
+        for (; j <= closeIdx; j++) {
+          if (tokens[j].type === "LBRACE") vdepth++;
+          else if (tokens[j].type === "RBRACE") { vdepth--; if (vdepth === 0) { end = tokens[j].end; break; } }
+        }
+      }
+      return { start: t.start, end };
+    }
+  }
+  return null;
+}
+
+function toggleGridSetting() {
+  const text = sourceEl.value;
+  const settingsSpan = findSettingsSpan(text);
+  const gridSpan = settingsSpan && findGridKeySpan(settingsSpan);
+  let newText;
+  if (gridSpan) {
+    // Removing the key entirely (not just blanking it) -- also eat one trailing newline
+    // (plus same-line indentation before it) so turning the only setting off doesn't leave
+    // a blank line sitting inside `settings { }`.
+    let start = gridSpan.start;
+    let end = gridSpan.end;
+    const lineStart = text.lastIndexOf("\n", start - 1) + 1;
+    if (text.slice(lineStart, start).trim() === "") start = lineStart;
+    while (text[end] === " " || text[end] === "\t") end++;
+    if (text[end] === "\n") end++;
+    newText = text.slice(0, start) + text.slice(end);
+  } else if (settingsSpan) {
+    const insertAt = settingsSpan.start + 1;
+    newText = `${text.slice(0, insertAt)}\n  grid: { }${text.slice(insertAt)}`;
+  } else {
+    // No `settings { }` block at all yet -- insert a new one, but after any leading
+    // `module "..."` lines (the grammar requires modules, then settings, in that order).
+    const moduleLines = /^(?:\s*module\s+"[^"]*"\s*\n)*/;
+    const insertAt = text.match(moduleLines)[0].length;
+    newText = `${text.slice(0, insertAt)}settings {\n  grid: { }\n}\n\n${text.slice(insertAt)}`;
+  }
+  sourceEl.value = newText;
+  rerender();
+  commitUndoStep();
+}
+
+function updateGridToggleUi() {
+  const check = document.getElementById("grid-toggle-check");
+  if (!check) return;
+  check.textContent = program?.settings?.grid !== undefined ? "✓" : "";
 }
 
 function newPlanFromExample(key) {
@@ -1616,6 +1784,8 @@ document.getElementById("rename-btn").addEventListener("click", () => {
   savePlansList();
   refreshPlanSwitcher();
 });
+
+document.getElementById("grid-toggle-btn").addEventListener("click", toggleGridSetting);
 
 document.getElementById("delete-btn").addEventListener("click", () => {
   const p = activePlan();
