@@ -477,6 +477,37 @@ violation is checked against the *proposed* position before it's committed, so a
 drag that would cross the shape simply stops being applied (with a message), rather than
 being allowed and flagged afterward like D-015's unsolvable-expression case.
 
+**`styles` (F-027) — named style presets, referenced from an element's own `style` by a
+plain string instead of repeating the same object.** Three elements meant to share a color
+today either repeat the same `style: {...}` object three times (drift risk — edit one,
+forget the others — and real token cost for an AI generating the plan, D-017) or nothing
+at all. `settings { styles: { ... } }` defines named presets in the preamble; any
+element's `style` may be either the usual inline object (unchanged) or a string naming one:
+
+```
+settings {
+  styles: {
+    wall: { stroke: "#444", strokeWidth: 0.1 }
+  }
+}
+element wall_a { shape: "polyline", points: [c1, c2], style: "wall" }
+element wall_b { shape: "polyline", points: [c2, c3], style: "wall" }
+```
+
+A dedicated resolution step, not routed through the general expression system, deliberately:
+`style: { fill: otherElement.style.fill }` looks like it should work the same way
+(expressions already resolve `parent.size.x`-style paths, D-008) but doesn't — it parses
+with no error and renders the expression's own unevaluated source as a literal, broken SVG
+attribute, since `style` was never wired to invoke expression values the way
+`position`/`size` already are. Presets sidestep that failure mode entirely rather than
+inheriting it. An unrecognized preset name warns (in the browser console) and renders with
+no style, rather than a hard parse error — matching this language's existing pattern of
+surfacing a bad value rather than rejecting the whole plan over it (D-032/D-044's own
+unrecognized-placement warnings). Deliberately **not** a partial merge: an element's
+`style` is either the full inline object or the full preset, never both combined — the
+same override shape (a value fully replaces the default, nothing merges) `placement` vs.
+`childPlacement` and per-element `edgeLengths` already use elsewhere in this language.
+
 **`version` (F-025) — which revision of this language a plan was written against, purely a
 forward-compatibility marker.** `settings { version: 1 }` is the current value; every
 plan the app itself creates (new plans, the three shipped examples) now sets it. Nothing

@@ -782,27 +782,54 @@ function resolvePointAbs(pt, ownAbs, positions) {
   throw new Error("a points entry must be a [x,y] pair or a single sibling element id");
 }
 
+// F-027: `style` may be the usual inline object, or a plain string naming a preset defined
+// in `settings { styles: { ... } }` — resolved here, once, right before use, rather than
+// through the general expression system (which already has a real bug for this exact case,
+// see open-questions.md F-027: an expression's own unevaluated value ends up as a literal,
+// broken SVG attribute, since nothing before this ever anticipated one landing in `style`).
+// An unknown preset name warns and falls back to no style, the same "surface it where the
+// author is already looking" pattern this language already uses for other bad values
+// (D-044/D-032's own unrecognized-placement warnings) rather than a hard parse error.
+function resolveStyle(rawStyle, settings) {
+  if (typeof rawStyle !== "string") return rawStyle;
+  const preset = settings.styles && settings.styles[rawStyle];
+  if (!preset) {
+    console.warn(`style: "${rawStyle}" isn't defined in settings.styles — rendering with no style`);
+    return {}; // not null: every branch below reads straight off this object
+                // (style.fill, style.stroke, ...) — an empty object degrades to each
+                // one's own existing "no color set" fallback, same as any shape that
+                // simply left a style field out, rather than throwing on a null read.
+  }
+  return preset;
+}
+
 // Core renders geometry only — no label, dimensions, or edgeLengths text. Those are
 // computed, read-only display facts about an element's own geometry, not required for the
 // two core primitives themselves (D-038/D-039); annotations-module.js renders them by
 // reading this same parsed/positioned tree back via window.PlanCore after core is done.
-function renderShape(node, positions, cornerUsers, shapesOut, anchorsOut, bboxes) {
+function renderShape(node, positions, cornerUsers, shapesOut, anchorsOut, bboxes, settings) {
   const ownAbs = positions[node.id];
-  const { shape, style } = node.props;
+  const { shape } = node.props;
+  const style = resolveStyle(node.props.style, settings);
+  // A declared-but-unresolvable style preset (F-027) must not fall through to the bare
+  // anchor-point branch below the way a genuinely styleless corner-reference point does —
+  // this checks whether a style was *declared at all* (still true even when resolution
+  // above fell back to {}), not whether resolving it produced anything.
+  const hasStyle = node.props.style !== undefined;
   const idAttr = `data-id="${node.id}"`;
 
-  if (shape === "rect" && style) {
+  if (shape === "rect" && hasStyle) {
     const w = numOf(node.props.size[0]), h = numOf(node.props.size[1]);
     bboxes[node.id] = { left: ownAbs[0], top: ownAbs[1], right: ownAbs[0] + w, bottom: ownAbs[1] + h };
     shapesOut.push(`<rect class="obj" ${idAttr} pointer-events="all" x="${ownAbs[0]*M}" y="${ownAbs[1]*M}" width="${w*M}" height="${h*M}"
       fill="${style.fill ?? "none"}" stroke="${style.stroke ?? "none"}" stroke-width="${numOf(style.strokeWidth ?? 0.02)*M}" />`);
-  } else if ((shape === "polyline" || shape === "polygon") && style) {
+  } else if ((shape === "polyline" || shape === "polygon") && hasStyle) {
     const absPts = node.props.points.map((pt) => resolvePointAbs(pt, ownAbs, positions));
     const ptsStr = absPts.map(([x, y]) => `${x*M},${y*M}`).join(" ");
     const dashAttr = style.strokeDash ? `stroke-dasharray="${style.strokeDash.split(",").map(v => v*M).join(",")}"` : "";
     const tag = shape === "polygon" ? "polygon" : "polyline";
     shapesOut.push(`<${tag} class="obj" ${idAttr} pointer-events="all" points="${ptsStr}" fill="${style.fill ?? "none"}" stroke="${style.stroke}" stroke-width="${numOf(style.strokeWidth)*M}" ${dashAttr} />`);
-  } else if (shape === "circle" && style) {
+  } else if (shape === "circle" && hasStyle) {
     const r = numOf(node.props.radius ?? 0.1);
     shapesOut.push(`<circle class="obj" ${idAttr} pointer-events="all" cx="${ownAbs[0]*M}" cy="${ownAbs[1]*M}" r="${r*M}"
       fill="${style.fill ?? "none"}" stroke="${style.stroke ?? "none"}" stroke-width="${numOf(style.strokeWidth ?? 0.02)*M}" />`);
@@ -813,7 +840,7 @@ function renderShape(node, positions, cornerUsers, shapesOut, anchorsOut, bboxes
     anchorsOut.push(`<circle class="anchor-hit" ${idAttr} data-corner-users="${users}" pointer-events="all" cx="${ownAbs[0]*M}" cy="${ownAbs[1]*M}" r="10" />`);
   }
 
-  for (const child of node.children) renderShape(child, positions, cornerUsers, shapesOut, anchorsOut, bboxes);
+  for (const child of node.children) renderShape(child, positions, cornerUsers, shapesOut, anchorsOut, bboxes, settings);
 }
 
 // Cached across renders, cleared unless the caller asks to preserve it (an in-progress drag
@@ -826,7 +853,7 @@ function render(program) {
   const cornerUsers = {};
   computeCornerUsers(program.root, cornerUsers);
   const shapes = [], anchors = [], bboxes = {};
-  renderShape(program.root, positions, cornerUsers, shapes, anchors, bboxes);
+  renderShape(program.root, positions, cornerUsers, shapes, anchors, bboxes, program.settings);
 
   if (!fixedViewBox) {
     // A node's own position is only its *reference point* (top-left for a rect, own anchor
