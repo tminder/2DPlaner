@@ -93,7 +93,10 @@ function create_unverified_user(PDO $db, string $id, string $username): string {
 }
 
 function send_verification_email(array $config, string $email, string $username, string $token): void {
-    $link = rtrim($config['site_url'], '/') . '/verify.php?token=' . urlencode($token);
+    // verify.php lives on this service's own domain (api.planagonia.com), not the main
+    // site config['site_url'] points at — a real bug found live: the link this used to
+    // build pointed at the main site, which has no such file ("File not found").
+    $link = rtrim($config['api_url'], '/') . '/verify.php?token=' . urlencode($token);
     $subject = 'Confirm your Planagonia account';
     $body = "Hi $username,\n\n"
         . "Click the link below to confirm your Planagonia account:\n\n"

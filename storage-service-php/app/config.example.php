@@ -46,10 +46,19 @@ return [
     'bot_username' => 'change-me',
     'bot_password' => 'change-me-too',
 
-    // Used to build the verification link sent by email, and as the From: address for
-    // that email. Must be on a domain with real outbound mail authentication (SPF/DKIM/
-    // DMARC) set up, or verification emails are likely to be spam-filtered or rejected
-    // outright — confirmed present for this project's own domain before building this.
+    // The main site — used only to build the profile-page link shown after a successful
+    // verification (see httpdocs/verify.php). Not where verify.php itself lives.
     'site_url' => 'https://www.planagonia.com',
+
+    // This service's own domain — used to build the verification link sent by email,
+    // since verify.php is a page on *this* service, not the main site. A real bug found
+    // live: this used to be built from site_url instead, pointing the emailed link at a
+    // domain with no such file ("File not found" in the browser).
+    'api_url' => 'https://api.planagonia.com',
+
+    // The From: address for the verification email. Must be on a domain with real
+    // outbound mail authentication (SPF/DKIM/DMARC) set up, or verification emails are
+    // likely to be spam-filtered or rejected outright — confirmed present for this
+    // project's own domain before building this.
     'mail_from' => 'noreply@planagonia.com',
 ];
