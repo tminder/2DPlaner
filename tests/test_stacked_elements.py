@@ -2,7 +2,7 @@
 exclusion -- the most fragile subsystem per the tech-debt audit (S-006), having needed
 four same-day bug-fix rounds (D-086, D-088, D-090, D-091) before settling."""
 
-from helpers import element_center, load_plan, selected_id, stack_badge_lines
+from helpers import click_menu_item, element_center, load_plan, open_context_menu, selected_id, stack_badge_lines
 
 THREE_WAY_STACK = """
 element zimmer {
@@ -179,3 +179,59 @@ def test_outside_attached_element_does_not_count_as_stacked(app_page):
     app_page.mouse.move(bett_cx, bett_cy)
     app_page.wait_for_timeout(150)
     assert app_page.evaluate("document.getElementById('interactivity-stack-badge').hidden") is False
+
+
+def test_badge_order_reflects_a_reorder_instead_of_a_stale_cache(app_page):
+    """S-005: the badge's own stacking order used to be cached by id-set and never
+    invalidated, so reordering two siblings via the right-click menu and then re-hovering
+    the exact same point kept showing the pre-reorder order -- confirmed live before the
+    fix. Order should now always match a fresh sample of what's actually on top."""
+    load_plan(app_page, THREE_WAY_STACK)
+    cx, cy = element_center(app_page, "bett")
+    app_page.mouse.move(cx, cy)
+    app_page.wait_for_timeout(150)
+    before = [text.strip() for text, _ in stack_badge_lines(app_page)]
+    assert before == ["Bett", "Sofa", "Zimmer"]
+
+    open_context_menu(app_page, cx, cy)
+    click_menu_item(app_page, "Send to Back")
+
+    # Move away and re-hover the exact same point -- a stale, never-invalidated cache
+    # would still return the pre-reorder order here even though paint order actually
+    # changed (bett now declared first, so sofa paints on top of it).
+    app_page.mouse.move(5, 5)
+    app_page.wait_for_timeout(100)
+    app_page.mouse.move(cx, cy)
+    app_page.wait_for_timeout(150)
+    after = [text.strip() for text, _ in stack_badge_lines(app_page)]
+    assert after == ["Sofa", "Bett", "Zimmer"]
+
+    ground_truth = app_page.evaluate(
+        f"""() => Array.from(document.elementsFromPoint({cx}, {cy}))
+            .map(el => el.closest && el.closest('[data-id]')?.dataset.id)
+            .filter(Boolean)"""
+    )
+    assert ground_truth[0] == "sofa"
+
+
+def test_click_cycling_still_reaches_every_element_after_a_mid_cycle_reorder(app_page):
+    load_plan(app_page, THREE_WAY_STACK)
+    cx, cy = element_center(app_page, "bett")
+    app_page.mouse.click(cx, cy)
+    app_page.wait_for_timeout(120)
+    assert selected_id(app_page) == "bett"
+
+    open_context_menu(app_page, cx, cy)
+    click_menu_item(app_page, "Send to Back")
+
+    seen = []
+    for _ in range(4):
+        app_page.mouse.click(cx, cy)
+        app_page.wait_for_timeout(120)
+        seen.append(selected_id(app_page))
+    # Every element in the stack is reached and it wraps -- the exact step immediately
+    # after a mid-cycle reorder can skip one position (the just-reordered element's own
+    # rank shifted, so "one past it" now means something different than before), a
+    # self-correcting, one-off consequence of always recomputing fresh rather than a bug.
+    assert set(seen) == {"zimmer", "sofa", "bett"}
+    assert seen[-1] == seen[0]

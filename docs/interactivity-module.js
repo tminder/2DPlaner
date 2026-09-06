@@ -194,10 +194,12 @@
   // cursor (null when there's no valid target there) so it can get a live highlight.
   let relateDrag = null;
   let contextMenuItems = [];
-  // F-019/F-021: the point and chosen id of the last plain click (not a drag) that landed
-  // on more than one stacked element — lets a *repeated* click at the same spot step to the
-  // next thing underneath, rather than always re-grabbing whatever's on top. Set in
-  // handlePointerUp, read in handlePointerDown; see candidateIdsAtPoint below.
+  // F-019/F-021: the point and last-chosen id of the last plain click (not a drag) that
+  // landed on more than one stacked element — lets a *repeated* click at the same spot step
+  // to the next thing underneath, rather than always re-grabbing whatever's on top. Set in
+  // handlePointerUp, read in handlePointerDown; see candidateIdsAtPoint below. No longer
+  // freezes its own candidates list (S-005) — resolvedCandidatesAtPoint is now always
+  // correct, so it's recomputed fresh on every click instead.
   let clickCycle = null;
   const CLICK_CYCLE_TOLERANCE_PX = 4;
 
@@ -210,6 +212,19 @@
   let viewState = null;
   let lastCoreFit = null;
   let canvasDrag = null; // pointerdown on empty space: pending pan-or-click, see handlePointerDown
+
+  // S-011: one place for "is the pointer mid-gesture right now" — drag/canvasDrag/
+  // relateDrag are kept as three separate variables (each has its own distinct shape, and
+  // a full merge into one discriminated-union gesture object was considered and rejected:
+  // the real payoff turned out to be just this one check, not worth the much larger diff
+  // touching every read/write site across handlePointerDown/Move/Up/Over) — but the
+  // three-way OR itself was already independently duplicated twice (F-043's own keyboard
+  // guard, and handlePointerOver's), exactly the "remembering which handler runs in what
+  // order" fragility this entry warns about. A future fourth gesture, or a third guard,
+  // now has one place to update instead of a third copy to remember.
+  function isGestureActive() {
+    return !!(drag || canvasDrag || relateDrag);
+  }
 
   // ---------- Snap geometry ----------
   const TOUCH_TOLERANCE = 0.05;
@@ -1889,6 +1904,13 @@
     const svgEl = core.rootEl.querySelector("svg");
     if (!svgEl) return;
 
+    // S-005: the one moment `svgEl`'s own child order is exactly core's "true" declared
+    // paint order (shapes then anchors, pre-order — see capturePaintOrderRank's own
+    // comment) is right here, before bringToFront (below) re-appends the selected subtree
+    // to the end and permanently obscures it. Captured once per render, read by
+    // resolvedCandidatesAtPoint below — no cache, nothing to invalidate.
+    capturePaintOrderRank(svgEl);
+
     // core's rerender() just replaced #plan-root's *entire* innerHTML with the fresh SVG,
     // which silently destroys these two overlay elements too, not just old shape markup —
     // they're plain children of the same container, appended once at module load, so they
@@ -1951,12 +1973,34 @@
   const unregisterOnRendered = core.onRendered(handleRendered);
 
   // ---------- Click-cycling through stacked elements (F-019, F-021) ----------
+  // This app has no z-index — paint order is declaration order (core's own render()/
+  // renderShape() walk the tree pre-order, pushing each node's own markup before recursing
+  // into its children). id -> index into svgEl's own children at the moment core just
+  // rendered them (see handleRendered) — "topmost" is the highest index. Captured fresh
+  // every render, before bringToFront (also handleRendered) re-appends the selected
+  // subtree to the very end and would otherwise permanently obscure the true order (S-005:
+  // this single per-render snapshot replaces both the old stackOrderCache Map, which was
+  // never invalidated and went silently stale after a real sibling reorder, and
+  // clickCycle's own separate frozen-candidates list — one mechanism instead of two, and
+  // simpler than either, since a plain DOM read needs no cache or invalidation at all).
+  let paintOrderRank = new Map();
+  function capturePaintOrderRank(svgEl) {
+    paintOrderRank = new Map();
+    let i = 0;
+    for (const el of svgEl.children) {
+      const id = el.dataset?.id;
+      if (id) paintOrderRank.set(id, i++);
+    }
+  }
+
   // Every element actually painted at (clientX, clientY), nearest-first — deliberately not
   // reasoning about the tree (parent/child) at all, unlike an ancestor-walking approach
   // would: elementsFromPoint reflects real paint order, so it uniformly covers a container
   // fully hidden by its own children (F-019's own finding) *and* two unrelated siblings
   // that merely happen to overlap (F-021's broader case) with the same one mechanism,
   // rather than needing a second, different one later for the case this doesn't reach.
+  // (Membership only — order comes from paintOrderRank via resolvedCandidatesAtPoint
+  // below, since this raw elementsFromPoint order is exactly what bringToFront disturbs.)
   function candidateIdsAtPoint(clientX, clientY) {
     const ids = [];
     for (const el of document.elementsFromPoint(clientX, clientY)) {
@@ -1972,30 +2016,30 @@
   // nothing is hidden, nothing needs reaching. Filters any candidate out of a stacked-hint
   // list if its only reason for being there is exactly that relationship to another
   // candidate in the same list; requested directly as the fix for a real false positive.
-  function excludeOutsideAttachedPairs(ids, base) {
+  // Reads module-level `program` directly (S-009) — its one caller just below never passes
+  // anything else; unlike resolveContainer/the check* validators (genuinely called with
+  // both `program` and a drag-frame's own transient re-parse elsewhere in this file), there
+  // was never a real second context here for a `base` parameter to serve.
+  function excludeOutsideAttachedPairs(ids) {
     return ids.filter((id) => {
-      const node = base.nodesById[id];
-      const parent = node.parentId ? base.nodesById[node.parentId] : null;
-      const { container, placement } = resolveContainer(node, parent, base);
+      const node = program.nodesById[id];
+      const parent = node.parentId ? program.nodesById[node.parentId] : null;
+      const { container, placement } = resolveContainer(node, parent, program);
       return !(placement === "outside" && container && ids.includes(container.id));
     });
   }
 
   // The badge's list and click-cycling's own stepping both need one **stable** ordering per
-  // group of stacked ids — computed once, then reused for as long as that exact set of ids
-  // keeps appearing together, regardless of how many times a hover/click retriggers this.
-  // Without this, D-086's own bringToFront (raising whatever gets selected) changes live
-  // elementsFromPoint order after every click, and either a stray pointerover retrigger or
-  // simply re-hovering the same spot later would show the list in a different order each
-  // time — confusing for something whose whole point is letting someone track "which one am
-  // I on now." Keyed by the sorted id set (order-independent) so membership, not order,
-  // decides whether this is "the same group" as before.
-  const stackOrderCache = new Map();
+  // group of stacked ids, immune to D-086's own bringToFront (raising whatever gets
+  // selected, which otherwise changes live elementsFromPoint order after every click) —
+  // sourced from paintOrderRank (captured once per render, see handleRendered) rather than
+  // elementsFromPoint's own live order, so this is correct on every call with no cache and
+  // nothing to invalidate (S-005 — this used to be a Map keyed by id-set, never cleared,
+  // silently stale after a real sibling reorder; confirmed live before this fix: right-click
+  // "Send to Back" then re-hovering the same point kept showing the pre-reorder order).
   function resolvedCandidatesAtPoint(clientX, clientY) {
-    const filtered = excludeOutsideAttachedPairs(candidateIdsAtPoint(clientX, clientY), program);
-    const key = [...filtered].sort().join("|");
-    if (!stackOrderCache.has(key)) stackOrderCache.set(key, filtered);
-    return stackOrderCache.get(key);
+    const filtered = excludeOutsideAttachedPairs(candidateIdsAtPoint(clientX, clientY));
+    return [...filtered].sort((a, b) => (paintOrderRank.get(b) ?? -1) - (paintOrderRank.get(a) ?? -1));
   }
 
   // F-021: run continuously from handlePointerMove (not just once on element-entry) — a
@@ -2105,20 +2149,14 @@
     // (el.dataset.id, same as before) — unless this click lands within tolerance of the
     // *previous* plain click's own point, in which case it steps to whatever was one layer
     // further down that same stack last time, wrapping back to the top once exhausted.
+    // Recomputed fresh on every click (S-005) — resolvedCandidatesAtPoint is now sourced
+    // from paintOrderRank, immune to bringToFront's own DOM reordering, so there's no more
+    // need to freeze a snapshot at cycle-start the way this used to.
     let chosenId = el.dataset.id;
-    let cycleCandidates;
+    const cycleCandidates = resolvedCandidatesAtPoint(e.clientX, e.clientY);
     if (clickCycle && Math.hypot(e.clientX - clickCycle.x, e.clientY - clickCycle.y) <= CLICK_CYCLE_TOLERANCE_PX) {
-      // Frozen from when this cycle started (see handlePointerUp), not recomputed on every
-      // click: bringToFront (below) reorders the DOM on every selection change, which would
-      // otherwise scramble elementsFromPoint's own live order mid-cycle and get this stuck
-      // bouncing between only the two most recently selected elements instead of ever
-      // reaching the rest of the stack — a real bug, found while designing this, not
-      // observed after the fact.
-      cycleCandidates = clickCycle.candidates;
       const idx = cycleCandidates.indexOf(clickCycle.lastId);
       if (idx !== -1 && cycleCandidates.length > 1) chosenId = cycleCandidates[(idx + 1) % cycleCandidates.length];
-    } else {
-      cycleCandidates = resolvedCandidatesAtPoint(e.clientX, e.clientY);
     }
 
     const node = program.nodesById[chosenId];
@@ -2126,7 +2164,7 @@
       core.dragmsgEl.textContent = `${node.id}: has no explicit position/points in source, nothing to drag`;
       return;
     }
-    drag = { id: node.id, baseText: core.sourceEl.value, clientX: e.clientX, clientY: e.clientY, moved: false, singleOnly: e.shiftKey, cycleCandidates };
+    drag = { id: node.id, baseText: core.sourceEl.value, clientX: e.clientX, clientY: e.clientY, moved: false, singleOnly: e.shiftKey };
     core.rootEl.classList.add("dragging");
   }
 
@@ -2187,7 +2225,7 @@
 
   // A keyboard nudge is exactly "a drag of a fixed, small magnitude" — applyDrag only ever
   // reads dragState.id/baseText/singleOnly (its own body never touches clientX/clientY/
-  // moved/cycleCandidates), so a synthetic one-shot dragState reuses its entire pipeline —
+  // moved), so a synthetic one-shot dragState reuses its entire pipeline —
   // connected-node propagation, collision/containment clamping, the outside-slide
   // mechanic, composite backward-solve — for free, rather than re-deriving any of it here.
   function nudgeSelected(dx, dy) {
@@ -2262,7 +2300,7 @@
     // Bail during any other concurrent gesture/menu, the same way other handlers already
     // do — a keyboard nudge mid-drag or with the relate/context menu open would fight
     // whatever that other interaction is already doing.
-    if (drag || canvasDrag || relateDrag || !contextMenuEl.hidden) return;
+    if (isGestureActive() || !contextMenuEl.hidden) return;
     e.preventDefault();
     const step = keyboardStepMeters();
     const [ux, uy] = arrow;
@@ -2440,7 +2478,7 @@
       // A plain click (never moved) remembers its own point + chosen id, so a repeated
       // click right there can step to the next thing underneath next time; an actual drag
       // invalidates it — dragging is a deliberate move, not "try again at this spot".
-      clickCycle = drag.moved ? null : { x: drag.clientX, y: drag.clientY, lastId: drag.id, candidates: drag.cycleCandidates };
+      clickCycle = drag.moved ? null : { x: drag.clientX, y: drag.clientY, lastId: drag.id };
       drag = null;
       core.rerender({ preserveViewBox: true });
       // Once per gesture, not once per pointermove frame (applyDrag runs on every one of
@@ -2454,7 +2492,7 @@
   // fires over/out for whatever it happens to pass across mid-gesture, not just what's
   // actually being interacted with (same reasoning as the object-drag case).
   function handlePointerOver(e) {
-    if (drag || canvasDrag || relateDrag) return;
+    if (isGestureActive()) return;
     const el = e.target.closest("[data-id]");
     if (!el || !program) return;
     const users = el.dataset.cornerUsers;
@@ -2579,10 +2617,22 @@
     scaleBarEl.remove();
     fitBtnEl.remove();
     styleEl.remove();
-    drag = null;
-    canvasDrag = null;
+    // S-010: every module-owned mutable variable, not just five of thirteen — the comment
+    // above says "undoes exactly what setup did," so it should actually be true, even
+    // though nothing currently depends on it (the whole IIFE closure is discarded on
+    // reload regardless).
+    program = null;
+    lastBboxes = {};
+    lastPositions = {};
     selectedId = null;
+    drag = null;
+    relateDrag = null;
+    contextMenuItems = [];
+    clickCycle = null;
+    stackHintCandidates = null;
     viewState = null;
     lastCoreFit = null;
+    canvasDrag = null;
+    paintOrderRank = new Map();
   });
 })();
