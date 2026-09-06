@@ -170,6 +170,7 @@
         <p class="hint">Not the password you chose when registering — the real sign-in credential was generated for you once you verified your email, and shown once on that confirmation page alongside your username.</p>
         <button type="submit" class="btn btn-primary">Sign in</button>
         <p id="signin-msg" class="msg" role="status"></p>
+        <p class="hint"><a href="#" id="forgot-link">Forgot your password?</a></p>
       </form>
       <form id="register-form" hidden>
         <label for="reg-email">Email</label>
@@ -180,7 +181,15 @@
         <button type="submit" class="btn btn-primary">Create account</button>
         <p id="register-msg" class="msg" role="status"></p>
       </form>
-      <p class="hint" style="margin-top: 1.2rem;">
+      <form id="forgot-form" hidden>
+        <label for="forgot-email">Email</label>
+        <input type="text" id="forgot-email" autocomplete="email" inputmode="email" required>
+        <p class="hint">We'll email you a link to get a fresh sign-in credential — the same confirmation page registering shows, generated again. Works for any existing account, even one that predates self-registration.</p>
+        <button type="submit" class="btn btn-primary">Send link</button>
+        <p id="forgot-msg" class="msg" role="status"></p>
+        <p class="hint"><a href="#" id="back-to-signin-link">Back to sign in</a></p>
+      </form>
+      <p class="hint" style="margin-top: 1.2rem;" id="toggle-auth-mode-row">
         <a href="#" id="toggle-auth-mode">Don't have an account? Register</a>
       </p>
     </div>
@@ -339,18 +348,38 @@
     render();
   });
 
-  // Toggles between the two forms sharing this card rather than navigating to a
-  // separate page — registration is a small, occasional detour from signing in, not a
-  // distinct destination someone bookmarks.
+  // Three modes sharing this one card rather than navigating to separate pages —
+  // registration and password-reset are both small, occasional detours from signing in,
+  // not distinct destinations someone bookmarks. The bottom toggle link only ever knows
+  // about signin<->register, so it hides itself in "forgot" mode; that form has its own
+  // "Back to sign in" link instead.
+  function setAuthMode(mode) {
+    document.getElementById("signin-form").hidden = mode !== "signin";
+    document.getElementById("register-form").hidden = mode !== "register";
+    document.getElementById("forgot-form").hidden = mode !== "forgot";
+    document.getElementById("toggle-auth-mode-row").hidden = mode === "forgot";
+    if (mode === "register") {
+      document.getElementById("auth-heading").textContent = "Create an account";
+      document.getElementById("toggle-auth-mode").textContent = "Already have an account? Sign in";
+    } else if (mode === "forgot") {
+      document.getElementById("auth-heading").textContent = "Reset your sign-in";
+    } else {
+      document.getElementById("auth-heading").textContent = "Sign in";
+      document.getElementById("toggle-auth-mode").textContent = "Don't have an account? Register";
+    }
+  }
+
   document.getElementById("toggle-auth-mode").addEventListener("click", (e) => {
     e.preventDefault();
-    const signinForm = document.getElementById("signin-form");
-    const registerForm = document.getElementById("register-form");
-    const toRegister = signinForm.hidden === false;
-    signinForm.hidden = toRegister;
-    registerForm.hidden = !toRegister;
-    document.getElementById("auth-heading").textContent = toRegister ? "Create an account" : "Sign in";
-    e.target.textContent = toRegister ? "Already have an account? Sign in" : "Don't have an account? Register";
+    setAuthMode(document.getElementById("signin-form").hidden === false ? "register" : "signin");
+  });
+  document.getElementById("forgot-link").addEventListener("click", (e) => {
+    e.preventDefault();
+    setAuthMode("forgot");
+  });
+  document.getElementById("back-to-signin-link").addEventListener("click", (e) => {
+    e.preventDefault();
+    setAuthMode("signin");
   });
 
   document.getElementById("register-form").addEventListener("submit", async (e) => {
@@ -369,6 +398,29 @@
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || `Registration failed (${res.status})`);
       document.getElementById("register-form").reset();
+      msgEl.className = "msg ok";
+      msgEl.textContent = body.message;
+    } catch (err) {
+      msgEl.className = "msg error";
+      msgEl.textContent = err.message;
+    }
+  });
+
+  document.getElementById("forgot-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const email = document.getElementById("forgot-email").value.trim();
+    const msgEl = document.getElementById("forgot-msg");
+    msgEl.className = "msg";
+    msgEl.textContent = "Sending…";
+    try {
+      const res = await fetch(`${CLOUD_API_BASE}/forgot-password.php`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || `Request failed (${res.status})`);
+      document.getElementById("forgot-form").reset();
       msgEl.className = "msg ok";
       msgEl.textContent = body.message;
     } catch (err) {

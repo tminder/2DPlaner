@@ -387,6 +387,7 @@
       <p class="hint">Not the password you chose when registering — the real sign-in credential was generated for you once you verified your email, and shown once on that confirmation page alongside your username.</p>
       <button type="submit" class="btn-primary">Sign in</button>
       <p id="app-signin-msg" class="auth-msg" role="status"></p>
+      <p class="toggle-mode"><a id="auth-modal-forgot" href="#">Forgot your password?</a></p>
     </form>
     <form id="app-register-form" hidden>
       <label for="modal-reg-email">Email</label>
@@ -396,6 +397,14 @@
       <p class="hint">At least 8 characters. No username to invent — we'll assign you one and show it on the confirmation page after you verify your email; you won't need this password again day to day, since signing in uses a separate credential generated at that point.</p>
       <button type="submit" class="btn-primary">Create account</button>
       <p id="app-register-msg" class="auth-msg" role="status"></p>
+    </form>
+    <form id="app-forgot-form" hidden>
+      <label for="modal-forgot-email">Email</label>
+      <input type="text" id="modal-forgot-email" autocomplete="email" inputmode="email" required>
+      <p class="hint">We'll email you a link to get a fresh sign-in credential — the same confirmation page registering shows, generated again. Works for any existing account, even one that predates self-registration.</p>
+      <button type="submit" class="btn-primary">Send link</button>
+      <p id="app-forgot-msg" class="auth-msg" role="status"></p>
+      <p class="toggle-mode"><a id="auth-modal-back-to-signin" href="#">Back to sign in</a></p>
     </form>
     <p class="toggle-mode"><a id="auth-modal-toggle" href="#">Don't have an account? Register</a></p>
   </div>
@@ -427,8 +436,31 @@
     var overlay = document.getElementById("auth-modal");
     var signinForm = document.getElementById("app-signin-form");
     var registerForm = document.getElementById("app-register-form");
+    var forgotForm = document.getElementById("app-forgot-form");
     var heading = document.getElementById("auth-modal-heading");
     var toggleLink = document.getElementById("auth-modal-toggle");
+    var forgotLink = document.getElementById("auth-modal-forgot");
+    var backToSigninLink = document.getElementById("auth-modal-back-to-signin");
+
+    // Three modes sharing one popup — "forgot" added alongside the original signin/
+    // register pair (D-105). The bottom toggle-mode link only ever knows about
+    // signin<->register, so it hides itself in "forgot" mode; that form has its own
+    // "Back to sign in" link instead.
+    function setMode(mode) {
+      signinForm.hidden = mode !== "signin";
+      registerForm.hidden = mode !== "register";
+      forgotForm.hidden = mode !== "forgot";
+      toggleLink.hidden = mode === "forgot";
+      if (mode === "register") {
+        heading.textContent = "Create an account";
+        toggleLink.textContent = "Already have an account? Sign in";
+      } else if (mode === "forgot") {
+        heading.textContent = "Reset your sign-in";
+      } else {
+        heading.textContent = "Sign in";
+        toggleLink.textContent = "Don't have an account? Register";
+      }
+    }
 
     window.openAuthModal = function () {
       overlay.hidden = false;
@@ -438,13 +470,11 @@
       overlay.hidden = true;
       signinForm.reset();
       registerForm.reset();
+      forgotForm.reset();
       document.getElementById("app-signin-msg").textContent = "";
       document.getElementById("app-register-msg").textContent = "";
-      // Always land back on the sign-in half next time it's opened.
-      signinForm.hidden = false;
-      registerForm.hidden = true;
-      heading.textContent = "Sign in";
-      toggleLink.textContent = "Don't have an account? Register";
+      document.getElementById("app-forgot-msg").textContent = "";
+      setMode("signin"); // always land back on sign-in next time it's opened
     }
 
     document.getElementById("auth-modal-close").addEventListener("click", closeAuthModal);
@@ -459,11 +489,38 @@
     // matches profile/index.html's own toggle-auth-mode behavior exactly.
     toggleLink.addEventListener("click", function (e) {
       e.preventDefault();
-      var toRegister = signinForm.hidden === false;
-      signinForm.hidden = toRegister;
-      registerForm.hidden = !toRegister;
-      heading.textContent = toRegister ? "Create an account" : "Sign in";
-      toggleLink.textContent = toRegister ? "Already have an account? Sign in" : "Don't have an account? Register";
+      setMode(signinForm.hidden === false ? "register" : "signin");
+    });
+    forgotLink.addEventListener("click", function (e) {
+      e.preventDefault();
+      setMode("forgot");
+    });
+    backToSigninLink.addEventListener("click", function (e) {
+      e.preventDefault();
+      setMode("signin");
+    });
+
+    forgotForm.addEventListener("submit", async function (e) {
+      e.preventDefault();
+      var email = document.getElementById("modal-forgot-email").value.trim();
+      var msgEl = document.getElementById("app-forgot-msg");
+      msgEl.className = "auth-msg";
+      msgEl.textContent = "Sending…";
+      try {
+        var res = await fetch(`${CLOUD_API_BASE}/forgot-password.php`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: email }),
+        });
+        var resBody = await res.json().catch(function () { return {}; });
+        if (!res.ok) throw new Error(resBody.error || `Request failed (${res.status})`);
+        forgotForm.reset();
+        msgEl.className = "auth-msg ok";
+        msgEl.textContent = resBody.message;
+      } catch (err) {
+        msgEl.className = "auth-msg error";
+        msgEl.textContent = err.message;
+      }
     });
 
     signinForm.addEventListener("submit", async function (e) {

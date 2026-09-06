@@ -91,6 +91,34 @@ function create_wp_user(array $config, string $email, string $password): array {
     throw new RegistrationException('Could not find an available username — try a different email');
 }
 
+// "Forgot your password?" — looks up a WP user by email as the bot-admin, so this
+// service (which stores no email of its own, see db.php) never needs one. context=edit
+// is required to get an "email" field back at all (same reason verify_credentials()
+// needs it for "username," D-118). WP's own `search` parameter is used to narrow the
+// candidates, but never trusted alone — confirmed live it can also match by
+// username/display-name substrings, so every candidate is re-checked against the exact
+// requested email before being treated as a match.
+function find_wp_user_by_email(array $config, string $email): ?array {
+    $ch = curl_init(rtrim($config['wp_url'], '/') . '/wp-json/wp/v2/users?context=edit&search=' . urlencode($email));
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_USERPWD => $config['bot_username'] . ':' . $config['bot_password'],
+        CURLOPT_TIMEOUT => 10,
+    ]);
+    $body = curl_exec($ch);
+    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    if ($status !== 200) return null;
+    $users = json_decode($body, true);
+    if (!is_array($users)) return null;
+    foreach ($users as $user) {
+        if (isset($user['email'], $user['id'], $user['username']) && strcasecmp($user['email'], $email) === 0) {
+            return ['id' => (string) $user['id'], 'username' => $user['username']];
+        }
+    }
+    return null;
+}
+
 // Inserts the local, unverified row and its verification token — separate from
 // ensure_user() in auth.php, which is for the *lazy*, already-trusted path (an account
 // created directly in WordPress, e.g. via WP-CLI) and always inserts as verified.
@@ -99,6 +127,18 @@ function create_unverified_user(PDO $db, string $id, string $username): string {
     $expires = time() + 86400; // 24 hours to click the link
     $db->prepare('INSERT INTO users (id, username, verified, verify_token, verify_token_expires) VALUES (?, ?, 0, ?, ?)')
         ->execute([$id, $username, $token, $expires]);
+    return $token;
+}
+
+// "Forgot your password?"'s own token issuance — same shape as create_unverified_user
+// above, but UPDATEs an existing row (the account already exists in WP; ensure_user()
+// is called first by the caller to guarantee a local row is there to update, covering
+// both "lost the one-time password" and "never had one at all," e.g. a WP-CLI account).
+function issue_password_reset_token(PDO $db, string $id): string {
+    $token = bin2hex(random_bytes(32));
+    $expires = time() + 86400;
+    $db->prepare('UPDATE users SET verify_token = ?, verify_token_expires = ? WHERE id = ?')
+        ->execute([$token, $expires, $id]);
     return $token;
 }
 
@@ -145,6 +185,41 @@ function consume_verify_token(PDO $db, string $token): ?array {
     return $valid ? ['id' => $row['id'], 'username' => $row['username']] : null;
 }
 
+const PLANAGONIA_APP_PASSWORD_NAME = 'Planagonia (registration)';
+
+// Deletes any Application Password this service itself previously issued for $userId —
+// called right before issuing a new one, so a repeat visit to verify.php (now reachable
+// more than once per account via the "forgot your password?" flow, not just at initial
+// registration) replaces the credential instead of accumulating a new one every time.
+// Every old one stays valid forever otherwise (WP never auto-revokes), which would
+// quietly work but leave an ever-growing, pointless list in wp-admin. Only ever matches
+// this exact name — a user's own, differently-named Application Password (made by hand
+// in wp-admin) is never touched.
+function revoke_planagonia_application_passwords(array $config, string $userId): void {
+    $ch = curl_init(rtrim($config['wp_url'], '/') . "/wp-json/wp/v2/users/$userId/application-passwords");
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_USERPWD => $config['bot_username'] . ':' . $config['bot_password'],
+        CURLOPT_TIMEOUT => 10,
+    ]);
+    $body = curl_exec($ch);
+    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    if ($status !== 200 || !is_array($existing = json_decode($body, true))) return;
+    foreach ($existing as $entry) {
+        if (($entry['name'] ?? '') !== PLANAGONIA_APP_PASSWORD_NAME || !isset($entry['uuid'])) continue;
+        $del = curl_init(rtrim($config['wp_url'], '/') . "/wp-json/wp/v2/users/$userId/application-passwords/{$entry['uuid']}");
+        curl_setopt_array($del, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_USERPWD => $config['bot_username'] . ':' . $config['bot_password'],
+            CURLOPT_CUSTOMREQUEST => 'DELETE',
+            CURLOPT_TIMEOUT => 10,
+        ]);
+        curl_exec($del);
+        curl_close($del);
+    }
+}
+
 // Generates an Application Password *for the newly-verified user*, as the bot-admin —
 // the real fix for the gap found by actually testing this end to end: a self-registered
 // account's own WordPress password was never going to work against the REST API at all
@@ -155,13 +230,14 @@ function consume_verify_token(PDO $db, string $token): ?array {
 // generate this themselves — the entire point of D-019's "WordPress never renders the
 // app's UI" is preserved even through registration, not just ordinary sign-in.
 function create_application_password_for_user(array $config, string $userId): string {
+    revoke_planagonia_application_passwords($config, $userId);
     $ch = curl_init(rtrim($config['wp_url'], '/') . "/wp-json/wp/v2/users/$userId/application-passwords");
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_USERPWD => $config['bot_username'] . ':' . $config['bot_password'],
         CURLOPT_POST => true,
         CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
-        CURLOPT_POSTFIELDS => json_encode(['name' => 'Planagonia (registration)']),
+        CURLOPT_POSTFIELDS => json_encode(['name' => PLANAGONIA_APP_PASSWORD_NAME]),
         CURLOPT_TIMEOUT => 10,
     ]);
     $body = curl_exec($ch);
