@@ -36,6 +36,10 @@ def selected_id(page):
     return page.evaluate("document.getElementById('plan-root').dataset.selectedId")
 
 
+def drag_message(page):
+    return page.evaluate("document.getElementById('dragmsg').textContent")
+
+
 def validation_violations(page):
     """Text of every line currently shown in the F-022/F-023 validation panel."""
     return page.evaluate(

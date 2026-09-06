@@ -2062,6 +2062,12 @@
     // selection highlight (and, on some browsers, try to start a native element drag) on
     // top of whatever this module does with the gesture itself.
     e.preventDefault();
+    // That same preventDefault() also blocks the browser's own default focus-shift on
+    // mousedown (normally any click blurs whatever text control had focus) — a real bug
+    // found by testing F-043: clicking a shape right after typing in the code textarea
+    // left the textarea focused, so the arrow-key nudge/resize shortcut kept moving its
+    // caret instead of nudging the newly-selected element.
+    if (isTextEditableFocus()) document.activeElement.blur();
     if (!program) return;
 
     const el = e.target.closest("[data-id]");
@@ -2167,7 +2173,114 @@
     if (!contextMenuEl.hidden && !contextMenuEl.contains(e.target)) closeContextMenu();
   }
 
-  function handleKeyDown(e) { if (e.key === "Escape") closeContextMenu(); }
+  // ---------- Keyboard nudge/resize for the selected element (F-043) ----------
+  // `settings { keyboardStep: 0.1 }` (meters) — one shared value for both move and resize,
+  // per the request's own wording ("one definable jump size"). Deliberately not tied to
+  // grid.size (grid-module.js): the grid is still purely visual (F-031, grid-snapped
+  // dragging, is unbuilt), so coupling this to it would make keyboard nudging silently
+  // change behavior depending on whether a plan happens to declare a grid.
+  function keyboardStepMeters() {
+    return core.numOf(program?.settings?.keyboardStep ?? 0.1);
+  }
+
+  const RESIZE_MIN = 0.01; // a resize can never shrink a dimension to zero/negative
+
+  // A keyboard nudge is exactly "a drag of a fixed, small magnitude" — applyDrag only ever
+  // reads dragState.id/baseText/singleOnly (its own body never touches clientX/clientY/
+  // moved/cycleCandidates), so a synthetic one-shot dragState reuses its entire pipeline —
+  // connected-node propagation, collision/containment clamping, the outside-slide
+  // mechanic, composite backward-solve — for free, rather than re-deriving any of it here.
+  function nudgeSelected(dx, dy) {
+    applyDrag({ id: selectedId, baseText: core.sourceEl.value, singleOnly: false }, dx, dy);
+  }
+
+  // New, unlike nudgeSelected above — nothing else in this codebase resizes anything.
+  // Deliberately scoped to rect/circle only, the same split F-016's own "Scale" question
+  // already drew: a corner-reference-built polygon/polyline would need every referenced
+  // corner moved outward from a pivot, "a materially different mechanism," not attempted
+  // here. dw/dh: the signed step for the width-ish/height-ish direction — exactly one is
+  // ever nonzero per keypress (one arrow key at a time).
+  function resizeSelected(dw, dh) {
+    withParsedSource((text, base) => {
+      const node = base.nodesById[selectedId];
+      if (!node) return;
+      const shape = node.props.shape;
+      if (shape === "rect" && node.props.size) {
+        const [w0, h0] = node.props.size;
+        const edits = [];
+        if (dw !== 0) {
+          if (!core.isEditable(w0)) { core.dragmsgEl.textContent = `'${selectedId}': width is an expression, can't resize via keyboard — edit it directly`; return; }
+          edits.push({ start: w0.start, end: w0.end, text: core.formatNumber(Math.max(RESIZE_MIN, w0.value + dw), w0.unit) });
+        }
+        if (dh !== 0) {
+          if (!core.isEditable(h0)) { core.dragmsgEl.textContent = `'${selectedId}': height is an expression, can't resize via keyboard — edit it directly`; return; }
+          edits.push({ start: h0.start, end: h0.end, text: core.formatNumber(Math.max(RESIZE_MIN, h0.value + dh), h0.unit) });
+        }
+        if (!edits.length) return;
+        core.sourceEl.value = applyEditsDescending(text, edits);
+        core.dragmsgEl.textContent = "";
+        core.rerender({ preserveViewBox: true });
+        return;
+      }
+      if (shape === "circle" && node.props.radius !== undefined) {
+        const r0 = node.props.radius;
+        if (!core.isEditable(r0)) { core.dragmsgEl.textContent = `'${selectedId}': radius is an expression, can't resize via keyboard — edit it directly`; return; }
+        // No independent width/height to pick between — any of the four arrow keys
+        // drives the one radius; whichever of dw/dh is nonzero is this keypress's delta.
+        const newR = Math.max(RESIZE_MIN, r0.value + (dw || dh));
+        core.sourceEl.value = applyEditsDescending(text, [{ start: r0.start, end: r0.end, text: core.formatNumber(newR, r0.unit) }]);
+        core.dragmsgEl.textContent = "";
+        core.rerender({ preserveViewBox: true });
+        return;
+      }
+      // Shapeless (bare point) or polygon/polyline — no-op, but a clear message rather
+      // than a silent nothing, the same transparency every other unsupported combination
+      // in this codebase already gets.
+      core.dragmsgEl.textContent = shape
+        ? `'${selectedId}': resize isn't supported for shape "${shape}" yet`
+        : `'${selectedId}': has no size to resize`;
+    });
+  }
+
+  const ARROW_KEY_DELTAS = {
+    ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1],
+  };
+
+  // Never true for the SVG viewer itself (nothing in it is a text control) — this exists
+  // specifically so arrow keys keep their existing meaning (move the caret) inside the code
+  // textarea and any modal's text fields (rename, sign-in/register), rather than this
+  // shortcut hijacking them.
+  function isTextEditableFocus() {
+    const el = document.activeElement;
+    return !!el && (el.isContentEditable || el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT");
+  }
+
+  function handleKeyDown(e) {
+    if (e.key === "Escape") { closeContextMenu(); return; }
+    const arrow = ARROW_KEY_DELTAS[e.key];
+    if (!arrow || !selectedId || !program || isTextEditableFocus()) return;
+    // Bail during any other concurrent gesture/menu, the same way other handlers already
+    // do — a keyboard nudge mid-drag or with the relate/context menu open would fight
+    // whatever that other interaction is already doing.
+    if (drag || canvasDrag || relateDrag || !contextMenuEl.hidden) return;
+    e.preventDefault();
+    const step = keyboardStepMeters();
+    const [ux, uy] = arrow;
+    if (e.shiftKey) resizeSelected(ux * step, uy * step);
+    else nudgeSelected(ux * step, uy * step);
+  }
+
+  // Committing on keyup (once per hold), not on every keydown: held-key OS auto-repeat can
+  // fire many keydowns per second, and committing each one would flood undo history — the
+  // opposite of how a mouse-drag already works (commitUndoStep fires once, on release, not
+  // per pointermove frame). A quick tap-and-release still commits immediately; holding the
+  // key coalesces the whole hold into one undo step. commitUndoStep is already a no-op if
+  // nothing changed, so a stray arrow-key release elsewhere (e.g. moving the caret while
+  // typing) costs nothing even without the isTextEditableFocus guard below — kept anyway
+  // to make the scoping obvious rather than relying on that as the only safety net.
+  function handleKeyUp(e) {
+    if (ARROW_KEY_DELTAS[e.key] && !isTextEditableFocus()) core.commitUndoStep();
+  }
 
   // core.M (meters -> SVG viewBox units) is only the right divisor for a mouse-pixel delta
   // when the SVG happens to render at its native, unscaled size. The app's own CSS now
@@ -2435,6 +2548,7 @@
   contextMenuEl.addEventListener("click", handleMenuClick);
   window.addEventListener("pointerdown", handleWindowPointerDown);
   window.addEventListener("keydown", handleKeyDown);
+  window.addEventListener("keyup", handleKeyUp);
   window.addEventListener("pointermove", handlePointerMove);
   window.addEventListener("pointerup", handlePointerUp);
   core.rootEl.addEventListener("pointerover", handlePointerOver);
@@ -2452,6 +2566,7 @@
     contextMenuEl.removeEventListener("click", handleMenuClick);
     window.removeEventListener("pointerdown", handleWindowPointerDown);
     window.removeEventListener("keydown", handleKeyDown);
+    window.removeEventListener("keyup", handleKeyUp);
     window.removeEventListener("pointermove", handlePointerMove);
     window.removeEventListener("pointerup", handlePointerUp);
     core.rootEl.removeEventListener("pointerover", handlePointerOver);

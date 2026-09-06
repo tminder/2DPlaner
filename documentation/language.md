@@ -403,6 +403,18 @@ and gets checked) are the only two this language currently understands; anything
 (a typo, a guessed value) surfaces `placement "X" isn't recognized` the first time that
 element is dragged, instead of the value doing nothing with no explanation anywhere.
 
+**Keyboard nudge/resize (F-043):** once an element is selected, arrow keys move it by
+`keyboardStep` in the pressed direction (reusing this same drag machinery — connected
+elements move with it, exactly as a mouse-drag would), and Shift+arrow resizes it by the
+same step — `Right`/`Left` adjust a `rect`'s width, `Down`/`Up` its height; any of the four
+resizes a `circle`'s `radius` (`Right`/`Down` grow, `Left`/`Up` shrink), since it has no
+independent width/height to pick between. A shapeless (bare point) element or a
+`polygon`/`polyline` has no size this can adjust yet — Shift+arrow is a no-op on either,
+reported via the same message area a drag warning would use, not silently ignored. Holding
+a key coalesces the whole hold into one undo step (committed on release), rather than one
+step per repeated keystroke. Arrow keys keep their ordinary meaning (moving the caret)
+whenever the code editor or any text field has focus.
+
 ## Modules
 
 Modules can add new rendering and new interactivity, and can add new *reusable, higher-
@@ -525,6 +537,14 @@ has already changed shape more than once since the first real plans existed (`pl
 all to tell which revision an old saved plan assumed — costless to add now, expensive to
 retrofit once plans are saved somewhere longer-lived than a single browser's own
 `localStorage`.
+
+**`keyboardStep` (F-043) — the distance (in meters) one arrow-key press moves or resizes
+the selected element.** `settings { keyboardStep: 0.1 }` is the default if omitted; one
+shared value drives both the plain-arrow move and the Shift+arrow resize described under
+"Editing and drag-and-drop" above. Deliberately independent of `grid-module.js`'s own `settings { grid: { size } }` — the
+visual grid has no effect on where a drag can land (F-031 is still open), so tying
+keyboard-step to it would make this shortcut's behavior depend on an unrelated, optional
+module being declared at all.
 
 ## Worked examples
 
