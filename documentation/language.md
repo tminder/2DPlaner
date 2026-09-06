@@ -92,15 +92,21 @@ written:
 connection swivel_seat table { kind: "directional" }
 ```
 
-**Note:** the property block is new syntax (D-029) — the drag/render logic doesn't yet
-treat `kind` differently either way; only the ability to *write* it exists so far.
+**Note:** `kind` (symmetric vs. directional) stays write-only — nothing in the app branches
+on it yet; it's syntax reserved for a future distinction, not a dead end expected to be
+removed.
 
-**Caveat:** Connections are the least-tested part of this language. [Prototypes/03-drag-sync/](../Prototypes/03-drag-sync/)
-is the only prototype that implements them at all, and only in the sense that D-018 later
-showed was the wrong tool for the job it was tested on (see D-014's status note in
-[decisions.md](../planning/decisions.md#d-014-connection-semantics)) — 04 and 05 drop
-Connections entirely in favor of shared corners. Treat this syntax as unconfirmed for
-Connections' actual remaining purpose (loose attachments), not as settled.
+**Creating and removing a connection interactively:** hold Ctrl (Cmd on macOS) and drag one
+element onto another, anywhere on the canvas — the two don't need to be touching. Releasing
+over a valid target (not the source itself, and not a structural ancestor/descendant of it)
+opens a small menu: "Connect to `<target>`" writes a plain `connection` line; "Attach
+outside `<target>`" (offered only when the target is a `shape: "rect"`, and the dragged
+element is a bare point) additionally sets `placement: "outside"` on the source and snaps it
+to the nearest point on the target's boundary — see the Drag-and-drop section below for what
+`"outside"` then does on later drags. Right-clicking an element with one or more connections offers a
+"Disconnect" action (or a submenu, one per partner, if it has several) to remove one.
+`settings { showConnections: true }` draws a thin dashed line between every connected pair's
+centers as a permanent, opt-in visibility aid (off by default, mirroring `grid`).
 
 Higher-level concepts like a wall-with-a-door are not language keywords; they're composed
 from Elements and Connections by the plan's author, or provided as a reusable composition

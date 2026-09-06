@@ -38,10 +38,12 @@
          touches stroke-width at all, so it reads consistently regardless of how thick or
          thin the shape's own stroke already is. */
       svg .obj.selected { filter: drop-shadow(0 0 2px rgba(124,58,237,0.55)); }
-      svg .icon-btn { cursor: pointer; }
-      svg .icon-btn circle { transition: r 0.1s; }
-      #plan-root:not(.dragging) svg .icon-btn:hover circle { r: 11; }
       #plan-root:not(.dragging) .anchor-hit:hover { fill: #e33; opacity: 0.7; }
+      /* Live feedback for the Ctrl/Cmd-drag relate gesture: whichever other element is
+         currently under the cursor while the source itself stays put — a distinct color
+         (green, matching the old connect icon's own color) so it doesn't read as plain hover
+         or as the purple selection glow. */
+      svg .obj.relate-candidate { filter: drop-shadow(0 0 3px rgba(42,138,62,0.85)); }
       svg .obj.corner-preview { stroke: #e33 !important; filter: drop-shadow(0 0 2px #e33); }
       /* F-021's remaining half: discovering a hidden element exists at all, not just
          reaching it (D-077's click-cycling already covers reaching it). Dimming *every*
@@ -186,6 +188,10 @@
   let lastBboxes = {};
   let selectedId = null;
   let drag = null;
+  // Ctrl/Cmd+drag on an element (replacing the old +/- icons): fromId never moves for the
+  // gesture's duration, candidateId tracks whichever other element is currently under the
+  // cursor (null when there's no valid target there) so it can get a live highlight.
+  let relateDrag = null;
   let contextMenuItems = [];
   // F-019/F-021: the point and chosen id of the last plain click (not a drag) that landed
   // on more than one stacked element — lets a *repeated* click at the same spot step to the
@@ -204,39 +210,15 @@
   let lastCoreFit = null;
   let canvasDrag = null; // pointerdown on empty space: pending pan-or-click, see handlePointerDown
 
-  // ---------- Adjacency / contact-point / snap geometry ----------
+  // ---------- Snap geometry ----------
   const TOUCH_TOLERANCE = 0.05;
 
   // A bare position-only element (no shape) gets a degenerate, zero-size box rather than
   // being excluded from connect/disconnect entirely.
   function isPointBox(b) { return b.left === b.right && b.top === b.bottom; }
 
-  function isAdjacent(a, b) {
-    if (isPointBox(a) || isPointBox(b)) {
-      if (isPointBox(a) && isPointBox(b)) {
-        return Math.abs(a.left - b.left) <= TOUCH_TOLERANCE && Math.abs(a.top - b.top) <= TOUCH_TOLERANCE;
-      }
-      const point = isPointBox(a) ? a : b, rect = isPointBox(a) ? b : a;
-      const onVerticalEdge = (Math.abs(point.left - rect.left) <= TOUCH_TOLERANCE || Math.abs(point.left - rect.right) <= TOUCH_TOLERANCE)
-        && point.top >= rect.top - TOUCH_TOLERANCE && point.top <= rect.bottom + TOUCH_TOLERANCE;
-      const onHorizontalEdge = (Math.abs(point.top - rect.top) <= TOUCH_TOLERANCE || Math.abs(point.top - rect.bottom) <= TOUCH_TOLERANCE)
-        && point.left >= rect.left - TOUCH_TOLERANCE && point.left <= rect.right + TOUCH_TOLERANCE;
-      return onVerticalEdge || onHorizontalEdge;
-    }
-    // Two rects: adjacent means genuine edge contact — one axis's gap near zero while the
-    // other axis's ranges actually overlap — not just any bounding-box overlap (which would
-    // also match one rect containing another) and not corner-only touching.
-    const xGap = Math.max(a.left, b.left) - Math.min(a.right, b.right);
-    const yGap = Math.max(a.top, b.top) - Math.min(a.bottom, b.bottom);
-    const xTouch = Math.abs(xGap) <= TOUCH_TOLERANCE;
-    const yTouch = Math.abs(yGap) <= TOUCH_TOLERANCE;
-    if (xTouch && yGap < 0) return true;
-    if (yTouch && xGap < 0) return true;
-    return false;
-  }
-
   // Which edge of `rect` a point is nearest to, and within that edge's span — shared by
-  // icon placement, connect-snap, and constrained-slide-along-the-wall.
+  // connect-snap and constrained-slide-along-the-wall.
   function nearestRectEdge(point, rect) {
     const withinYSpan = point.top >= rect.top - TOUCH_TOLERANCE && point.top <= rect.bottom + TOUCH_TOLERANCE;
     const withinXSpan = point.left >= rect.left - TOUCH_TOLERANCE && point.left <= rect.right + TOUCH_TOLERANCE;
@@ -254,48 +236,8 @@
     return candidates[0];
   }
 
-  // How far to place a connect/disconnect icon from a point element's own position. Not
-  // zero: an icon rendered exactly on a point's anchor-hit circle would win every
-  // pointerdown there (painted after anchors), so a click meant to drag the point would
-  // instead re-fire the icon's action. 0.35m (21px at M=60) clears both hit radii.
-  const ICON_POINT_OFFSET = 0.35;
-
-  function contactPoint(a, b) {
-    if (isPointBox(a) && isPointBox(b)) return [a.left, a.top - ICON_POINT_OFFSET];
-    if (isPointBox(a) || isPointBox(b)) {
-      const point = isPointBox(a) ? a : b, rect = isPointBox(a) ? b : a;
-      const nearest = nearestRectEdge(point, rect) ?? { edge: "top" };
-      const ox = nearest.edge === "left" ? -1 : nearest.edge === "right" ? 1 : 0;
-      const oy = nearest.edge === "top" ? -1 : nearest.edge === "bottom" ? 1 : 0;
-      return [point.left + ox * ICON_POINT_OFFSET, point.top + oy * ICON_POINT_OFFSET];
-    }
-    const xOverlap = Math.min(a.right, b.right) - Math.max(a.left, b.left);
-    const yOverlap = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
-    if (xOverlap < yOverlap) {
-      const cx = a.right <= b.left ? (a.right + b.left) / 2 : (b.right + a.left) / 2;
-      const cy = (Math.max(a.top, b.top) + Math.min(a.bottom, b.bottom)) / 2;
-      return [cx, cy];
-    }
-    const cy = a.bottom <= b.top ? (a.bottom + b.top) / 2 : (b.bottom + a.top) / 2;
-    const cx = (Math.max(a.left, b.left) + Math.min(a.right, b.right)) / 2;
-    return [cx, cy];
-  }
-
-  function iconMarkup(action, cx, cy, aId, bId) {
-    const color = action === "connect" ? "#2a8a3e" : "#c0392b";
-    const symbol = action === "connect"
-      ? `<line x1="${cx-4}" y1="${cy}" x2="${cx+4}" y2="${cy}" stroke="white" stroke-width="2" stroke-linecap="round" />
-         <line x1="${cx}" y1="${cy-4}" x2="${cx}" y2="${cy+4}" stroke="white" stroke-width="2" stroke-linecap="round" />`
-      : `<line x1="${cx-4}" y1="${cy-4}" x2="${cx+4}" y2="${cy+4}" stroke="white" stroke-width="2" stroke-linecap="round" />
-         <line x1="${cx-4}" y1="${cy+4}" x2="${cx+4}" y2="${cy-4}" stroke="white" stroke-width="2" stroke-linecap="round" />`;
-    return `<g class="icon-btn" data-action="${action}" data-a="${aId}" data-b="${bId}" pointer-events="all">
-      <circle cx="${cx}" cy="${cy}" r="9" fill="${color}" stroke="white" stroke-width="1.5" />
-      ${symbol}
-    </g>`;
-  }
-
   // Rect bboxes plus a degenerate box for any bare position-only element — used for the
-  // connect-snap check and (via handleRendered) the icon overlay itself.
+  // connect-snap check and the Ctrl-drag relate gesture's own "attach outside" snap.
   function computeBboxes(node, positions, bboxes) {
     const abs = positions[node.id];
     if (node.props.shape === "rect" && node.props.size) {
@@ -1308,6 +1250,112 @@
     core.commitUndoStep();
   }
 
+  // ---------- Ctrl/Cmd+drag to create a relationship — replaces the old +/- icons ----------
+  // A screen point (drag-release, in client pixels) converted into the same meter-space
+  // bboxes/positions already live in — mirrors handleWheel's own viewBox-from-cursor math
+  // (current = viewState||lastCoreFit, scale from the SVG's actual on-screen size), then
+  // divides out core.M since bboxes/positions are in meters, not raw viewBox units.
+  function clientToPlanPoint(clientX, clientY) {
+    const svg = core.rootEl.querySelector("svg");
+    const current = viewState || lastCoreFit;
+    if (!svg || !current) return null;
+    const rect = svg.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
+    const scale = Math.min(rect.width / current.width, rect.height / current.height);
+    return [current.x + (clientX - rect.left) / scale, current.y + (clientY - rect.top) / scale].map((v) => v / core.M);
+  }
+
+  // The nearest point lying exactly on a rect's boundary to an arbitrary point — unlike
+  // nearestRectEdge (which only ever answers for a point already within tolerance of one
+  // edge's own span, the "already resting against it" case), this always has an answer:
+  // outside the rect, clamping each axis into range already lands on the boundary itself
+  // (an edge if only one axis was out of range, a corner if both were); inside it, the
+  // nearest of the four edges by simple distance.
+  function nearestBoundaryPoint([px, py], rect) {
+    if (px < rect.left || px > rect.right || py < rect.top || py > rect.bottom) {
+      return [Math.min(Math.max(px, rect.left), rect.right), Math.min(Math.max(py, rect.top), rect.bottom)];
+    }
+    const candidates = [
+      { d: px - rect.left, p: [rect.left, py] },
+      { d: rect.right - px, p: [rect.right, py] },
+      { d: py - rect.top, p: [px, rect.top] },
+      { d: rect.bottom - py, p: [px, rect.bottom] },
+    ];
+    candidates.sort((a, b) => a.d - b.d);
+    return candidates[0].p;
+  }
+
+  // Sets `placement: "outside"` on the source and snaps it to wherever the drop point lands
+  // on the target's boundary — the cold-start anchor D-032's own live outside-slide mechanic
+  // never had (F-035): that mechanic only ever *continues* an existing "resting on an edge"
+  // state, it never establishes one. Scoped to a bare-point source (no shape) attaching to a
+  // rect target, matching exactly what the live slide mechanic itself can act on afterward —
+  // offering this for a shaped source would set an inert property with no follow-on behavior.
+  function attachOutside(fromId, toId, dropClientX, dropClientY) {
+    withParsedSource((text, base) => {
+      const node = base.nodesById[fromId];
+      const target = base.nodesById[toId];
+      if (!node || !target) return;
+
+      const positions = {};
+      core.computePositions(base.root, null, [0, 0], positions);
+      const bboxes = {};
+      computeBboxes(base.root, positions, bboxes);
+      const fromBox = bboxes[fromId], toBox = bboxes[toId];
+      if (!fromBox || !toBox || !isPointBox(fromBox)) return;
+
+      const dropPoint = clientToPlanPoint(dropClientX, dropClientY)
+        ?? [(fromBox.left + toBox.left) / 2, (fromBox.top + toBox.top) / 2];
+      const [nx, ny] = nearestBoundaryPoint(dropPoint, toBox);
+      const dx = nx - fromBox.left, dy = ny - fromBox.top;
+
+      const cornerUsers = {};
+      core.computeCornerUsers(base.root, cornerUsers);
+      const parent = node.parentId ? base.nodesById[node.parentId] : null;
+      const edits = [...core.nodeDragEdits(node, parent, dx, dy, base, cornerUsers, [])];
+
+      const existing = findOwnPropertyLine(text, node, "placement");
+      if (existing) edits.push({ start: existing.start, end: existing.end, text: `${existing.indent}placement: "outside"` });
+      else edits.push({ start: afterHeaderLine(text, node), end: afterHeaderLine(text, node), text: `${lineIndentAt(text, node.start)}  placement: "outside"\n` });
+
+      const newText = applyEditsDescending(text, edits).trimEnd() + `\nconnection ${fromId} ${toId}\n`;
+      commitSourceEdit(newText, `'${fromId}': attached outside '${toId}'.`);
+    });
+  }
+
+  // The Ctrl-drag gesture's own drop-point choice menu — a pair's actions, not one node's
+  // own (unlike contextMenuItems/openContextMenu), so it's built by this separate function
+  // reusing the exact same contextMenuEl/contextMenuItems/renderMenuItems/handleMenuClick/
+  // closeContextMenu machinery rather than folded into openContextMenu itself.
+  function openRelateMenu(fromId, toId, x, y) {
+    contextMenuItems = [];
+    const renderItems = [];
+    const push = (item) => { contextMenuItems.push(item); return contextMenuItems.length - 1; };
+
+    const fromNode = program.nodesById[fromId];
+    const toNode = program.nodesById[toId];
+    const alreadyConnected = program.connections.some((c) =>
+      (c.from === fromId && c.to === toId) || (c.from === toId && c.to === fromId));
+
+    renderItems.push({ i: push({
+      label: `Connect to ${displayName(toNode)}`,
+      action: () => createConnection(fromId, toId),
+      disabled: alreadyConnected,
+    }) });
+
+    if (!fromNode.props.shape && toNode.props.shape === "rect" && toNode.props.size) {
+      renderItems.push({ i: push({
+        label: `Attach outside ${displayName(toNode)}`,
+        action: () => attachOutside(fromId, toId, x, y),
+      }) });
+    }
+
+    contextMenuEl.innerHTML = renderMenuItems(renderItems);
+    contextMenuEl.style.left = `${x}px`;
+    contextMenuEl.style.top = `${y}px`;
+    contextMenuEl.hidden = false;
+  }
+
   // ---------- Duplicate (F-016) ----------
   // Locates the identifier token immediately following the `element` keyword at a known
   // declaration start — node.start already points there (D-030), but only covers the
@@ -1735,6 +1783,24 @@
       renderItems.push({ label: "Placement", group: placementItems });
     }
 
+    // Removing a relationship moves here from the old ×icon (reported directly as "etwas
+    // umständlich") — mirrors Placement's own group-vs-flat-item shape: a single partner
+    // gets one direct action, more than one gets a submenu naming each by displayName.
+    const ownConnections = program.connections.filter((c) => c.from === nodeId || c.to === nodeId);
+    if (ownConnections.length === 1) {
+      const c = ownConnections[0];
+      const partnerId = c.from === nodeId ? c.to : c.from;
+      const partner = program.nodesById[partnerId];
+      renderItems.push({ i: push({ label: `Disconnect from ${displayName(partner)}`, action: () => removeConnection(c.from, c.to) }) });
+    } else if (ownConnections.length > 1) {
+      const disconnectItems = ownConnections.map((c) => {
+        const partnerId = c.from === nodeId ? c.to : c.from;
+        const partner = program.nodesById[partnerId];
+        return { i: push({ label: displayName(partner), action: () => removeConnection(c.from, c.to) }) };
+      });
+      renderItems.push({ label: "Disconnect", group: disconnectItems });
+    }
+
     contextMenuEl.innerHTML = renderMenuItems(renderItems);
     contextMenuEl.style.left = `${x}px`;
     contextMenuEl.style.top = `${y}px`;
@@ -1770,9 +1836,8 @@
     }
   }
 
-  // ---------- After every render, reapply the selection class and lay the connect/
-  // disconnect icons on top. Full DOM replacement each render means there's never stale
-  // overlay state to clean up first. ----------
+  // ---------- After every render, reapply the selection class. Full DOM replacement each
+  // render means there's never stale overlay state to clean up first. ----------
   function handleRendered(prog, result) {
     program = prog;
     const positions = {};
@@ -1841,28 +1906,6 @@
       }
     }
 
-    const icons = [];
-    for (const c of prog.connections) {
-      if (c.from !== selectedId && c.to !== selectedId) continue;
-      const a = lastBboxes[c.from], b = lastBboxes[c.to];
-      if (!a || !b) continue;
-      const [cx, cy] = contactPoint(a, b);
-      icons.push(iconMarkup("disconnect", cx * core.M, cy * core.M, c.from, c.to));
-    }
-    if (selectedId && lastBboxes[selectedId]) {
-      const sel = lastBboxes[selectedId];
-      for (const [otherId, b] of Object.entries(lastBboxes)) {
-        if (otherId === selectedId || !isAdjacent(sel, b)) continue;
-        const already = prog.connections.some((c) =>
-          (c.from === selectedId && c.to === otherId) || (c.from === otherId && c.to === selectedId));
-        if (already) continue;
-        const [cx, cy] = contactPoint(sel, b);
-        icons.push(iconMarkup("connect", cx * core.M, cy * core.M, selectedId, otherId));
-      }
-    }
-    // Appended after core's own output (including its anchors, painted last) — icons end
-    // up on top of anchors, a known ordering tradeoff of icons living entirely outside core.
-    if (icons.length) svgEl.insertAdjacentHTML("beforeend", icons.join("\n"));
   }
   const unregisterOnRendered = core.onRendered(handleRendered);
 
@@ -1980,14 +2023,6 @@
     e.preventDefault();
     if (!program) return;
 
-    const iconEl = e.target.closest("[data-action]");
-    if (iconEl) {
-      const { action, a, b } = iconEl.dataset;
-      if (action === "connect") createConnection(a, b);
-      else removeConnection(a, b);
-      return;
-    }
-
     const el = e.target.closest("[data-id]");
     if (!el) {
       // Empty canvas: could be a plain click (deselect) or the start of a pan — decided by
@@ -1996,6 +2031,16 @@
         startView: viewState || lastCoreFit };
       return;
     }
+
+    // Ctrl/Cmd+drag on an element starts the relate gesture instead of an ordinary
+    // drag/click-cycle — the source never moves for its duration (see handlePointerMove),
+    // so none of the click-cycling machinery below applies to it at all.
+    if (e.ctrlKey || e.metaKey) {
+      relateDrag = { fromId: el.dataset.id, candidateId: null };
+      core.rootEl.classList.add("dragging");
+      return;
+    }
+
     // Which element a click actually targets: normally whatever's topmost at this pixel
     // (el.dataset.id, same as before) — unless this click lands within tolerance of the
     // *previous* plain click's own point, in which case it steps to whatever was one layer
@@ -2158,6 +2203,24 @@
       svg.setAttribute("viewBox", `${newX} ${newY} ${base.width} ${base.height}`);
       return;
     }
+    if (relateDrag) {
+      // Live-under-cursor target, not the source itself and not one of its own structural
+      // ancestors/descendants — the same isAncestorOf check applyDrag's own connection
+      // propagation already uses to avoid double-moving a structurally-nested pair, reused
+      // here for the same underlying reason: relating a node to its own container/child
+      // isn't a meaningful relationship this language has any other way to represent.
+      const el = document.elementFromPoint(e.clientX, e.clientY)?.closest("[data-id]");
+      const hoveredId = el?.dataset.id;
+      const valid = hoveredId && hoveredId !== relateDrag.fromId && program.nodesById[hoveredId]
+        && !isAncestorOf(hoveredId, relateDrag.fromId, program) && !isAncestorOf(relateDrag.fromId, hoveredId, program);
+      const newCandidateId = valid ? hoveredId : null;
+      if (newCandidateId !== relateDrag.candidateId) {
+        if (relateDrag.candidateId) core.rootEl.querySelector(`[data-id="${CSS.escape(relateDrag.candidateId)}"]`)?.classList.remove("relate-candidate");
+        if (newCandidateId) core.rootEl.querySelector(`[data-id="${CSS.escape(newCandidateId)}"]`)?.classList.add("relate-candidate");
+        relateDrag.candidateId = newCandidateId;
+      }
+      return;
+    }
     if (!drag) {
       if (program) updateStackedHint(e.clientX, e.clientY, core.rootEl.contains(e.target));
       return;
@@ -2172,8 +2235,18 @@
     applyDrag(drag, dx, dy);
   }
 
-  function handlePointerUp() {
+  function handlePointerUp(e) {
     core.rootEl.classList.remove("dragging");
+    if (relateDrag) {
+      const { fromId, candidateId } = relateDrag;
+      if (candidateId) core.rootEl.querySelector(`[data-id="${CSS.escape(candidateId)}"]`)?.classList.remove("relate-candidate");
+      relateDrag = null;
+      // Releasing over empty canvas, back on the source, or an invalid (ancestor/descendant)
+      // candidate does nothing at all — the same graceful "changed your mind" shape a
+      // cancelled ordinary drag already has, no menu and no edit either way.
+      if (candidateId) openRelateMenu(fromId, candidateId, e.clientX, e.clientY);
+      return;
+    }
     if (canvasDrag) {
       const wasClick = !canvasDrag.moved;
       canvasDrag = null;
@@ -2199,7 +2272,7 @@
   // fires over/out for whatever it happens to pass across mid-gesture, not just what's
   // actually being interacted with (same reasoning as the object-drag case).
   function handlePointerOver(e) {
-    if (drag || canvasDrag) return;
+    if (drag || canvasDrag || relateDrag) return;
     const el = e.target.closest("[data-id]");
     if (!el || !program) return;
     const users = el.dataset.cornerUsers;

@@ -84,21 +84,26 @@ def open_context_menu(page, x, y):
 def click_menu_item(page, label):
     """Finds the item with this exact label by its own data-i (never by array position,
     which no longer lines up 1:1 with data-i once a non-clickable group header can also
-    appear among the <li> elements), hovers its group open first if it's nested inside
-    one -- CSS :hover only responds to genuine pointer input, not a dispatched event, so
-    this uses Playwright's own .hover() the same way a real user would open the flyout."""
-    li_data_i = page.evaluate(
+    appear among the <li> elements), hovers its own specific enclosing group open first if
+    it's nested inside one -- CSS :hover only responds to genuine pointer input, not a
+    dispatched event, so this uses Playwright's own .hover() the same way a real user would
+    open the flyout. Walks up to find *which* group (there can be more than one open at
+    once now, e.g. Placement and Disconnect together) rather than always hovering whichever
+    submenu happens to appear first in the menu."""
+    li_data_i, group_index = page.evaluate(
         """(label) => {
             const items = Array.from(document.querySelectorAll('#interactivity-context-menu li[data-i]'));
             const match = items.find((el) => el.querySelector('.menu-label').textContent.trim() === label);
-            return match ? match.dataset.i : null;
+            if (!match) return [null, -1];
+            const group = match.closest('li.has-submenu');
+            const groups = Array.from(document.querySelectorAll('#interactivity-context-menu li.has-submenu'));
+            return [match.dataset.i, group ? groups.indexOf(group) : -1];
         }""",
         label,
     )
     assert li_data_i is not None, f"menu item not found: {label!r}"
-    groups = page.locator("#interactivity-context-menu li.has-submenu")
-    if groups.count():
-        groups.first.hover()
+    if group_index != -1:
+        page.locator("#interactivity-context-menu li.has-submenu").nth(group_index).hover()
         page.wait_for_timeout(100)
     page.locator(f'#interactivity-context-menu li[data-i="{li_data_i}"]').click()
     page.wait_for_timeout(200)
@@ -116,6 +121,21 @@ def drag(page, from_x, from_y, to_x, to_y, steps=6):
     page.mouse.move(to_x, to_y, steps=steps)
     page.wait_for_timeout(30)
     page.mouse.up()
+    page.wait_for_timeout(150)
+
+
+def ctrl_drag(page, from_x, from_y, to_x, to_y, steps=6):
+    """The Ctrl/Cmd+drag relate gesture: holds Control for the whole gesture (mirroring a
+    real user holding the key down throughout), released only after pointerup so the
+    browser's own click-event synthesis doesn't fire with the modifier already gone."""
+    page.keyboard.down("Control")
+    page.mouse.move(from_x, from_y)
+    page.mouse.down()
+    page.wait_for_timeout(30)
+    page.mouse.move(to_x, to_y, steps=steps)
+    page.wait_for_timeout(30)
+    page.mouse.up()
+    page.keyboard.up("Control")
     page.wait_for_timeout(150)
 
 

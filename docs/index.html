@@ -251,6 +251,9 @@
     <button class="ribbon-btn" id="grid-toggle-btn">
       <span class="ribbon-icon">⊞</span><span class="ribbon-label">Grid</span>
     </button>
+    <button class="ribbon-btn" id="connections-toggle-btn" title="Show a line between every connected pair of elements">
+      <span class="ribbon-icon">⌁</span><span class="ribbon-label">Connections</span>
+    </button>
   </div>
   <div class="ribbon-divider"></div>
   <div class="ribbon-group">
@@ -1720,6 +1723,7 @@ async function rerender(opts = {}) {
     errorEl.textContent = "";
     clearTimeout(errorHideTimer);
     updateGridToggleUi();
+    updateShowConnectionsToggleUi();
     for (const cb of renderedCallbacks) cb(program, result);
     return result;
   } catch (e) {
@@ -1782,14 +1786,17 @@ function findSettingsSpan(text) {
   return null;
 }
 
-function findGridKeySpan(settingsSpan) {
+// Generalized from grid's own original one-off (D-103/F-042) so a second flat toggle
+// (showConnections) can share the same tokenizer-walk instead of duplicating it -- only the
+// key name and what to insert when turning it on differ between callers.
+function findSettingsKeySpan(settingsSpan, key) {
   const { tokens, openIdx, closeIdx } = settingsSpan;
   let depth = 0;
   for (let i = openIdx; i <= closeIdx; i++) {
     const t = tokens[i];
     if (t.type === "LBRACE") depth++;
     else if (t.type === "RBRACE") depth--;
-    else if (depth === 1 && t.type === "IDENT" && t.value === "grid" && tokens[i + 1]?.type === "COLON") {
+    else if (depth === 1 && t.type === "IDENT" && t.value === key && tokens[i + 1]?.type === "COLON") {
       let j = i + 2;
       let end = tokens[j]?.end ?? t.end;
       if (tokens[j]?.type === "LBRACE") {
@@ -1805,17 +1812,17 @@ function findGridKeySpan(settingsSpan) {
   return null;
 }
 
-function toggleGridSetting() {
+function toggleSettingsFlag(key, insertLiteral) {
   const text = sourceEl.value;
   const settingsSpan = findSettingsSpan(text);
-  const gridSpan = settingsSpan && findGridKeySpan(settingsSpan);
+  const keySpan = settingsSpan && findSettingsKeySpan(settingsSpan, key);
   let newText;
-  if (gridSpan) {
+  if (keySpan) {
     // Removing the key entirely (not just blanking it) -- also eat one trailing newline
     // (plus same-line indentation before it) so turning the only setting off doesn't leave
     // a blank line sitting inside `settings { }`.
-    let start = gridSpan.start;
-    let end = gridSpan.end;
+    let start = keySpan.start;
+    let end = keySpan.end;
     const lineStart = text.lastIndexOf("\n", start - 1) + 1;
     if (text.slice(lineStart, start).trim() === "") start = lineStart;
     while (text[end] === " " || text[end] === "\t") end++;
@@ -1823,23 +1830,32 @@ function toggleGridSetting() {
     newText = text.slice(0, start) + text.slice(end);
   } else if (settingsSpan) {
     const insertAt = settingsSpan.start + 1;
-    newText = `${text.slice(0, insertAt)}\n  grid: { }${text.slice(insertAt)}`;
+    newText = `${text.slice(0, insertAt)}\n  ${key}: ${insertLiteral}${text.slice(insertAt)}`;
   } else {
     // No `settings { }` block at all yet -- insert a new one, but after any leading
     // `module "..."` lines (the grammar requires modules, then settings, in that order).
     const moduleLines = /^(?:\s*module\s+"[^"]*"\s*\n)*/;
     const insertAt = text.match(moduleLines)[0].length;
-    newText = `${text.slice(0, insertAt)}settings {\n  grid: { }\n}\n\n${text.slice(insertAt)}`;
+    newText = `${text.slice(0, insertAt)}settings {\n  ${key}: ${insertLiteral}\n}\n\n${text.slice(insertAt)}`;
   }
   sourceEl.value = newText;
   rerender();
   commitUndoStep();
 }
 
+function toggleGridSetting() { toggleSettingsFlag("grid", "{ }"); }
+function toggleShowConnectionsSetting() { toggleSettingsFlag("showConnections", "true"); }
+
 function updateGridToggleUi() {
   const btn = document.getElementById("grid-toggle-btn");
   if (!btn) return;
   btn.classList.toggle("active", program?.settings?.grid !== undefined);
+}
+
+function updateShowConnectionsToggleUi() {
+  const btn = document.getElementById("connections-toggle-btn");
+  if (!btn) return;
+  btn.classList.toggle("active", program?.settings?.showConnections === true);
 }
 
 function newPlanFromExample(key) {
@@ -1891,6 +1907,7 @@ document.getElementById("rename-btn").addEventListener("click", () => {
 });
 
 document.getElementById("grid-toggle-btn").addEventListener("click", toggleGridSetting);
+document.getElementById("connections-toggle-btn").addEventListener("click", toggleShowConnectionsSetting);
 
 document.getElementById("delete-btn").addEventListener("click", () => {
   const p = activePlan();

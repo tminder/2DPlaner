@@ -203,6 +203,45 @@
     }
   }
 
+  // A `connection`'s own anchor for the discoverability line — the same "meaningful center"
+  // each shape kind already has for its dimension/label anchor above, reused here rather than
+  // introducing a second per-shape branch: a rect/circle's own center, a polygon/polyline's
+  // centroid, or a bare position for anything else (including a shapeless point element,
+  // which has nothing else to anchor to).
+  function nodeCenter(node, positions) {
+    const ownAbs = positions[node.id];
+    if (!ownAbs) return null;
+    const { shape } = node.props;
+    if (shape === "rect" && node.props.size) {
+      const w = core.numOf(node.props.size[0]), h = core.numOf(node.props.size[1]);
+      return [ownAbs[0] + w / 2, ownAbs[1] + h / 2];
+    }
+    if ((shape === "polyline" || shape === "polygon") && node.props.points) {
+      const absPts = node.props.points.map((pt) => core.resolvePointAbs(pt, ownAbs, positions));
+      return [absPts.reduce((s, p) => s + p[0], 0) / absPts.length, absPts.reduce((s, p) => s + p[1], 0) / absPts.length];
+    }
+    return ownAbs;
+  }
+
+  // `settings { showConnections: true }` (D-103's own generalized settings-flag toggle,
+  // shared with Grid) — off by default, matching Grid's own precedent: a discoverability
+  // aid an author opts into, not something drawn over every plan unconditionally.
+  // Deliberately simpler than the Ctrl-drag relate gesture's own nearest-boundary-point
+  // math: a straight center-to-center line, not a precise contact point — this exists to
+  // answer "is anything connected here at all," not to look like a dimensioned drawing.
+  function connectionLineMarkup(prog, positions) {
+    if (prog.settings?.showConnections !== true) return "";
+    const lines = [];
+    for (const c of prog.connections) {
+      const a = prog.nodesById[c.from], b = prog.nodesById[c.to];
+      if (!a || !b) continue;
+      const pa = nodeCenter(a, positions), pb = nodeCenter(b, positions);
+      if (!pa || !pb) continue;
+      lines.push(`<line class="connection-line" x1="${pa[0] * core.M}" y1="${pa[1] * core.M}" x2="${pb[0] * core.M}" y2="${pb[1] * core.M}" stroke="#8a8a8a" stroke-width="1.2" stroke-dasharray="4 3" opacity="0.6" pointer-events="none" />`);
+    }
+    return lines.join("");
+  }
+
   function handleRendered(prog, result) {
     const svgEl = core.rootEl.querySelector("svg");
     if (!svgEl) return;
@@ -210,6 +249,13 @@
     core.computePositions(prog.root, null, [0, 0], positions);
     insertAnnotations(prog.root, positions, prog.settings, svgEl);
     nudgeApartAlwaysAnnotations(svgEl);
+    // Appended last, on top of every shape (including an opaque container's own fill,
+    // e.g. a room a connected pair sits inside) — a real bug found by testing this: drawn
+    // first/underneath, an opaque parent rect painted right after it hid the line
+    // completely. `pointer-events: none` on the line itself means painting it on top never
+    // steals a click from whatever it crosses over, so there's no actual tradeoff here.
+    const connMarkup = connectionLineMarkup(prog, positions);
+    if (connMarkup) svgEl.insertAdjacentHTML("beforeend", connMarkup);
   }
   const unregisterOnRendered = core.onRendered(handleRendered);
 

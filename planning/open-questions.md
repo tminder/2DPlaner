@@ -78,10 +78,6 @@ The visual background grid is built ([decisions.md D-085](decisions.md#d-085-f-0
 
 Distinguishing two things: sharing just the rendered plan (F-005's own static-snapshot proposal, plausibly built on the export mechanism) versus sharing the plan *and* its editable source with a specific person — a fundamentally bigger exposure, handing over everything F-005's own scraping-protection reasoning tries to avoid giving away for free. Not designed: the mechanism for either (a durable share link implies the existing backend; plan+code sharing could be nothing more than exporting and sending source text), whether a shared plan is a live pointer or a frozen snapshot, and how either interacts with F-009's external-module trust question.
 
-## F-035 Placement menu: "Outside" is still not offered
-
-The right-click Placement submenu offers Inside, Snapped to edge, and Free ([decisions.md D-092](decisions.md#d-092-the-right-click-placement-submenu-inside--snapped-to-edge--free-always-shown-with-a-checkmark-for-the-active-one--outside-still-deferred)). "Outside" remains deliberately unoffered: it has no cold-start positioning logic anywhere in this codebase (only ever activates once an element is already touching a target edge mid-drag), so offering it from a menu would silently do nothing for the common case. Building real "find the nearest edge" geometry for it remains open.
-
 ## F-036 Two mobile/touch gaps: pinch-to-zoom, and a touch equivalent for the right-click menu
 
 Confirmed by reading the event wiring: `handleWheel` (the only zoom mechanism) is bound to `wheel` alone, which touch never fires — and `touch-action: none` on shapes (added so single-finger drag doesn't fight native touch pan/zoom) also suppresses the browser's own native pinch-zoom over most of a plan's visible area. The right-click context menu is wired to the `contextmenu` event, which touch can raise via long-press in some browsers, inconsistently and unverified here. Not designed: whether zoom becomes a real two-finger pinch handler (and whether `touch-action: none` needs scoping more narrowly once one exists), and what a touch-friendly context-menu trigger looks like.

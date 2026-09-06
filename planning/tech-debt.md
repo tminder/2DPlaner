@@ -10,9 +10,9 @@ This file holds only *currently open* debt. An entry is removed once it's resolv
 
 `stackOrderCache` (keyed by id-set, populated once and never cleared — not on render, not after a real sibling reorder) and `clickCycle.candidates` (a separate frozen-list mechanism for the same underlying problem: `bringToFront` scrambling live `elementsFromPoint` order mid-interaction) were built at different times to solve the identical issue independently, rather than sharing one. The stacked-element subsystem as a whole (`candidateIdsAtPoint` → `excludeOutsideAttachedPairs` → `resolvedCandidatesAtPoint` → `updateStackedHint` → `bringToFront`) needed several same-day bug-fix rounds after each prior fix missed an edge case — a real fragility signal on its own. `stackOrderCache` is also an unbounded, session-lifetime `Map` with no eviction.
 
-## S-007 `handleRendered` is a god-function with seven unrelated responsibilities
+## S-007 `handleRendered` is a god-function with six unrelated responsibilities
 
-Recomputes bboxes; runs the full plan validation pass; resets/manages pan-zoom `viewState`/`lastCoreFit`; updates the scale bar; toggles the selection class *and* calls `bringToFront` (a DOM reorder); refreshes the stack-hint badge and reapplies `stacked-dim` classes; builds and injects connect/disconnect icon markup — all in one callback with no sub-function boundaries, despite its own name suggesting "reapply overlay state after a render."
+Recomputes bboxes; runs the full plan validation pass; resets/manages pan-zoom `viewState`/`lastCoreFit`; updates the scale bar; toggles the selection class *and* calls `bringToFront` (a DOM reorder); refreshes the stack-hint badge and reapplies `stacked-dim` classes — all in one callback with no sub-function boundaries, despite its own name suggesting "reapply overlay state after a render." (Was seven — D-107 removed the connect/disconnect icon-markup responsibility outright along with the icons themselves, not just moved it elsewhere.)
 
 ## S-008 Validation checkers and drag-time clamps duplicate the same scope logic independently
 
@@ -26,9 +26,9 @@ Some functions take `base`/`program` as an explicit parameter (`excludeOutsideAt
 
 The cleanup comment says it "undoes exactly what setup above did," but only resets `drag`/`canvasDrag`/`selectedId`/`viewState`/`lastCoreFit` — `clickCycle`, `stackHintCandidates`, `contextMenuItems`, `program`, `lastBboxes`, and `stackOrderCache` are left untouched. Harmless today only because the whole IIFE closure is discarded on reload; the comment's claim is inaccurate regardless.
 
-## S-011 Eleven module-level mutable variables with no ownership boundaries
+## S-011 Twelve module-level mutable variables with no ownership boundaries
 
-`program`, `lastBboxes`, `selectedId`, `drag`, `contextMenuItems`, `clickCycle`, `stackHintCandidates`, `viewState`, `lastCoreFit`, `canvasDrag`, `stackOrderCache` — nearly every function reads/writes several of these directly. Correctness currently depends on remembering which handler runs in what order rather than any enforced contract. Worth considering a single explicit state object with documented invariants, at least for the ones that must stay in sync with each other (S-005's own two mechanisms being the clearest case).
+`program`, `lastBboxes`, `selectedId`, `drag`, `relateDrag`, `contextMenuItems`, `clickCycle`, `stackHintCandidates`, `viewState`, `lastCoreFit`, `canvasDrag`, `stackOrderCache` — nearly every function reads/writes several of these directly. Correctness currently depends on remembering which handler runs in what order rather than any enforced contract. Worth considering a single explicit state object with documented invariants, at least for the ones that must stay in sync with each other (S-005's own two mechanisms being the clearest case).
 
 ## `docs/index.html` (core)
 
