@@ -708,11 +708,153 @@ connection hausanschluss_1 verteilkabine
 connection hausanschluss_2 verteilkabine
 connection hausanschluss_3 verteilkabine
 `,
+  // D-112: written specifically to exercise the hierarchy/layers panel — three sibling
+  // groups (exactly the "Einrichtung/Elektrik/Sanitär" trades a real van build separates
+  // into layers), each with its own label so the panel shows a clean name instead of a raw
+  // id, and one deliberate overlap (the water tank sits directly under the bench seat, a
+  // real packaging trick small campervans actually use) so hiding "Einrichtung" visibly
+  // reveals something that was hidden underneath it, not just an empty gap.
+  campervan: `settings {
+  version: 1
+}
+
+element camper {
+  shape: "rect"
+  size: [3.6m, 1.8m]
+  position: [0m, 0m]
+  style: { fill: "#f2f0ec", stroke: "#333", strokeWidth: 0.04 }
+  label: "Camper"
+
+  element einrichtung {
+    label: "Einrichtung"
+
+    element kueche {
+      shape: "rect"
+      size: [0.6m, 1.2m]
+      position: [0m, 0m]
+      style: { fill: "#e8c896", stroke: "#a9895c", strokeWidth: 0.02 }
+      label: "Küche"
+      show: "hover"
+    }
+
+    element sitzbank {
+      shape: "rect"
+      size: [1m, 0.6m]
+      position: [0.8m, 0m]
+      style: { fill: "#d8c7e8", stroke: "#7a5a9a", strokeWidth: 0.02 }
+      label: "Sitzbank"
+      show: "hover"
+    }
+
+    element haengeschrank {
+      shape: "rect"
+      size: [0.8m, 0.25m]
+      position: [0m, 1.55m]
+      style: { fill: "#cbb994", stroke: "#8a7850", strokeWidth: 0.02 }
+      label: "Hängeschrank"
+      show: "hover"
+    }
+
+    element bett {
+      shape: "rect"
+      size: [1.7m, 1.8m]
+      position: [1.9m, 0m]
+      style: { fill: "#cfe0f5", stroke: "#4a76a8", strokeWidth: 0.02 }
+      label: "Bett"
+      show: "always"
+      dimensions: true
+    }
+  }
+
+  element elektrik {
+    label: "Elektrik"
+
+    element batterie {
+      shape: "rect"
+      size: [0.3m, 0.25m]
+      position: [0.05m, 1.5m]
+      style: { fill: "#3a3a38", stroke: "#1c1c1a", strokeWidth: 0.02 }
+      label: "Batterie"
+      show: "hover"
+
+      element batterie_anschluss { position: [0.3m, 0.12m] }
+    }
+
+    element sicherungskasten {
+      shape: "rect"
+      size: [0.25m, 0.2m]
+      position: [1.55m, 1.55m]
+      style: { fill: "#555555", stroke: "#222222", strokeWidth: 0.02 }
+      label: "Sicherungskasten"
+      show: "hover"
+
+      element sicherung_anschluss { position: [0m, 0.1m] }
+    }
+
+    element leselampe {
+      shape: "circle"
+      radius: 0.06m
+      position: [2.7m, 0.2m]
+      style: { fill: "#fce97a", stroke: "#a89a2a", strokeWidth: 0.02 }
+      label: "Leselampe"
+      show: "hover"
+    }
+
+    element kabel_batterie_sicherung {
+      shape: "polyline"
+      points: [batterie_anschluss, sicherung_anschluss]
+      style: { stroke: "#c98a1c", strokeWidth: 0.03, strokeDash: "0.1,0.06" }
+      label: "Kabel"
+      show: "hover"
+    }
+
+    element kabel_sicherung_lampe {
+      shape: "polyline"
+      points: [sicherung_anschluss, [2.7m, 1.5m], leselampe]
+      style: { stroke: "#c98a1c", strokeWidth: 0.03, strokeDash: "0.1,0.06" }
+      label: "Kabel"
+      show: "hover"
+    }
+  }
+
+  element sanitaer {
+    label: "Sanitär"
+
+    element wassertank {
+      shape: "rect"
+      size: [0.9m, 0.5m]
+      position: [0.85m, 0.05m]
+      style: { fill: "#8fc5e0", stroke: "#3a7a9a", strokeWidth: 0.02 }
+      label: "Wassertank"
+      show: "hover"
+    }
+
+    element pumpe {
+      shape: "circle"
+      radius: 0.08m
+      position: [0.7m, 0.4m]
+      style: { fill: "#5aa0c0", stroke: "#2a5a7a", strokeWidth: 0.02 }
+      label: "Pumpe"
+      show: "hover"
+    }
+
+    element abfluss { position: [1.75m, 0.3m] }
+
+    element rohr {
+      shape: "polyline"
+      points: [pumpe, abfluss]
+      style: { stroke: "#3a7a9a", strokeWidth: 0.025 }
+      label: "Rohr"
+      show: "hover"
+    }
+  }
+}
+`,
 };
 
 // Display names for the plan switcher's "New from example…" group — kept separate from
 // EXAMPLES' own keys since those are also used as (stable, never user-facing) identifiers.
-const EXAMPLE_LABELS = { blank: "Blank", apartment: "Studio Apartment", utility: "Electrical Grid" };
+const EXAMPLE_LABELS = { blank: "Blank", apartment: "Studio Apartment", utility: "Electrical Grid", campervan: "Campervan Build" };
 
 // None of the examples declare these themselves, so all three are added automatically if
 // missing (see withAutoModules below) — every plan gets display (label/dimensions/edgeLengths),

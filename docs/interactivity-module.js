@@ -852,8 +852,12 @@
   // outside" gesture live: it correctly wrote `placement: "outside"` onto a bare point, and
   // this schema immediately flagged that exact property as unsupported right back. "hidden"
   // (D-112's layers panel) added proactively for the identical reason — a shapeless point
-  // is just as legitimate a thing to hide as any shaped element.
-  const SHAPELESS_PROPS = ["position", "placement", "hidden"];
+  // is just as legitimate a thing to hide as any shaped element. "label" found missing the
+  // same way, building the campervan example: a bare group container (no shape, e.g.
+  // "einrichtung" wrapping a van's furniture) is exactly what the hierarchy panel's own
+  // displayName(node) — node.props.label ?? node.id, used for every node uniformly — needs
+  // a friendly name for, not just a shaped element.
+  const SHAPELESS_PROPS = ["position", "placement", "hidden", "label"];
 
   function checkUnrecognizedShapes(base, violations) {
     for (const node of collectAllNodes(base.root, [])) {

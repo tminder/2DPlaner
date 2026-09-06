@@ -6,7 +6,7 @@ import pytest
 
 from helpers import select_example, validation_violations
 
-EXAMPLES = ["blank", "apartment", "utility"]
+EXAMPLES = ["blank", "apartment", "utility", "campervan"]
 
 
 @pytest.mark.parametrize("name", EXAMPLES)

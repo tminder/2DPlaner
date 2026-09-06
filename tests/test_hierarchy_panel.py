@@ -2,7 +2,7 @@
 declaration order, per-parent show/hide (`hidden: true`, a new core-level rendering
 property), and sibling reordering via the panel's own up/down buttons."""
 
-from helpers import element_center, load_plan
+from helpers import element_center, load_plan, select_example
 
 VAN_PLAN = """
 element van {
@@ -145,3 +145,18 @@ def test_move_buttons_disabled_at_each_end_of_the_sibling_list(app_page):
     assert by_label["van"] == (None, None)  # root has no siblings at all
     assert by_label["elektrik"] == (True, False)  # already frontmost among van's children
     assert by_label["einrichtung"] == (False, True)  # already backmost
+
+
+def test_campervan_example_demonstrates_a_layer_hiding_something_underneath(app_page):
+    """The shipped "Campervan Build" example was written specifically to showcase this
+    feature -- the water tank sits directly under the bench seat on purpose, so hiding
+    "Einrichtung" should reveal it, not just leave an empty gap."""
+    select_example(app_page, "campervan")
+    open_panel(app_page)
+    assert app_page.locator('[data-id="wassertank"]').count() == 1
+
+    click_row_action(app_page, "Einrichtung", "toggle-hidden")
+    remaining = set(svg_ids(app_page))
+    assert "wassertank" in remaining  # still there
+    assert "sitzbank" not in remaining  # the bench that was covering it is gone
+    assert "kueche" not in remaining and "bett" not in remaining  # whole layer hidden
