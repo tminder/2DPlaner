@@ -107,18 +107,18 @@
      without it a flex child won't shrink below its content's natural size, which is exactly
      how a page ends up scrolling despite "flex: 1" looking like it should prevent that. */
   main { flex: 1 1 auto; min-height: 0; padding: 1rem; display: flex; }
-  .layout { display: flex; gap: 1rem; flex: 1 1 auto; min-height: 0; width: 100%; }
+  .layout { display: flex; gap: 0.4rem; flex: 1 1 auto; min-height: 0; width: 100%; }
   textarea { flex: 0 0 420px; height: 100%; font-family: ui-monospace, Consolas, monospace; font-size: 13px;
     padding: 0.75rem; border: 1px solid #ccc; border-radius: 6px; resize: none; }
   /* F-040: a real draggable divider rather than the textarea's own native corner-resize
      handle (which would only ever resize the textarea itself, not "the split" as a
      whole) — the standard pattern this kind of two-pane layout already uses elsewhere
-     (VS Code, browser devtools). A generous 8px hit area with a slim visible 2px bar
-     centered inside it, so the actual grab target is comfortably wider than what's drawn. */
-  .pane-resizer { flex: 0 0 8px; cursor: col-resize; position: relative; border-radius: 3px; }
-  .pane-resizer::after { content: ""; position: absolute; left: 3px; top: 0; bottom: 0; width: 2px;
-    background: #ccc; border-radius: 1px; }
-  .pane-resizer:hover::after, .pane-resizer:focus-visible::after, .pane-resizer.active::after { background: #888; }
+     (VS Code, browser devtools). Invisible at rest (reported directly: an always-visible
+     line read as an unwanted seam, not a divider) — cursor: col-resize plus a hover/
+     active/focus-only tint is enough of an affordance once someone's already reaching
+     for the gap between the panes. */
+  .pane-resizer { flex: 0 0 6px; cursor: col-resize; border-radius: 3px; }
+  .pane-resizer:hover, .pane-resizer:focus-visible, .pane-resizer.active { background: #ddd; }
   .pane-resizer:focus-visible { outline: 2px solid #2c5f7c; outline-offset: 2px; }
   /* position: relative anchors .status-overlay below — kept here in the page's own CSS
      (not left to the interactivity module) since error display is core, not module,
