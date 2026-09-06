@@ -7,7 +7,10 @@ project, this file describes where things stood when it was written and will dri
 date. Supersedes the 2026-09-05 revision: its single top recommendation (a real, committed
 test suite) is now built and has already paid for itself — see below. Prefer
 `decisions.md`/`open-questions.md`/`tech-debt.md` for current state; treat this file as a
-snapshot of where things stand and what's worth doing next.
+snapshot of where things stand and what's worth doing next. **Since this section was
+written: this snapshot's own #1 recommendation (a CI workflow running the suite
+automatically) is already built too — [D-108](decisions.md#d-108-the-test-suite-now-runs-on-its-own-via-github-actions--deliberately-test-only-not-deploy).
+This snapshot is not kept in sync going forward; see D-108 for current state there.**
 
 ## What the project is
 

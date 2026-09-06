@@ -1,5 +1,7 @@
 # Planagonia
 
+[![Tests](https://github.com/tminder/2DPlaner/actions/workflows/tests.yml/badge.svg)](https://github.com/tminder/2DPlaner/actions/workflows/tests.yml)
+
 A browser-based 2D plan generator where the plan is defined by code: editing the code changes the plan, and (later) editing the plan visually via drag-and-drop changes the code back. See [planning/core-aims.md](planning/core-aims.md) for the full vision and core aims.
 
 **Live:** [www.planagonia.com](https://www.planagonia.com/) — homepage, with the app at
@@ -52,5 +54,6 @@ built: a homepage at the root, the app under `/app`, human-facing documentation 
   tracked and paid down alongside feature work per core-aims.md's fourth aim
 - [documentation/](documentation/) — reference docs: [language.md](documentation/language.md) (the plan language), [architecture.md](documentation/architecture.md) (system components)
 - [tests/](tests/) — the committed regression suite (Python + pytest + Playwright, D-093);
-  `pip install -r tests/requirements.txt && playwright install chromium`, then `pytest tests/`
+  `pip install -r tests/requirements.txt && playwright install chromium`, then `pytest tests/`.
+  Runs automatically on every push/PR via [GitHub Actions](.github/workflows/tests.yml) (D-108).
 - [Prototypes/](Prototypes/) — throwaway experiments/sketches, not a staged build plan; superseded by [docs/](docs/) as the thing to actually run
