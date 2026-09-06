@@ -145,6 +145,29 @@ def ctrl_drag(page, from_x, from_y, to_x, to_y, steps=6):
     page.wait_for_timeout(150)
 
 
+def dispatch_pointer(page, event_type, pointer_id, x, y, pointer_type="touch"):
+    """F-036: Playwright has no multi-touch gesture API, so pinch/long-press are driven by
+    dispatching raw synthetic PointerEvents directly -- pointerdown on whatever's really at
+    (x, y) (so e.target.closest('[data-id]') resolves the same way a real touch would),
+    pointermove/pointerup on window, matching where interactivity-module.js's own listeners
+    are actually attached."""
+    page.evaluate(
+        """([type, id, x, y, ptype]) => {
+            const opts = { pointerId: id, pointerType: ptype, clientX: x, clientY: y,
+                bubbles: true, cancelable: true, button: 0 };
+            const ev = new PointerEvent(type, opts);
+            const target = type === "pointerdown" ? (document.elementFromPoint(x, y) || document.body) : window;
+            target.dispatchEvent(ev);
+        }""",
+        [event_type, pointer_id, x, y, pointer_type],
+    )
+
+
+def view_box(page):
+    box = page.evaluate("document.querySelector('#plan-root svg')?.getAttribute('viewBox')")
+    return [float(v) for v in box.split()] if box else None
+
+
 def stack_badge_lines(page):
     """(text, is_current) for each line currently shown in the F-021 stack-hint badge."""
     lines = page.evaluate(

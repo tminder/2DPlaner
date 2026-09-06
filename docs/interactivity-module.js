@@ -213,6 +213,15 @@
   let lastCoreFit = null;
   let canvasDrag = null; // pointerdown on empty space: pending pan-or-click, see handlePointerDown
 
+  // F-036: pinch-to-zoom. activeTouches tracks every currently-down touch pointer
+  // (pointerId -> {x,y}) regardless of what other gesture, if any, is in progress — purely
+  // so a second finger landing can be detected and take over. pinch itself is only set once
+  // there are two.
+  const activeTouches = new Map();
+  let pinch = null; // {startDist, startMid: {x,y}, startView: {x,y,width,height}}
+  let longPressTimer = null;
+  const LONG_PRESS_MS = 500; // the common mobile long-press default
+
   // S-011: one place for "is the pointer mid-gesture right now" — drag/canvasDrag/
   // relateDrag are kept as three separate variables (each has its own distinct shape, and
   // a full merge into one discriminated-union gesture object was considered and rejected:
@@ -223,7 +232,7 @@
   // order" fragility this entry warns about. A future fourth gesture, or a third guard,
   // now has one place to update instead of a third copy to remember.
   function isGestureActive() {
-    return !!(drag || canvasDrag || relateDrag);
+    return !!(drag || canvasDrag || relateDrag || pinch);
   }
 
   // ---------- Snap geometry ----------
@@ -2120,6 +2129,23 @@
     if (isTextEditableFocus()) document.activeElement.blur();
     if (!program) return;
 
+    // F-036: a second finger landing always wins over whatever the first finger alone was
+    // starting — cancels any pending single-pointer gesture cleanly and starts a pinch
+    // instead, rather than letting the two fight over the same source text.
+    if (e.pointerType === "touch") {
+      activeTouches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (activeTouches.size === 2) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+        if (drag) { core.sourceEl.value = drag.baseText; drag = null; core.rerender({ preserveViewBox: true }); }
+        canvasDrag = null;
+        core.rootEl.classList.remove("dragging");
+        pinch = { startDist: pinchDistance(), startMid: pinchMidpoint(), startView: viewState || lastCoreFit };
+        return;
+      }
+      if (activeTouches.size > 2) return; // a third finger: stay in the existing 2-finger pinch
+    }
+
     const el = e.target.closest("[data-id]");
     if (!el) {
       // Empty canvas: could be a plain click (deselect) or the start of a pan — decided by
@@ -2172,6 +2198,26 @@
     }
     drag = { id: node.id, baseText: core.sourceEl.value, clientX: e.clientX, clientY: e.clientY, moved: false, singleOnly: e.shiftKey };
     core.rootEl.classList.add("dragging");
+
+    // F-036: touch's own equivalent of the right-click context menu — contextmenu via
+    // long-press only fires inconsistently across touch browsers. A hold past LONG_PRESS_MS
+    // with no real movement (drag.moved reused as the cancellation signal, see
+    // handlePointerMove) cancels the pending drag and opens the menu instead. Scoped to
+    // a shape only, matching handleContextMenu's own existing scope — no canvas-level
+    // long-press menu.
+    if (e.pointerType === "touch") {
+      const heldId = chosenId;
+      longPressTimer = setTimeout(() => {
+        longPressTimer = null;
+        if (!drag || drag.moved || drag.id !== heldId) return; // moved away, released, or superseded by a pinch
+        core.sourceEl.value = drag.baseText;
+        drag = null;
+        core.rootEl.classList.remove("dragging");
+        if (heldId !== selectedId) selectedId = heldId;
+        core.rerender({ preserveViewBox: true });
+        openContextMenu(heldId, e.clientX, e.clientY);
+      }, LONG_PRESS_MS);
+    }
   }
 
   function handleContextMenu(e) {
@@ -2362,6 +2408,13 @@
     scaleBarLabelEl.textContent = meters < 1 ? `${Math.round(meters * 100)} cm` : `${meters} m`;
   }
 
+  // Shared by handleWheel and the pinch handler below so the two zoom mechanisms can't
+  // silently drift to different limits (the exact duplication class D-114/S-015 just fixed
+  // elsewhere in this same file).
+  function zoomWidthBounds() {
+    return { minWidth: lastCoreFit.width / 8, maxWidth: lastCoreFit.width * 2 };
+  }
+
   // Zoom relative to the cursor: the viewBox point currently under the pointer stays under
   // the pointer after the zoom, matching the zoom-to-cursor behavior any map/canvas tool
   // has trained people to expect (zooming shouldn't fling the thing you're looking at
@@ -2384,8 +2437,7 @@
     const cursorVbY = current.y + (e.clientY - rect.top - offsetY) / scale;
 
     const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
-    const minWidth = lastCoreFit.width / 8; // ~8x zoomed in, relative to the original fit
-    const maxWidth = lastCoreFit.width * 2; // ~2x zoomed out
+    const { minWidth, maxWidth } = zoomWidthBounds();
     const newWidth = Math.min(maxWidth, Math.max(minWidth, current.width / factor));
     if (newWidth === current.width) return; // already at a zoom limit
     const ratio = newWidth / current.width;
@@ -2403,7 +2455,54 @@
     updateScaleBar();
   }
 
+  // F-036: pinch-to-zoom — touch's own equivalent of handleWheel above, driven by two
+  // fingers instead of a wheel event. Distance between the two touches drives the zoom
+  // factor; their midpoint is the anchor a map/canvas pinch is expected to zoom (and pan)
+  // around, exactly the role the cursor plays for handleWheel.
+  function pinchDistance() {
+    const [a, b] = [...activeTouches.values()];
+    return Math.hypot(a.x - b.x, a.y - b.y);
+  }
+  function pinchMidpoint() {
+    const [a, b] = [...activeTouches.values()];
+    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  }
+
+  function handlePinchMove() {
+    const svg = core.rootEl.querySelector("svg");
+    if (!svg || !lastCoreFit || activeTouches.size < 2) return;
+    const rect = svg.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const base = pinch.startView;
+    const scale0 = Math.min(rect.width / base.width, rect.height / base.height);
+    const offsetX = (rect.width - base.width * scale0) / 2;
+    const offsetY = (rect.height - base.height * scale0) / 2;
+    // The viewBox point under the pinch's own *start* midpoint — this is what stays
+    // anchored under wherever the (live, moving) midpoint currently is, the same law
+    // handleWheel applies to the cursor.
+    const anchorVbX = base.x + (pinch.startMid.x - rect.left - offsetX) / scale0;
+    const anchorVbY = base.y + (pinch.startMid.y - rect.top - offsetY) / scale0;
+
+    const factor = pinchDistance() / pinch.startDist || 1;
+    const { minWidth, maxWidth } = zoomWidthBounds();
+    const newWidth = Math.min(maxWidth, Math.max(minWidth, base.width / factor));
+    const ratio = newWidth / base.width;
+    const newHeight = base.height * ratio;
+    const newScale = Math.min(rect.width / newWidth, rect.height / newHeight);
+    const mid = pinchMidpoint();
+    const newX = anchorVbX - (mid.x - rect.left - offsetX) / newScale;
+    const newY = anchorVbY - (mid.y - rect.top - offsetY) / newScale;
+
+    viewState = { x: newX, y: newY, width: newWidth, height: newHeight };
+    svg.setAttribute("viewBox", `${newX} ${newY} ${newWidth} ${newHeight}`);
+    updateScaleBar();
+  }
+
   function handlePointerMove(e) {
+    if (e.pointerType === "touch" && activeTouches.has(e.pointerId)) {
+      activeTouches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
+    if (pinch) { handlePinchMove(); return; }
     if (canvasDrag) {
       const svg = core.rootEl.querySelector("svg");
       if (!svg) return;
@@ -2453,7 +2552,13 @@
     // Same 3px-of-slop threshold canvasDrag already uses to tell a pan from a plain click —
     // reused here so a click-cycle (see candidateIdsAtPoint) only ever advances on a genuine
     // click-in-place, never gets reset by the sub-pixel jitter of a real drag's first frame.
-    if (!drag.moved && Math.hypot(e.clientX - drag.clientX, e.clientY - drag.clientY) > 3) drag.moved = true;
+    // Also doubles as the long-press cancellation signal (F-036) — real movement past this
+    // same threshold means it's a drag, not a hold, no separate tolerance constant needed.
+    if (!drag.moved && Math.hypot(e.clientX - drag.clientX, e.clientY - drag.clientY) > 3) {
+      drag.moved = true;
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
     const pxPerMeter = currentPxPerMeter();
     const dx = (e.clientX - drag.clientX) / pxPerMeter;
     const dy = (e.clientY - drag.clientY) / pxPerMeter;
@@ -2462,6 +2567,16 @@
 
   function handlePointerUp(e) {
     core.rootEl.classList.remove("dragging");
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+    if (e.pointerType === "touch") activeTouches.delete(e.pointerId);
+    if (pinch) {
+      // Ends the moment either finger lifts — deliberately not handed off into a live
+      // single-finger pan with whichever touch remains; release both and start a fresh
+      // gesture instead.
+      if (activeTouches.size < 2) pinch = null;
+      return;
+    }
     if (relateDrag) {
       const { fromId, candidateId } = relateDrag;
       if (candidateId) core.rootEl.querySelector(`[data-id="${CSS.escape(candidateId)}"]`)?.classList.remove("relate-candidate");
@@ -2640,5 +2755,9 @@
     lastCoreFit = null;
     canvasDrag = null;
     paintOrderRank = new Map();
+    activeTouches.clear();
+    pinch = null;
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
   });
 })();

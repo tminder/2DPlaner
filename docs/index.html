@@ -162,8 +162,13 @@
      its internal coordinate system, so this only changes the on-screen scale, not the plan;
      see the drag handler in interactivity-module.js for why that scale has to be accounted
      for there too, not just here. */
+  /* F-036: touch-action: none over the whole viewer, not just individual shapes (svg .obj/
+     .anchor-hit below already had it) -- otherwise the browser's own native page pinch-zoom
+     can still kick in over empty canvas (no user-scalable=no in the viewport meta on
+     purpose, so the rest of the page can still pinch-zoom normally), fighting the JS-driven
+     pinch handler in interactivity-module.js for two-finger gestures landing there. */
   #plan-root svg { width: 100%; height: 100%; display: block; background: #fff;
-    border: 1px solid #ccc; border-radius: 6px; }
+    border: 1px solid #ccc; border-radius: 6px; touch-action: none; }
 
   svg .obj { transition: filter 0.1s, opacity 0.1s; touch-action: none; }
   .anchor-hit { fill: transparent; touch-action: none; }
