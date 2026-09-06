@@ -20,18 +20,6 @@ Recomputes bboxes; runs the full plan validation pass; resets/manages pan-zoom `
 
 ## `docs/index.html` (core)
 
-## S-013 `isTrustedModule` and `hasModuleDeclared` use incompatible matching rules
-
-`isTrustedModule` does exact string equality against `AUTO_MODULES`; `hasModuleDeclared` matches by a path-tolerant substring regex. A plan declaring e.g. `module "modules/grid-module.js"` would be treated as "already declared" (skipping auto-injection) yet still trigger the untrusted-module `confirm()` dialog every session, since the exact string differs from `"grid-module.js"`.
-
-## S-014 Duplicated download boilerplate and filename-sanitization
-
-The `save-btn` handler hand-rolls the same Blob→ObjectURL→temporary-`<a>`→click→revoke sequence that `downloadBlob()` formalizes right afterward — never refactored to call it. The filename-sanitizing regex is duplicated verbatim in two places; a future change to allowed filename characters has two places to update and will likely only catch one.
-
-## S-015 `fixedViewBox` invalidation duplicated at three call sites instead of centralized
-
-`switchToPlan`, `newPlanFromExample`, and the startup bootstrap all manually set `fixedViewBox = null` before calling `rerender()`, even though `rerender()` itself already does this unless `preserveViewBox` is passed. Only works because every call site remembers to duplicate it.
-
 ## S-016 Two independent recursive interpreters over the same AST must be kept in sync by hand
 
 `evalAst` and `linearize` both walk `num`/`neg`/`bin`/`path` nodes with separate per-operator logic. Adding a new operator or AST node type requires updating both, with nothing enforcing that they stay consistent.

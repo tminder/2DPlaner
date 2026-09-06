@@ -1218,7 +1218,16 @@ function isUrlLike(name) { return name.includes("/") || name.endsWith(".js") || 
 // model), just moved from "happens silently" to "a deliberate choice", asked once per
 // session per URL — loadedExternal's existing dedup means this never re-prompts for a
 // module already accepted this session.
-function isTrustedModule(name) { return AUTO_MODULES.includes(name); }
+//
+// Shared with hasModuleDeclared (below) so "is this specifier really this shipped module,
+// however it's spelled" can never drift between the two again (S-013) — a bare name match,
+// or a path ending in "/<canonicalName>", e.g. "modules/grid-module.js" still names
+// "grid-module.js".
+function specifierNamesModule(specifier, canonicalName) {
+  return specifier === canonicalName || specifier.endsWith("/" + canonicalName);
+}
+
+function isTrustedModule(name) { return AUTO_MODULES.some((canonical) => specifierNamesModule(name, canonical)); }
 
 function loadExternalScript(src) {
   return new Promise((resolve, reject) => {
@@ -1623,7 +1632,6 @@ function switchToPlan(id) {
   setActivePlan(id);
   sourceEl.value = p.text;
   resetUndoHistory(p.text);
-  fixedViewBox = null;
   updateActivePlanButton();
   rerender();
 }
@@ -1958,7 +1966,10 @@ window.PlanCore = {
 // ---------- Toolbar: plan switcher, rename/delete, open/save ----------
 function hasModuleDeclared(text, filename) {
   const escaped = filename.replace(/\./g, "\\.");
-  return new RegExp(`^\\s*module\\s+"[^"]*${escaped}"`, "m").test(text);
+  // Path-boundary tolerant (matches specifierNamesModule's own rule above, S-013) — a
+  // declared "modules/grid-module.js" counts as declaring "grid-module.js", but a bare
+  // substring like "supergrid-module.js" does not.
+  return new RegExp(`^\\s*module\\s+"(?:[^"]*/)?${escaped}"`, "m").test(text);
 }
 
 function withAutoModules(text) {
@@ -2068,7 +2079,6 @@ function newPlanFromExample(key) {
   setActivePlan(null);
   sourceEl.value = text;
   resetUndoHistory(text);
-  fixedViewBox = null;
   updateActivePlanButton();
   rerender();
 }
@@ -2240,23 +2250,13 @@ document.getElementById("delete-btn").addEventListener("click", () => {
   }
 });
 
-document.getElementById("save-btn").addEventListener("click", () => {
-  const p = activePlan();
-  const blob = new Blob([sourceEl.value], { type: "text/plain" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${(p ? p.name : "plan").replace(/[\\/:*?"<>|]+/g, "_")}.planagon`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-});
+// Shared by save-btn below and exportFilename (F-033) so the disallowed-filename-character
+// rule and the actual Blob→ObjectURL→temp-<a>→click→revoke download sequence each exist in
+// exactly one place (S-014).
+function sanitizeFilename(name) {
+  return name.replace(/[\\/:*?"<>|]+/g, "_");
+}
 
-// ---------- Export as image (F-033) ----------
-// The code-export above hands back the plan's *source*; this hands back a picture of it —
-// a flattened PNG/SVG a person can drop straight into a document or chat, no editor needed
-// to open it. Client-side only, same Blob+temporary-<a> download pattern as save-btn above.
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -2268,9 +2268,19 @@ function downloadBlob(blob, filename) {
   URL.revokeObjectURL(url);
 }
 
+document.getElementById("save-btn").addEventListener("click", () => {
+  const p = activePlan();
+  const blob = new Blob([sourceEl.value], { type: "text/plain" });
+  downloadBlob(blob, `${sanitizeFilename(p ? p.name : "plan")}.planagon`);
+});
+
+// ---------- Export as image (F-033) ----------
+// The code-export above hands back the plan's *source*; this hands back a picture of it —
+// a flattened PNG/SVG a person can drop straight into a document or chat, no editor needed
+// to open it. Client-side only, same downloadBlob() save-btn above already uses.
 function exportFilename(ext) {
   const p = activePlan();
-  return `${(p ? p.name : "plan").replace(/[\\/:*?"<>|]+/g, "_")}.${ext}`;
+  return `${sanitizeFilename(p ? p.name : "plan")}.${ext}`;
 }
 
 // A clone of the live SVG, not core's own bare render() — the live one already has
@@ -2369,7 +2379,6 @@ if (!plans.length) {
 setActivePlan(activePlanId);
 sourceEl.value = activePlan().text;
 resetUndoHistory(activePlan().text);
-fixedViewBox = null;
 updateCloudUi();
 updateActivePlanButton();
 rerender();
