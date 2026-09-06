@@ -186,6 +186,7 @@
   // ---------- Module-owned state — core has none of this. ----------
   let program = null;
   let lastBboxes = {};
+  let lastPositions = {};
   let selectedId = null;
   let drag = null;
   // Ctrl/Cmd+drag on an element (replacing the old +/- icons): fromId never moves for the
@@ -247,6 +248,26 @@
       bboxes[node.id] = { left: abs[0], top: abs[1], right: abs[0], bottom: abs[1] };
     }
     for (const child of node.children) computeBboxes(child, positions, bboxes);
+  }
+
+  // A node's own "meaningful center" for drawing a connection line to/from it — a rect's or
+  // circle's own center, a polygon/polyline's centroid, or a bare point's own position.
+  // Mirrors annotations-module.js's own `nodeCenter` exactly (same per-shape branching, same
+  // reason: D-039 keeps the two modules independent, so this is a small, deliberate parallel
+  // rather than a shared import — the same tradeoff S-023 already names for this file).
+  function nodeCenter(node, positions) {
+    const ownAbs = positions[node.id];
+    if (!ownAbs) return null;
+    const { shape } = node.props;
+    if (shape === "rect" && node.props.size) {
+      const w = core.numOf(node.props.size[0]), h = core.numOf(node.props.size[1]);
+      return [ownAbs[0] + w / 2, ownAbs[1] + h / 2];
+    }
+    if ((shape === "polyline" || shape === "polygon") && node.props.points) {
+      const absPts = node.props.points.map((pt) => core.resolvePointAbs(pt, ownAbs, positions));
+      return [absPts.reduce((s, p) => s + p[0], 0) / absPts.length, absPts.reduce((s, p) => s + p[1], 0) / absPts.length];
+    }
+    return ownAbs;
   }
 
   // Where a point should land when snapping onto a rect: the nearest edge it's already
@@ -1255,18 +1276,24 @@
   }
 
   // ---------- Ctrl/Cmd+drag to create a relationship — replaces the old +/- icons ----------
-  // A screen point (drag-release, in client pixels) converted into the same meter-space
-  // bboxes/positions already live in — mirrors handleWheel's own viewBox-from-cursor math
-  // (current = viewState||lastCoreFit, scale from the SVG's actual on-screen size), then
-  // divides out core.M since bboxes/positions are in meters, not raw viewBox units.
-  function clientToPlanPoint(clientX, clientY) {
+  // A screen point (client pixels) converted into raw viewBox units — mirrors handleWheel's
+  // own viewBox-from-cursor math (current = viewState||lastCoreFit, scale from the SVG's
+  // actual on-screen size). The live relate-drag line (handlePointerMove) draws directly in
+  // these units; clientToPlanPoint below just divides out core.M on top for the few callers
+  // that need meters instead (bboxes/positions are meters, not raw viewBox units).
+  function clientToViewBoxPoint(clientX, clientY) {
     const svg = core.rootEl.querySelector("svg");
     const current = viewState || lastCoreFit;
     if (!svg || !current) return null;
     const rect = svg.getBoundingClientRect();
     if (!rect.width || !rect.height) return null;
     const scale = Math.min(rect.width / current.width, rect.height / current.height);
-    return [current.x + (clientX - rect.left) / scale, current.y + (clientY - rect.top) / scale].map((v) => v / core.M);
+    return [current.x + (clientX - rect.left) / scale, current.y + (clientY - rect.top) / scale];
+  }
+
+  function clientToPlanPoint(clientX, clientY) {
+    const vb = clientToViewBoxPoint(clientX, clientY);
+    return vb ? vb.map((v) => v / core.M) : null;
   }
 
   // The nearest point lying exactly on a rect's boundary to an arbitrary point — unlike
@@ -1846,6 +1873,7 @@
     program = prog;
     const positions = {};
     core.computePositions(prog.root, null, [0, 0], positions);
+    lastPositions = positions;
     lastBboxes = {};
     computeBboxes(prog.root, positions, lastBboxes);
 
@@ -2040,7 +2068,20 @@
     // drag/click-cycle — the source never moves for its duration (see handlePointerMove),
     // so none of the click-cycling machinery below applies to it at all.
     if (e.ctrlKey || e.metaKey) {
-      relateDrag = { fromId: el.dataset.id, candidateId: null };
+      // A live line from the source's own center to wherever the cursor currently is —
+      // requested directly, "always shown" for the whole gesture, not just once a valid
+      // candidate is found. x2/y2 are updated every frame in handlePointerMove; x1/y1 never
+      // move, matching the source itself never visually moving during this gesture.
+      let lineEl = null;
+      const sourceNode = program.nodesById[el.dataset.id];
+      const center = sourceNode && nodeCenter(sourceNode, lastPositions);
+      const svgEl = core.rootEl.querySelector("svg");
+      if (center && svgEl) {
+        const vb = clientToViewBoxPoint(e.clientX, e.clientY) ?? [center[0] * core.M, center[1] * core.M];
+        svgEl.insertAdjacentHTML("beforeend", `<line class="relate-drag-line" x1="${center[0] * core.M}" y1="${center[1] * core.M}" x2="${vb[0]}" y2="${vb[1]}" stroke="#2a8a3e" stroke-width="1.5" stroke-dasharray="4 3" pointer-events="none" />`);
+        lineEl = svgEl.lastElementChild;
+      }
+      relateDrag = { fromId: el.dataset.id, candidateId: null, lineEl };
       core.rootEl.classList.add("dragging");
       return;
     }
@@ -2208,6 +2249,10 @@
       return;
     }
     if (relateDrag) {
+      if (relateDrag.lineEl) {
+        const vb = clientToViewBoxPoint(e.clientX, e.clientY);
+        if (vb) { relateDrag.lineEl.setAttribute("x2", vb[0]); relateDrag.lineEl.setAttribute("y2", vb[1]); }
+      }
       // Live-under-cursor target, not the source itself and not one of its own structural
       // ancestors/descendants — the same isAncestorOf check applyDrag's own connection
       // propagation already uses to avoid double-moving a structurally-nested pair, reused
@@ -2244,6 +2289,7 @@
     if (relateDrag) {
       const { fromId, candidateId } = relateDrag;
       if (candidateId) core.rootEl.querySelector(`[data-id="${CSS.escape(candidateId)}"]`)?.classList.remove("relate-candidate");
+      relateDrag.lineEl?.remove();
       relateDrag = null;
       // Releasing over empty canvas, back on the source, or an invalid (ancestor/descendant)
       // candidate does nothing at all — the same graceful "changed your mind" shape a
@@ -2285,11 +2331,23 @@
         core.rootEl.querySelector(`[data-id="${CSS.escape(uid)}"]`)?.classList.add("corner-preview");
       }
     }
+    // Requested directly: a connection's own line should be visible on hover regardless of
+    // the `showConnections` setting (that toggle is for a *permanent* line, this is a
+    // transient hover aid) — drawn straight into the live <svg>, not gated on rerendering,
+    // so it appears/disappears exactly with the hover itself.
+    const svgEl = core.rootEl.querySelector("svg");
     for (const c of program.connections) {
       const partnerId = c.from === el.dataset.id ? c.to : c.to === el.dataset.id ? c.from : null;
       if (!partnerId) continue;
       el.classList.add("connected-highlight");
       core.rootEl.querySelector(`[data-id="${CSS.escape(partnerId)}"]`)?.classList.add("connected-highlight");
+      if (svgEl) {
+        const a = program.nodesById[el.dataset.id], b = program.nodesById[partnerId];
+        const pa = a && nodeCenter(a, lastPositions), pb = b && nodeCenter(b, lastPositions);
+        if (pa && pb) {
+          svgEl.insertAdjacentHTML("beforeend", `<line class="hover-connection-line" x1="${pa[0] * core.M}" y1="${pa[1] * core.M}" x2="${pb[0] * core.M}" y2="${pb[1] * core.M}" stroke="#8a8a8a" stroke-width="1.2" stroke-dasharray="4 3" opacity="0.6" pointer-events="none" />`);
+        }
+      }
     }
     // The stacked-hint check itself now lives in updateStackedHint, run continuously from
     // handlePointerMove rather than once here — see that function for why: a single sample
@@ -2313,6 +2371,7 @@
       el.classList.remove("connected-highlight");
       core.rootEl.querySelector(`[data-id="${CSS.escape(partnerId)}"]`)?.classList.remove("connected-highlight");
     }
+    core.rootEl.querySelectorAll("svg .hover-connection-line").forEach((el2) => el2.remove());
     if (stackHintCandidates) {
       for (const id of stackHintCandidates) {
         core.rootEl.querySelector(`[data-id="${CSS.escape(id)}"]`)?.classList.remove("stacked-dim");

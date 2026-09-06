@@ -239,3 +239,64 @@ def test_show_connections_toggle_round_trips_and_renders_line(app_page):
     assert "grid: { }" in text
     assert "showConnections: true" in text
     assert app_page.locator("svg .connection-line").count() == 1
+
+
+def test_hovering_a_connected_element_shows_the_line_even_without_the_setting(app_page):
+    """Requested directly: the connection line should always be visible on hover, regardless
+    of `settings.showConnections` -- that setting is for a *permanent* line, hover is a
+    separate, transient discoverability aid."""
+    load_plan(app_page, SWITCH_ALREADY_CONNECTED)
+    assert app_page.locator("svg .hover-connection-line").count() == 0
+
+    sx, sy = element_center(app_page, "switch")
+    app_page.mouse.move(sx, sy)
+    app_page.wait_for_timeout(150)
+    assert app_page.locator("svg .hover-connection-line").count() == 1
+
+    # Moving away removes it again -- it's tied to the hover itself, not left behind.
+    app_page.mouse.move(20, 20)
+    app_page.wait_for_timeout(150)
+    assert app_page.locator("svg .hover-connection-line").count() == 0
+
+    # Symmetric: hovering the *partner* shows the same line too.
+    lx, ly = element_center(app_page, "lamp")
+    app_page.mouse.move(lx, ly)
+    app_page.wait_for_timeout(150)
+    assert app_page.locator("svg .hover-connection-line").count() == 1
+
+
+def test_hovering_element_with_several_connections_shows_one_line_per_partner(app_page):
+    load_plan(app_page, THREE_WAY_CONNECTIONS)
+    hx, hy = element_center(app_page, "hub")
+    app_page.mouse.move(hx, hy)
+    app_page.wait_for_timeout(150)
+    assert app_page.locator("svg .hover-connection-line").count() == 3
+
+
+def test_relate_drag_shows_a_live_line_from_source_to_cursor(app_page):
+    """Requested directly: while Ctrl/Cmd-dragging, a line should always be visible between
+    the source element and the current mouse position, not just once a valid target is
+    found under the cursor."""
+    load_plan(app_page, SWITCH_AND_LAMP)
+    sx, sy = element_center(app_page, "switch")
+    mid_x, mid_y = sx + 150, sy + 80  # partway toward empty canvas, not yet over any element
+
+    app_page.keyboard.down("Control")
+    app_page.mouse.move(sx, sy)
+    app_page.mouse.down()
+    app_page.mouse.move(mid_x, mid_y, steps=8)
+    app_page.wait_for_timeout(150)
+
+    line = app_page.locator("svg .relate-drag-line")
+    assert line.count() == 1
+    x2, y2 = float(line.get_attribute("x2")), float(line.get_attribute("y2"))
+    # The endpoint tracks the cursor, not a fixed candidate position -- roughly under
+    # (mid_x, mid_y) in screen space once converted back, not still at the source.
+    x1, y1 = float(line.get_attribute("x1")), float(line.get_attribute("y1"))
+    assert (x2, y2) != (x1, y1)
+
+    app_page.mouse.up()
+    app_page.keyboard.up("Control")
+    app_page.wait_for_timeout(150)
+    # Gone once the gesture ends, whether or not a menu opened (released over empty canvas).
+    assert app_page.locator("svg .relate-drag-line").count() == 0
