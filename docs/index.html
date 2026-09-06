@@ -124,6 +124,12 @@
      (not left to the interactivity module) since error display is core, not module,
      behavior and must still work with no module loaded at all. */
   .viewer-pane { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; min-height: 0; position: relative; }
+  /* Empty/hidden unless hierarchy-module.js is loaded and the panel is open — a fixed
+     width (not resizable in v1, unlike the code/viewer split) kept modest since it's a
+     secondary, occasional-use view, not one of the two panes someone works in constantly. */
+  #hierarchy-panel { display: none; flex: 0 0 260px; min-height: 0; overflow-y: auto;
+    border: 1px solid #ccc; border-radius: 6px; background: #fff; }
+  .layout.hierarchy-open #hierarchy-panel { display: flex; flex-direction: column; }
   /* Fills the whole pane now that .status-overlay below no longer reserves its own row —
      this is what makes the viewer reach exactly as far down as the textarea beside it. */
   #plan-root { flex: 1 1 auto; min-height: 0; display: flex; }
@@ -181,6 +187,9 @@
        sit side by side below this breakpoint. */
     textarea, .viewer-pane, #code-highlight-wrap { flex: 1 1 auto; min-height: 0; width: 100%; height: auto; }
     .pane-resizer { display: none; }
+    /* A third column has nowhere to go once the layout is already stacked into two
+       full-width tabs — same desktop-only reasoning as the resizer above. */
+    .layout.hierarchy-open #hierarchy-panel { display: none; }
     .layout[data-mobile-tab="code"] .viewer-pane { display: none; }
     /* Hides the bare textarea when code-highlight-module.js hasn't loaded, and its
        wrapper (#code-highlight-wrap, D-042) when it has — the module moves the real
@@ -267,6 +276,12 @@
     <button class="ribbon-btn" id="connections-toggle-btn" title="Show a line between every connected pair of elements">
       <span class="ribbon-icon">⌁</span><span class="ribbon-label">Connections</span>
     </button>
+    <!-- Unlike its two group-neighbors, this doesn't touch `settings` -- whether the panel
+         is open is a session UI preference (localStorage), not plan content; closing it
+         doesn't change what the plan itself renders. -->
+    <button class="ribbon-btn" id="hierarchy-toggle-btn" title="Show the element hierarchy: reorder and show/hide parents">
+      <span class="ribbon-icon">🗂</span><span class="ribbon-label">Layers</span>
+    </button>
   </div>
   <div class="ribbon-divider"></div>
   <div class="ribbon-group">
@@ -301,6 +316,10 @@
         <div id="modlog"></div>
       </div>
     </div>
+    <!-- Empty on purpose: a stable slot core always provides (like .viewer-pane itself),
+         filled by hierarchy-module.js rather than core's own renderer -- exists regardless
+         of module load timing, the same reasoning #pane-resizer already established. -->
+    <div id="hierarchy-panel"></div>
   </div>
 </main>
 
@@ -705,7 +724,7 @@ const EXAMPLE_LABELS = { blank: "Blank", apartment: "Studio Apartment", utility:
 // since it reads the selectedId signal interactivity's own render pass sets.
 // grid-module.js (F-014) always inserts itself as the SVG's very first child regardless of
 // callback order, so its position in this list doesn't affect stacking.
-const AUTO_MODULES = ["grid-module.js", "annotations-module.js", "interactivity-module.js", "code-highlight-module.js"];
+const AUTO_MODULES = ["grid-module.js", "annotations-module.js", "interactivity-module.js", "code-highlight-module.js", "hierarchy-module.js"];
 
 // ---------- Built-in ("internal") module registry — none shipped by default; a plan can
 // still load its own via module "name.js" (external) or a bare internal name if one is
@@ -1118,6 +1137,13 @@ function resolveStyle(rawStyle, settings) {
 // two core primitives themselves (D-038/D-039); annotations-module.js renders them by
 // reading this same parsed/positioned tree back via window.PlanCore after core is done.
 function renderShape(node, positions, cornerUsers, shapesOut, anchorsOut, bboxes, settings) {
+  // hierarchy-module.js's own layer-visibility toggle: a hidden node renders nothing at
+  // all -- no shape, no anchor point -- and, since core's own render is what builds the
+  // [data-id] DOM in the first place, no drag/select/hover/click-cycle/context-menu
+  // surface either, for free, the same way an element that was never declared wouldn't
+  // have one. Returning before recursing takes the whole subtree with it regardless of
+  // any child's own hidden value -- real layer semantics, not a per-child opt-out.
+  if (node.props.hidden) return;
   const ownAbs = positions[node.id];
   const { shape } = node.props;
   const style = resolveStyle(node.props.style, settings);
@@ -2122,6 +2148,7 @@ const MIN_CODE_PANE_WIDTH = 240;
 const MIN_VIEWER_PANE_WIDTH = 300;
 const PANE_RESIZE_STEP = 20; // px per arrow-key press
 const paneResizerEl = document.getElementById("pane-resizer");
+const layoutEl = document.getElementById("layout");
 
 function resizeTargetEl() {
   return document.getElementById("code-highlight-wrap") || sourceEl;
@@ -2170,6 +2197,24 @@ paneResizerEl.addEventListener("keydown", (e) => {
   if (e.key === "ArrowLeft") { e.preventDefault(); applyPaneWidth(resizeTargetEl().getBoundingClientRect().width - PANE_RESIZE_STEP); }
   else if (e.key === "ArrowRight") { e.preventDefault(); applyPaneWidth(resizeTargetEl().getBoundingClientRect().width + PANE_RESIZE_STEP); }
 });
+
+// ---------- The hierarchy/layers panel (hierarchy-module.js) is open/closed here in core,
+// not the module -- the same reasoning D-111's own pane-resizer state used: whether it's
+// open is a session UI preference (localStorage), not plan content, so core's header
+// button only ever toggles a class + persists it. #hierarchy-panel itself is a stable,
+// always-present empty slot (see its own HTML comment) that the module fills; this code
+// never needs to know whether that module has actually loaded yet. ----------
+const HIERARCHY_PANEL_OPEN_KEY = "planagonia:hierarchyPanelOpen";
+const hierarchyToggleBtn = document.getElementById("hierarchy-toggle-btn");
+function setHierarchyPanelOpen(open) {
+  layoutEl.classList.toggle("hierarchy-open", open);
+  hierarchyToggleBtn.classList.toggle("active", open);
+  try { localStorage.setItem(HIERARCHY_PANEL_OPEN_KEY, open ? "1" : "0"); } catch (e) { /* private mode/quota — not fatal */ }
+}
+hierarchyToggleBtn.addEventListener("click", () => {
+  setHierarchyPanelOpen(!layoutEl.classList.contains("hierarchy-open"));
+});
+try { setHierarchyPanelOpen(localStorage.getItem(HIERARCHY_PANEL_OPEN_KEY) === "1"); } catch (e) { /* private mode/quota — defaults closed */ }
 </script>
 </body>
 </html>

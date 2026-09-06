@@ -50,6 +50,16 @@ element bed {
 }
 ```
 
+**`hidden: true` (D-112) — the element (and its whole subtree, regardless of any child's
+own `hidden`) renders nothing at all: no shape, no drag/select/interaction surface either,
+the same as if it had never been declared.** Not to be confused with `show` (below,
+D-026/D-039) — `show` only ever controls a *label*'s own visibility, never the element
+itself. Written and toggled from the app's own hierarchy/layers panel, but it's a plain
+element property like any other — an AI or a human can write it directly too. **Not yet
+excluded from the load-time validation pass or drag-time position computation** — a hidden
+subtree's geometry is still computed and can still be validated even though nothing renders
+it; a known, documented v1 limitation, not an oversight.
+
 Children are written as `element { }` blocks nested directly inside the parent's braces,
 alongside its own properties — not a separate `children: [...]` list:
 

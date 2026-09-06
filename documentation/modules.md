@@ -14,10 +14,12 @@ external resolution, load-once caching) was validated in
 `window.PlanCore` API below was designed for and validated by
 [Prototypes/14-interactivity-module/](../Prototypes/14-interactivity-module/)'s
 interactivity module (D-031) and is unchanged since. [docs/](../docs/) — the actual hosted
-app — reuses that architecture verbatim: `docs/index.html` is core (parse/render only),
-and now ships **three** modules — `docs/interactivity-module.js` (D-031),
-`docs/annotations-module.js` (D-039), and `docs/code-highlight-module.js` (D-043) — loaded
-exactly like any other.
+app — reuses that architecture verbatim: `docs/index.html` is core (parse/render only).
+Documented here in depth: `docs/interactivity-module.js` (D-031),
+`docs/annotations-module.js` (D-039), `docs/code-highlight-module.js` (D-043), and
+`docs/hierarchy-module.js` (D-112) — loaded exactly like any other. (`docs/grid-module.js`
+and `docs/wall-with-door-module.js` also ship and auto-load; not yet written up here, a
+tracked gap — [planning/tech-debt.md](../planning/tech-debt.md) S-031.)
 
 ## What a module can do
 
@@ -54,11 +56,13 @@ contains `://` — anything else is looked up in a small built-in registry
 built-in module; every module a plan uses today is external, fetched via a dynamically
 created `<script src>` tag.
 
-**Every plan in the hosted app gets all three shipped modules whether it declares them or
+**Every plan in the hosted app gets every auto-loaded module whether it declares them or
 not.** `docs/`'s `loadPlan()` checks the source text for each of `AUTO_MODULES` (currently
-`["annotations-module.js", "interactivity-module.js", "code-highlight-module.js"]`) and
-prepends a declaration for whichever is missing, in that order (D-034, extended by D-039
-and D-043) — D-020's own loading mechanism stays opt-in per plan; this is `docs/`'s own
+`["grid-module.js", "annotations-module.js", "interactivity-module.js",
+"code-highlight-module.js", "hierarchy-module.js"]` — `wall-with-door-module.js` ships too
+but is *not* auto-loaded, S-025) and prepends a declaration for whichever is missing, in
+that order (D-034, extended by D-039, D-043, and D-112) — D-020's own loading mechanism
+stays opt-in per plan; this is `docs/`'s own
 convenience on top of it, not a change to how modules work. The order is deliberate, not
 alphabetical: annotations has to finish registering its `onRendered` callback before
 interactivity does, so its labels land in the SVG *before* interactivity's own
@@ -286,6 +290,43 @@ separate word (reported directly). `colorRange()` now renders the ordinary synta
 with no selection awareness at all; `renderHighlighted()` wraps each of `ownRanges()`'s
 disjoint ranges in exactly one outer `tok-selected` span around that coloring, so there's
 only ever one background-painting element per range, nothing for a seam to form between.
+
+## The hierarchy module
+
+`docs/hierarchy-module.js` (D-112) renders the full element tree — every parent, expandable
+to its children — into `#hierarchy-panel`, lets a viewer show/hide any subtree (writes/
+clears `hidden`, a new *core*-level rendering property `renderShape` itself checks — see
+[language.md](language.md#element)) and reorder siblings (swaps two adjacent declarations,
+changing paint order).
+
+**The one module so far whose own DOM slot core provides empty and stable, rather than the
+module creating everything itself.** Every other module either overlays content on top of
+`#plan-root` (interactivity's icons/scale bar, annotations' labels) or moves an existing
+core element into a new wrapper at runtime (code-highlight's own textarea wrap). A layers
+panel needs its own dedicated space *beside* the code/viewer split, decided upfront in
+`docs/index.html`'s own layout rather than injected — but the module still owns everything
+that happens *inside* that slot end to end (the tree markup, the click handling, the
+source-text edits), exactly like core owns `.viewer-pane` as an empty container that its
+own renderer happens to fill. Whether the panel is open at all is core's own concern too (a
+header button toggling a class + `localStorage`, not plan content) — the module doesn't
+know or care whether it's currently visible, it just keeps `#hierarchy-panel`'s content
+current on every render regardless.
+
+**Lists siblings in *reverse* declaration order — last-declared (topmost paint order,
+D-110) shown first/topmost** — so "the row at the top of the list is the thing in front"
+reads the way every layers panel already does elsewhere (Photoshop/Illustrator/Figma).
+Reorder button semantics follow directly from the reversal: "▲" (toward the top of the
+list, more toward the front) swaps a node with its *next-higher-index* array neighbor;
+"▼" with the *next-lower-index* one.
+
+**Brings its own small, private text-splice helpers (`toLineSpan`, `applyEditsDescending`,
+`findOwnPropertyLine`) rather than sharing `interactivity-module.js`'s private copies of
+the same shape.** Not in the core API (see the list above) and modules can't reach into
+each other's closures — the same "brings its own copy" tradeoff `annotations-module.js`
+already has with core's own geometry, now a *second* instance of it. Tracked in
+[planning/tech-debt.md](../planning/tech-debt.md) as a real signal worth revisiting (a
+third module needing the identical capability would make hoisting it onto
+`window.PlanCore` clearly worth the migration), not fixed as part of building this module.
 
 ## Known seams
 

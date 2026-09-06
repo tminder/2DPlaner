@@ -840,7 +840,7 @@
   // interactivity-module.js / annotations-module.js, and against language.md's own stated
   // per-shape restrictions (edge lengths / dimensions sections), not invented from scratch.
   const CORE_SHAPES = ["rect", "polygon", "polyline", "circle"];
-  const SHARED_PROPS = ["position", "style", "placement", "childPlacement", "flush", "show", "allowCollisions", "label"];
+  const SHARED_PROPS = ["position", "style", "placement", "childPlacement", "flush", "show", "allowCollisions", "label", "hidden"];
   const SHAPE_PROPS = {
     rect: [...SHARED_PROPS, "size", "dimensions", "edgeLengths"],
     circle: [...SHARED_PROPS, "radius", "dimensions"],
@@ -850,8 +850,10 @@
   // "placement" (specifically "outside") is a real, legitimate value for a shapeless point
   // (D-032's connected-point mode) — found missing here by testing D-107's new "Attach
   // outside" gesture live: it correctly wrote `placement: "outside"` onto a bare point, and
-  // this schema immediately flagged that exact property as unsupported right back.
-  const SHAPELESS_PROPS = ["position", "placement"];
+  // this schema immediately flagged that exact property as unsupported right back. "hidden"
+  // (D-112's layers panel) added proactively for the identical reason — a shapeless point
+  // is just as legitimate a thing to hide as any shaped element.
+  const SHAPELESS_PROPS = ["position", "placement", "hidden"];
 
   function checkUnrecognizedShapes(base, violations) {
     for (const node of collectAllNodes(base.root, [])) {
