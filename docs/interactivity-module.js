@@ -811,7 +811,11 @@
     polygon: [...SHARED_PROPS, "points", "edgeLengths"],
     polyline: [...SHARED_PROPS, "points", "edgeLengths"],
   };
-  const SHAPELESS_PROPS = ["position"];
+  // "placement" (specifically "outside") is a real, legitimate value for a shapeless point
+  // (D-032's connected-point mode) — found missing here by testing D-107's new "Attach
+  // outside" gesture live: it correctly wrote `placement: "outside"` onto a bare point, and
+  // this schema immediately flagged that exact property as unsupported right back.
+  const SHAPELESS_PROPS = ["position", "placement"];
 
   function checkUnrecognizedShapes(base, violations) {
     for (const node of collectAllNodes(base.root, [])) {

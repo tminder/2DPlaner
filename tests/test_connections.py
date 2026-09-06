@@ -10,6 +10,7 @@ from helpers import (
     menu_items,
     open_context_menu,
     source_text,
+    validation_violations,
 )
 
 # `switch` is a bare point (no shape) well outside `lamp`'s bounds -- the exact "not
@@ -112,6 +113,12 @@ def test_attach_outside_snaps_position_and_sets_placement(app_page):
     on_top = abs(y - 1) < 1e-6 and 2.5 - 1e-6 <= x <= 3.5 + 1e-6
     on_bottom = abs(y - 2) < 1e-6 and 2.5 - 1e-6 <= x <= 3.5 + 1e-6
     assert on_left or on_right or on_top or on_bottom
+
+    # A real bug caught by testing this live against production: the F-023 property schema
+    # didn't know "placement" is a legitimate property on a shapeless point (D-032), so the
+    # gesture's own output immediately triggered a spurious "isn't used by a shapeless
+    # element" warning right back.
+    assert validation_violations(app_page) == []
 
 
 def test_already_connected_pair_disables_connect_offers_attach_outside(app_page):
