@@ -380,7 +380,7 @@
     <button class="modal-close" id="auth-modal-close" aria-label="Close">✕</button>
     <h2 id="auth-modal-heading">Sign in</h2>
     <form id="app-signin-form">
-      <label for="modal-username">Username</label>
+      <label for="modal-username">Username or email</label>
       <input type="text" id="modal-username" autocomplete="username" required>
       <label for="modal-password">Password</label>
       <input type="password" id="modal-password" autocomplete="current-password" required>
@@ -1667,11 +1667,25 @@ const CLOUD_USERNAME_KEY = "planagonia:cloudUsername";
 function cloudToken() {
   try { return sessionStorage.getItem(CLOUD_TOKEN_KEY); } catch (e) { return null; }
 }
-function setCloudSession(token, username) {
+// Reads the real username straight out of the session token's own payload rather than
+// trusting whatever the visitor typed into the sign-in form — since that field also
+// accepts an email now (WP's own Basic Auth already resolved it either way, confirmed
+// live), storing the raw input verbatim would show "Signed in as name@example.com"
+// anywhere this app displays it, instead of the actual username every other display of
+// "who's signed in" already uses.
+function decodeSessionUsername(token) {
+  try {
+    let body = token.split(".")[0].replace(/-/g, "+").replace(/_/g, "/");
+    while (body.length % 4) body += "=";
+    return JSON.parse(atob(body)).username || null;
+  } catch (e) { return null; }
+}
+
+function setCloudSession(token) {
   try {
     if (token) {
       sessionStorage.setItem(CLOUD_TOKEN_KEY, token);
-      sessionStorage.setItem(CLOUD_USERNAME_KEY, username);
+      sessionStorage.setItem(CLOUD_USERNAME_KEY, decodeSessionUsername(token) || "");
     } else {
       sessionStorage.removeItem(CLOUD_TOKEN_KEY);
       sessionStorage.removeItem(CLOUD_USERNAME_KEY);
@@ -1698,7 +1712,7 @@ async function cloudSignIn(username, password) {
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error || `Sign-in failed (${res.status})`);
-  setCloudSession(body.token, username);
+  setCloudSession(body.token);
 }
 
 // Wraps fetch with the bearer token and a uniform "session expired" reaction — every
@@ -1712,7 +1726,7 @@ async function cloudFetch(path, opts = {}) {
     headers: { ...(opts.headers || {}), Authorization: `Bearer ${token}` },
   });
   if (res.status === 401) {
-    setCloudSession(null, null);
+    setCloudSession(null);
     updateCloudUi();
     throw new Error("Cloud session expired — sign in again");
   }
@@ -2216,7 +2230,7 @@ document.addEventListener("keydown", (e) => {
 document.getElementById("cloud-signin-btn").addEventListener("click", openAuthModal);
 
 document.getElementById("cloud-signout-btn").addEventListener("click", () => {
-  setCloudSession(null, null);
+  setCloudSession(null);
   updateCloudUi();
   updateActivePlanButton();
   showCloudMessage("signed out.");

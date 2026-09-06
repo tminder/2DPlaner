@@ -163,7 +163,7 @@
     <div id="signed-out-view" class="card" hidden>
       <h2 id="auth-heading">Sign in</h2>
       <form id="signin-form">
-        <label for="username">Username</label>
+        <label for="username">Username or email</label>
         <input type="text" id="username" autocomplete="username" required>
         <label for="password">Password</label>
         <input type="password" id="password" autocomplete="current-password" required>
@@ -241,9 +241,22 @@
 
   function cloudToken() { try { return sessionStorage.getItem(CLOUD_TOKEN_KEY); } catch (e) { return null; } }
   function cloudUsername() { try { return sessionStorage.getItem(CLOUD_USERNAME_KEY); } catch (e) { return null; } }
-  function setCloudSession(token, username) {
+  // Reads the real username straight out of the session token's own payload rather than
+  // trusting whatever the visitor typed into the sign-in form — that field also accepts
+  // an email now (WP's own Basic Auth already resolved it either way, confirmed live), so
+  // storing the raw input verbatim would show "Signed in as name@example.com" instead of
+  // the actual username every other display of "who's signed in" already uses.
+  function decodeSessionUsername(token) {
     try {
-      if (token) { sessionStorage.setItem(CLOUD_TOKEN_KEY, token); sessionStorage.setItem(CLOUD_USERNAME_KEY, username); }
+      let body = token.split(".")[0].replace(/-/g, "+").replace(/_/g, "/");
+      while (body.length % 4) body += "=";
+      return JSON.parse(atob(body)).username || null;
+    } catch (e) { return null; }
+  }
+
+  function setCloudSession(token) {
+    try {
+      if (token) { sessionStorage.setItem(CLOUD_TOKEN_KEY, token); sessionStorage.setItem(CLOUD_USERNAME_KEY, decodeSessionUsername(token) || ""); }
       else { sessionStorage.removeItem(CLOUD_TOKEN_KEY); sessionStorage.removeItem(CLOUD_USERNAME_KEY); }
     } catch (e) { /* private mode — sign-in just won't persist across a reload */ }
   }
@@ -252,7 +265,7 @@
     const token = cloudToken();
     if (!token) throw new Error("Not signed in");
     const res = await fetch(`${CLOUD_API_BASE}${path}`, { ...opts, headers: { ...(opts.headers || {}), Authorization: `Bearer ${token}` } });
-    if (res.status === 401) { setCloudSession(null, null); render(); throw new Error("Session expired — sign in again"); }
+    if (res.status === 401) { setCloudSession(null); render(); throw new Error("Session expired — sign in again"); }
     return res;
   }
 
@@ -311,7 +324,7 @@
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || `Sign-in failed (${res.status})`);
-      setCloudSession(body.token, username);
+      setCloudSession(body.token);
       document.getElementById("password").value = "";
       msgEl.textContent = "";
       render();
@@ -322,7 +335,7 @@
   });
 
   document.getElementById("signout-btn").addEventListener("click", () => {
-    setCloudSession(null, null);
+    setCloudSession(null);
     render();
   });
 
