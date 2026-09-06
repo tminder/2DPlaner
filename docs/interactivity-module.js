@@ -1281,6 +1281,13 @@
   // actual on-screen size). The live relate-drag line (handlePointerMove) draws directly in
   // these units; clientToPlanPoint below just divides out core.M on top for the few callers
   // that need meters instead (bboxes/positions are meters, not raw viewBox units).
+  // Real bug found by testing the relate-drag line live: whenever the SVG's own on-screen
+  // aspect ratio doesn't match its viewBox's (near-universal, since the viewer pane is
+  // whatever size the layout gives it), the default `preserveAspectRatio="xMidYMid meet"`
+  // centers the content within whichever axis has slack instead of anchoring it at the
+  // element's own top-left corner — a plain `scale` conversion with no offset silently
+  // assumes there's no letterboxing, and was off by exactly that slack (over 80px vertically
+  // in one reproduction), which is why the line's end didn't track the actual cursor.
   function clientToViewBoxPoint(clientX, clientY) {
     const svg = core.rootEl.querySelector("svg");
     const current = viewState || lastCoreFit;
@@ -1288,7 +1295,9 @@
     const rect = svg.getBoundingClientRect();
     if (!rect.width || !rect.height) return null;
     const scale = Math.min(rect.width / current.width, rect.height / current.height);
-    return [current.x + (clientX - rect.left) / scale, current.y + (clientY - rect.top) / scale];
+    const offsetX = (rect.width - current.width * scale) / 2;
+    const offsetY = (rect.height - current.height * scale) / 2;
+    return [current.x + (clientX - rect.left - offsetX) / scale, current.y + (clientY - rect.top - offsetY) / scale];
   }
 
   function clientToPlanPoint(clientX, clientY) {
@@ -2208,8 +2217,14 @@
     const rect = svg.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
     const scale = Math.min(rect.width / current.width, rect.height / current.height);
-    const cursorVbX = current.x + (e.clientX - rect.left) / scale;
-    const cursorVbY = current.y + (e.clientY - rect.top) / scale;
+    // The same `xMidYMid meet` letterboxing offset clientToViewBoxPoint accounts for (see
+    // its own comment) — without it the point kept "under the cursor" during a zoom is
+    // actually offset from the real cursor whenever the viewer pane's aspect ratio doesn't
+    // match the viewBox's, which is close to always.
+    const offsetX = (rect.width - current.width * scale) / 2;
+    const offsetY = (rect.height - current.height * scale) / 2;
+    const cursorVbX = current.x + (e.clientX - rect.left - offsetX) / scale;
+    const cursorVbY = current.y + (e.clientY - rect.top - offsetY) / scale;
 
     const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
     const minWidth = lastCoreFit.width / 8; // ~8x zoomed in, relative to the original fit
@@ -2219,8 +2234,12 @@
     const ratio = newWidth / current.width;
     const newHeight = current.height * ratio;
     const newScale = Math.min(rect.width / newWidth, rect.height / newHeight);
-    const newX = cursorVbX - (e.clientX - rect.left) / newScale;
-    const newY = cursorVbY - (e.clientY - rect.top) / newScale;
+    // offsetX/offsetY stay exactly the same after a pure zoom (the aspect ratio and the
+    // constraining axis are both unchanged, so the constraining axis always exactly fills
+    // `rect` and the other axis's on-screen slack never moves) — reused directly rather
+    // than recomputed against newWidth/newHeight/newScale.
+    const newX = cursorVbX - (e.clientX - rect.left - offsetX) / newScale;
+    const newY = cursorVbY - (e.clientY - rect.top - offsetY) / newScale;
 
     viewState = { x: newX, y: newY, width: newWidth, height: newHeight };
     svg.setAttribute("viewBox", `${newX} ${newY} ${newWidth} ${newHeight}`);
@@ -2334,15 +2353,19 @@
     // Requested directly: a connection's own line should be visible on hover regardless of
     // the `showConnections` setting (that toggle is for a *permanent* line, this is a
     // transient hover aid) — drawn straight into the live <svg>, not gated on rerendering,
-    // so it appears/disappears exactly with the hover itself.
+    // so it appears/disappears exactly with the hover itself. Also requested: an *indirect*
+    // chain (A-B-C) should show in full when hovering just A, not only A's own direct edge —
+    // reusing core's own `connectedNodeIds` BFS (the same one drag propagation already
+    // treats as one fully transitive group) rather than inventing a second notion of
+    // "connected" that only looks one hop deep.
     const svgEl = core.rootEl.querySelector("svg");
+    const reachable = new Set([el.dataset.id, ...core.connectedNodeIds(el.dataset.id, program.connections)]);
     for (const c of program.connections) {
-      const partnerId = c.from === el.dataset.id ? c.to : c.to === el.dataset.id ? c.from : null;
-      if (!partnerId) continue;
-      el.classList.add("connected-highlight");
-      core.rootEl.querySelector(`[data-id="${CSS.escape(partnerId)}"]`)?.classList.add("connected-highlight");
+      if (!reachable.has(c.from) || !reachable.has(c.to)) continue;
+      core.rootEl.querySelector(`[data-id="${CSS.escape(c.from)}"]`)?.classList.add("connected-highlight");
+      core.rootEl.querySelector(`[data-id="${CSS.escape(c.to)}"]`)?.classList.add("connected-highlight");
       if (svgEl) {
-        const a = program.nodesById[el.dataset.id], b = program.nodesById[partnerId];
+        const a = program.nodesById[c.from], b = program.nodesById[c.to];
         const pa = a && nodeCenter(a, lastPositions), pb = b && nodeCenter(b, lastPositions);
         if (pa && pb) {
           svgEl.insertAdjacentHTML("beforeend", `<line class="hover-connection-line" x1="${pa[0] * core.M}" y1="${pa[1] * core.M}" x2="${pb[0] * core.M}" y2="${pb[1] * core.M}" stroke="#8a8a8a" stroke-width="1.2" stroke-dasharray="4 3" opacity="0.6" pointer-events="none" />`);
@@ -2365,12 +2388,10 @@
         core.rootEl.querySelector(`[data-id="${CSS.escape(uid)}"]`)?.classList.remove("corner-preview");
       }
     }
-    for (const c of program.connections) {
-      const partnerId = c.from === el.dataset.id ? c.to : c.to === el.dataset.id ? c.from : null;
-      if (!partnerId) continue;
-      el.classList.remove("connected-highlight");
-      core.rootEl.querySelector(`[data-id="${CSS.escape(partnerId)}"]`)?.classList.remove("connected-highlight");
-    }
+    // Clears the *whole* highlighted set (every node in this component, not just the ones
+    // directly touching whatever's under the pointer right now) — matches handlePointerOver
+    // now highlighting the full transitive chain rather than only direct partners.
+    core.rootEl.querySelectorAll(".connected-highlight").forEach((el2) => el2.classList.remove("connected-highlight"));
     core.rootEl.querySelectorAll("svg .hover-connection-line").forEach((el2) => el2.remove());
     if (stackHintCandidates) {
       for (const id of stackHintCandidates) {

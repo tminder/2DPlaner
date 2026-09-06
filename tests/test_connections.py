@@ -191,6 +191,46 @@ connection hub c
 """
 
 
+CHAIN_CONNECTIONS = """
+element room {
+  shape: "rect"
+  size: [4m, 3m]
+  position: [0m, 0m]
+  style: { fill: "#eee" }
+
+  element a { position: [0.3m, 0.3m] }
+  element b { position: [2m, 0.3m] }
+  element c { position: [3.7m, 0.3m] }
+}
+connection a b
+connection b c
+"""
+
+
+def test_hovering_one_end_of_a_chain_shows_the_whole_indirect_chain(app_page):
+    """Requested directly: A-B-C should show in full when hovering just A, not only A's own
+    direct edge to B -- reuses core's own connectedNodeIds BFS, the same "fully transitive"
+    notion of connected that drag propagation already uses."""
+    load_plan(app_page, CHAIN_CONNECTIONS)
+    ax, ay = element_center(app_page, "a")
+    app_page.mouse.move(ax, ay)
+    app_page.wait_for_timeout(150)
+    assert app_page.locator("svg .hover-connection-line").count() == 2
+    assert app_page.locator(".connected-highlight").count() == 3
+
+    app_page.mouse.move(20, 20)
+    app_page.wait_for_timeout(150)
+    assert app_page.locator("svg .hover-connection-line").count() == 0
+    assert app_page.locator(".connected-highlight").count() == 0
+
+    # Hovering the middle element (b) shows the same whole chain too.
+    bx, by = element_center(app_page, "b")
+    app_page.mouse.move(bx, by)
+    app_page.wait_for_timeout(150)
+    assert app_page.locator("svg .hover-connection-line").count() == 2
+    assert app_page.locator(".connected-highlight").count() == 3
+
+
 def test_disconnect_submenu_lists_all_partners_and_removes_only_one(app_page):
     load_plan(app_page, THREE_WAY_CONNECTIONS)
     hx, hy = element_center(app_page, "hub")
@@ -271,6 +311,48 @@ def test_hovering_element_with_several_connections_shows_one_line_per_partner(ap
     app_page.mouse.move(hx, hy)
     app_page.wait_for_timeout(150)
     assert app_page.locator("svg .hover-connection-line").count() == 3
+
+
+def test_relate_drag_line_endpoint_exactly_matches_the_cursor(app_page):
+    """Real bug found live: the viewer's SVG is letterboxed whenever its on-screen aspect
+    ratio doesn't match its viewBox's (the default preserveAspectRatio="xMidYMid meet"
+    centers the content instead of anchoring it top-left) -- the coordinate conversion
+    silently ignored that offset, so the drag line's end didn't land under the actual
+    cursor. Converts the line's own endpoint back to client coordinates using the exact
+    scale+offset math the app itself uses and checks it lands exactly on the real mouse
+    position, not just "some point on screen"."""
+    load_plan(app_page, SWITCH_AND_LAMP)
+    sx, sy = element_center(app_page, "switch")
+    target_x, target_y = sx + 150, sy + 80
+
+    app_page.keyboard.down("Control")
+    app_page.mouse.move(sx, sy)
+    app_page.mouse.down()
+    app_page.mouse.move(target_x, target_y, steps=8)
+    app_page.wait_for_timeout(150)
+
+    client_pos = app_page.evaluate(
+        """() => {
+            const svg = document.querySelector('#plan-root svg');
+            const line = document.querySelector('svg .relate-drag-line');
+            const rect = svg.getBoundingClientRect();
+            const vb = svg.viewBox.baseVal;
+            const scale = Math.min(rect.width / vb.width, rect.height / vb.height);
+            const offsetX = (rect.width - vb.width * scale) / 2;
+            const offsetY = (rect.height - vb.height * scale) / 2;
+            const x2 = parseFloat(line.getAttribute('x2'));
+            const y2 = parseFloat(line.getAttribute('y2'));
+            return {
+                x: rect.left + offsetX + (x2 - vb.x) * scale,
+                y: rect.top + offsetY + (y2 - vb.y) * scale,
+            };
+        }"""
+    )
+    app_page.mouse.up()
+    app_page.keyboard.up("Control")
+
+    assert abs(client_pos["x"] - target_x) < 0.5
+    assert abs(client_pos["y"] - target_y) < 0.5
 
 
 def test_relate_drag_shows_a_live_line_from_source_to_cursor(app_page):
