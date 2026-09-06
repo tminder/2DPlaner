@@ -6,11 +6,14 @@
 // statements — nothing here is MySQL- or SQLite-specific, so db.php is the only file
 // that changes if the underlying database is ever swapped again.
 
-// Excludes `text` on purpose — matches what docs/'s plan-switcher actually needs to
-// render its list (id/name/updatedAt), without shipping every plan's full source on
-// every list request.
+// Used to exclude `text` on purpose — docs/'s old plan-switcher dropdown only ever needed
+// id/name/updatedAt to render its list. F-044's plan-picker panel shows a live preview of
+// every plan (Cloud included), which does need the source — brought back here rather than
+// a second endpoint, matching get_plan()'s own column list. Accepted tradeoff, asked and
+// confirmed directly: a larger list response for a user with many/large cloud plans, not
+// addressed with pagination or lazy-loaded previews in this pass.
 function list_plans(PDO $db, string $userId): array {
-    $stmt = $db->prepare('SELECT id, name, updated_at AS updatedAt FROM plans WHERE user_id = ? ORDER BY updated_at DESC');
+    $stmt = $db->prepare('SELECT id, name, text, updated_at AS updatedAt FROM plans WHERE user_id = ? ORDER BY updated_at DESC');
     $stmt->execute([$userId]);
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }

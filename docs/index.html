@@ -101,6 +101,30 @@
   .modal .toggle-mode { font-size: 0.8rem; margin-top: 1rem; }
   .modal .toggle-mode a { color: #2c5f7c; cursor: pointer; }
 
+  /* F-044: a plain docked panel, not an overlay -- flex: 0 0 auto alongside header/main in
+     body's own flex column, so opening it just pushes everything below it down. Capped
+     height + its own scroll so a long plan list can't push the viewer pane out of view. */
+  #plan-picker-panel { flex: 0 0 auto; background: #fff; border-bottom: 1px solid #ddd;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.08); padding: 0.85rem 1rem; max-height: 55vh; overflow-y: auto; }
+  #plan-picker-panel[hidden] { display: none; }
+  .picker-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.6rem; }
+  .picker-header h2 { margin: 0; font-size: 1rem; }
+  .picker-section-label { font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.04em;
+    color: #888; margin: 1rem 0 0.5rem; }
+  .picker-section-label:first-child { margin-top: 0; }
+  .picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 0.7rem; }
+  .picker-card { border: 1px solid #ddd; border-radius: 8px; overflow: hidden; cursor: pointer;
+    background: #fff; text-align: left; padding: 0; font: inherit; display: flex; flex-direction: column; }
+  .picker-card:hover { border-color: #9db8e8; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+  .picker-preview { height: 100px; background: #f5f5f3; display: flex; align-items: center;
+    justify-content: center; overflow: hidden; }
+  .picker-preview svg { width: 100%; height: 100%; }
+  .picker-placeholder { font-size: 0.75rem; color: #999; padding: 0.5rem; text-align: center; }
+  .picker-meta { padding: 0.45rem 0.6rem; }
+  .picker-name { font-size: 0.85rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .picker-date { font-size: 0.72rem; color: #888; margin-top: 0.1rem; }
+  .picker-empty { font-size: 0.85rem; color: #888; padding: 0.4rem 0 0.8rem; }
+
   /* main/.layout fill exactly the viewport height left after the header — nothing here
      should ever make the page itself scroll. Both panes stretch to that full height;
      min-height/min-width: 0 on every flex link in the chain is required, not decorative —
@@ -235,7 +259,17 @@
 <body>
 <header>
   <h1><a href="https://www.planagonia.com/" title="Back to planagonia.com">Planagonia</a> <span class="beta-badge">Beta</span></h1>
-  <select id="plan-switcher"></select>
+  <!-- F-044: "open" and "new" as separate actions, each opening #plan-picker-panel below
+       in its own mode -- replaces the old <select id="plan-switcher"> outright, one path
+       to switch/start a plan instead of two. This button's own label *is* the active
+       plan's current name (updateActivePlanButton()), so it still shows "which plan" the
+       way the old dropdown's own selected option did. -->
+  <button class="ribbon-btn" id="plan-open-btn" title="Open a plan">
+    <span class="ribbon-icon">📂</span><span class="ribbon-label">Untitled</span>
+  </button>
+  <button class="ribbon-btn" id="plan-new-btn" title="Start a new plan">
+    <span class="ribbon-icon">✚</span><span class="ribbon-label">New…</span>
+  </button>
   <button id="undo-btn" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
   <button id="redo-btn" title="Redo (Ctrl+Shift+Z)" aria-label="Redo">↷</button>
   <!-- D-105/D-106: every DISTINCT action sits directly in the header, always visible --
@@ -300,6 +334,17 @@
   <input type="file" id="file-input" accept=".planagon,.2dplan,.txt,text/plain">
   <div class="spacer"></div>
 </header>
+<!-- F-044: docked directly in normal flow (not position:fixed/absolute) -- opening it just
+     pushes .mobile-tabs/main down, the same way the header itself already reserves its own
+     space, rather than overlaying the plan the way the sign-in modal does. Works unchanged
+     on mobile for the same reason: no special-casing needed for a plain block-level sibling. -->
+<div id="plan-picker-panel" hidden>
+  <div class="picker-header">
+    <h2 id="picker-title">Open a plan</h2>
+    <button class="modal-close" id="picker-close" aria-label="Close">✕</button>
+  </div>
+  <div class="picker-body" id="picker-body"></div>
+</div>
 <div class="mobile-tabs">
   <button class="tab-btn" id="tab-code" data-tab="code">Code</button>
   <button class="tab-btn active" id="tab-viewer" data-tab="viewer">Viewer</button>
@@ -368,11 +413,11 @@
 </script>
 
 <script>
-  // D-105: the sign-in/register popup. cloudSignIn()/CLOUD_API_BASE/updateCloudUi()/
-  // refreshCloudGroup() are declared later in the document, in the main app script — safe
-  // to reference here anyway, since these run only from event listeners fired after every
-  // script on the page has already executed once, and classic (non-module) <script> tags
-  // in one document share a single top-level scope regardless of source order.
+  // D-105: the sign-in/register popup. cloudSignIn()/CLOUD_API_BASE/updateCloudUi() are
+  // declared later in the document, in the main app script — safe to reference here
+  // anyway, since these run only from event listeners fired after every script on the page
+  // has already executed once, and classic (non-module) <script> tags in one document
+  // share a single top-level scope regardless of source order.
   (function () {
     var overlay = document.getElementById("auth-modal");
     var signinForm = document.getElementById("app-signin-form");
@@ -426,7 +471,6 @@
       try {
         await cloudSignIn(username, password);
         updateCloudUi();
-        refreshCloudGroup();
         closeAuthModal();
       } catch (err) {
         msgEl.className = "auth-msg error";
@@ -1580,46 +1624,27 @@ function switchToPlan(id) {
   sourceEl.value = p.text;
   resetUndoHistory(p.text);
   fixedViewBox = null;
-  refreshPlanSwitcher();
+  updateActivePlanButton();
   rerender();
 }
 
-function refreshPlanSwitcher() {
-  const select = document.getElementById("plan-switcher");
-  select.innerHTML = "";
-  if (plans.length) {
-    const savedGroup = document.createElement("optgroup");
-    savedGroup.label = "My plans";
-    for (const p of [...plans].sort((a, b) => b.updatedAt - a.updatedAt)) {
-      const opt = document.createElement("option");
-      opt.value = `plan:${p.id}`;
-      opt.textContent = p.name;
-      if (p.id === activePlanId) opt.selected = true;
-      savedGroup.appendChild(opt);
-    }
-    select.appendChild(savedGroup);
-  }
-  const exampleGroup = document.createElement("optgroup");
-  exampleGroup.label = "New from example…";
-  for (const [key, label] of Object.entries(EXAMPLE_LABELS)) {
-    const opt = document.createElement("option");
-    opt.value = `example:${key}`;
-    opt.textContent = label;
-    if (!activePlanId && unsavedExample && unsavedExample.key === key) opt.selected = true;
-    exampleGroup.appendChild(opt);
-  }
-  select.appendChild(exampleGroup);
-
-  if (cloudToken()) refreshCloudGroup();
+// F-044: replaces the old dropdown-rebuilding refreshPlanSwitcher() -- the open-trigger
+// button's own label is now the only "which plan is active" display, so this just keeps
+// that one piece of text current instead of rebuilding a whole <select>.
+function updateActivePlanButton() {
+  const btn = document.getElementById("plan-open-btn");
+  if (!btn) return;
+  const name = activePlan()?.name ?? unsavedExample?.name ?? "Untitled";
+  btn.querySelector(".ribbon-label").textContent = name;
 }
 
 // ---------- Cloud sync (D-021/D-019), deliberately minimal: explicit save/load only, no
 // automatic multi-device sync — localStorage stays the default, unaffected, source of
 // truth. A signed-in session lets the active plan be explicitly pushed to the storage
 // service (docs/'s own D-021), and a plan already saved there can be pulled into a new
-// local plan via a third "Cloud" group in the existing plan-switcher, alongside "My
-// plans" and "New from example" — reusing that UI rather than building a separate picker.
-// The session token lives in sessionStorage (cleared when the tab closes), not
+// local plan via a "Cloud" section in the Open plan-picker panel (F-044), alongside "My
+// plans" — previously the old plan-switcher dropdown's own third group, before that was
+// replaced outright. The session token lives in sessionStorage (cleared when the tab closes), not
 // localStorage — its own 1-hour server-side TTL means persisting it indefinitely would
 // just mean "silently stale" more often, not meaningfully more convenient. ----------
 const CLOUD_API_BASE = "https://api.planagonia.com";
@@ -1709,39 +1734,21 @@ async function saveActivePlanToCloud() {
     p.cloudId = saved.id;
     savePlansList();
     showCloudMessage(`saved "${p.name}".`);
-    refreshCloudGroup();
   } catch (e) {
     showCloudMessage(`save failed — ${e.message}`);
   }
 }
 
-// Populates the plan-switcher's third optgroup from the cloud plan list. Separate from
-// refreshPlanSwitcher() itself (which stays synchronous, matching the DOM's own
-// synchronous rebuild of the other two groups) since this one needs a network round trip
-// — called after sign-in, after a cloud save, and opportunistically whenever
-// refreshPlanSwitcher() runs while already signed in.
-async function refreshCloudGroup() {
-  const select = document.getElementById("plan-switcher");
-  select.querySelector('optgroup[label="Cloud"]')?.remove();
-  let list;
-  try {
-    const res = await cloudFetch("/plans.php");
-    if (!res.ok) throw new Error(`list failed (${res.status})`);
-    list = (await res.json()).plans;
-  } catch (e) {
-    showCloudMessage(`couldn't load your cloud plans — ${e.message}`);
-    return;
-  }
-  if (!list.length) return;
-  const cloudGroup = document.createElement("optgroup");
-  cloudGroup.label = "Cloud";
-  for (const cp of list.sort((a, b) => b.updatedAt - a.updatedAt)) {
-    const opt = document.createElement("option");
-    opt.value = `cloud:${cp.id}`;
-    opt.textContent = cp.name;
-    cloudGroup.appendChild(opt);
-  }
-  select.appendChild(cloudGroup);
+// F-044: fetches the signed-in user's cloud plans, *with* each one's own text (the list
+// endpoint used to omit it, back when this only ever populated the old plan-switcher
+// dropdown's Cloud group with names — the plan-picker panel's own live previews are what
+// this was widened for, see storage-service-php's own list_plans()). Called fresh each
+// time the Open picker opens, not cached/kept in sync — a snapshot is enough for a panel
+// you look at for a few seconds.
+async function fetchCloudPlans() {
+  const res = await cloudFetch("/plans.php");
+  if (!res.ok) throw new Error(`list failed (${res.status})`);
+  return (await res.json()).plans;
 }
 
 // Opening a cloud plan that's already linked to a local one (via cloudId, e.g. this
@@ -1899,7 +1906,7 @@ async function rerender(opts = {}) {
     const plan = createPlan(unsavedExample.name, sourceEl.value);
     unsavedExample = null;
     setActivePlan(plan.id);
-    refreshPlanSwitcher();
+    updateActivePlanButton();
   }
   try {
     const parsed = parse(sourceEl.value);
@@ -2062,21 +2069,133 @@ function newPlanFromExample(key) {
   sourceEl.value = text;
   resetUndoHistory(text);
   fixedViewBox = null;
-  refreshPlanSwitcher();
+  updateActivePlanButton();
   rerender();
 }
 
-document.getElementById("plan-switcher").addEventListener("change", (e) => {
-  const value = e.target.value;
-  if (value.startsWith("plan:")) {
-    switchToPlan(value.slice(5));
-  } else if (value.startsWith("example:")) {
-    const key = value.slice(8);
-    if (!EXAMPLES[key]) return;
-    newPlanFromExample(key);
-  } else if (value.startsWith("cloud:")) {
-    openCloudPlan(value.slice(6));
+// ---------- F-044: the Open/New plan-picker panel ----------
+// A live render, not a cached thumbnail — parse()/render() are plain functions in this
+// same file (this code *is* core, no window.PlanCore indirection needed) — so a preview
+// can never drift from the plan it's showing the way a stale generated thumbnail could.
+// Caught per-card: a plan whose stored text no longer parses (corrupted, or written
+// against a mismatched language revision) gets a plain placeholder instead of breaking
+// the whole panel.
+function planPreviewMarkup(text) {
+  // render() caches its own fit box in the module-level fixedViewBox, reused across
+  // repeated calls to avoid recomputing it mid-drag (see rerender()) -- a real hazard for
+  // a batch of *different* plans' previews rendered back to back: without resetting it
+  // before each one, every card after the first would render using whichever plan's box
+  // got computed first. Saved and restored around the call so the live plan's own cached
+  // box (if any) is untouched once every preview is done.
+  const savedFixedViewBox = fixedViewBox;
+  fixedViewBox = null;
+  try {
+    return render(parse(text)).svg;
+  } catch (e) {
+    return `<div class="picker-placeholder">Couldn't preview this plan</div>`;
+  } finally {
+    fixedViewBox = savedFixedViewBox;
   }
+}
+
+function formatPlanDate(ms) {
+  return new Date(ms).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+
+function planCardMarkup({ text, name, date, action }) {
+  const dateHtml = date ? `<div class="picker-date">${escapeHtml(date)}</div>` : "";
+  return `<button type="button" class="picker-card" data-action="${escapeHtml(action)}">
+    <div class="picker-preview">${planPreviewMarkup(text)}</div>
+    <div class="picker-meta"><div class="picker-name">${escapeHtml(name)}</div>${dateHtml}</div>
+  </button>`;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" }[c]));
+}
+
+const pickerPanelEl = document.getElementById("plan-picker-panel");
+const pickerBodyEl = document.getElementById("picker-body");
+const pickerTitleEl = document.getElementById("picker-title");
+
+// Card clicks are delegated once, on the body — the grid's own innerHTML is rebuilt
+// wholesale on every open (and, for Open mode, again once the Cloud fetch resolves), so a
+// per-card listener would just be discarded and re-added every time for no benefit.
+pickerBodyEl.addEventListener("click", (e) => {
+  const card = e.target.closest(".picker-card[data-action]");
+  if (!card) return;
+  const { action } = card.dataset;
+  if (action.startsWith("example:")) newPlanFromExample(action.slice(8));
+  else if (action.startsWith("plan:")) switchToPlan(action.slice(5));
+  else if (action.startsWith("cloud:")) openCloudPlan(action.slice(6));
+  closePlanPicker();
+});
+
+function renderNewPickerBody() {
+  const cards = Object.entries(EXAMPLE_LABELS)
+    .map(([key, label]) => planCardMarkup({ text: EXAMPLES[key], name: label, action: `example:${key}` }))
+    .join("");
+  pickerBodyEl.innerHTML = `<div class="picker-grid">${cards}</div>`;
+}
+
+function renderOpenPickerBody() {
+  const myPlansCards = [...plans].sort((a, b) => b.updatedAt - a.updatedAt)
+    .map((p) => planCardMarkup({ text: p.text, name: p.name, date: formatPlanDate(p.updatedAt), action: `plan:${p.id}` }))
+    .join("");
+  const myPlansHtml = plans.length
+    ? `<div class="picker-section-label">My plans</div><div class="picker-grid">${myPlansCards}</div>`
+    : `<div class="picker-section-label">My plans</div><div class="picker-empty">No saved plans yet — start one from "New…".</div>`;
+  pickerBodyEl.innerHTML = myPlansHtml;
+
+  if (!cloudToken()) return;
+  pickerBodyEl.insertAdjacentHTML("beforeend", `<div class="picker-section-label">Cloud</div><div class="picker-empty" id="picker-cloud-loading">Loading…</div>`);
+  fetchCloudPlans().then((list) => {
+    const loading = document.getElementById("picker-cloud-loading");
+    if (!loading) return; // panel closed (or reopened in a different mode) before this resolved
+    if (!list.length) { loading.textContent = "No cloud plans saved yet."; return; }
+    const cloudCards = [...list].sort((a, b) => b.updatedAt - a.updatedAt)
+      .map((cp) => planCardMarkup({ text: cp.text, name: cp.name, date: formatPlanDate(cp.updatedAt), action: `cloud:${cp.id}` }))
+      .join("");
+    loading.outerHTML = `<div class="picker-grid">${cloudCards}</div>`;
+  }).catch((e) => {
+    const loading = document.getElementById("picker-cloud-loading");
+    if (loading) loading.textContent = `Couldn't load your cloud plans — ${e.message}`;
+  });
+}
+
+function openPlanPicker(mode) {
+  pickerTitleEl.textContent = mode === "new" ? "Start a new plan" : "Open a plan";
+  if (mode === "new") renderNewPickerBody(); else renderOpenPickerBody();
+  pickerPanelEl.hidden = false;
+}
+
+function closePlanPicker() {
+  pickerPanelEl.hidden = true;
+  pickerBodyEl.innerHTML = "";
+}
+
+document.getElementById("plan-open-btn").addEventListener("click", () => {
+  if (!pickerPanelEl.hidden && pickerTitleEl.textContent === "Open a plan") { closePlanPicker(); return; }
+  openPlanPicker("open");
+});
+document.getElementById("plan-new-btn").addEventListener("click", () => {
+  if (!pickerPanelEl.hidden && pickerTitleEl.textContent === "Start a new plan") { closePlanPicker(); return; }
+  openPlanPicker("new");
+});
+document.getElementById("picker-close").addEventListener("click", closePlanPicker);
+// pointerdown, not click: interactivity-module.js's own handlePointerDown calls
+// preventDefault() on every pointerdown over the viewer (to stop native text-selection
+// mid-drag) -- found live that this also suppresses the *click* event the browser would
+// otherwise synthesize afterward, so a click-based outside-detector never fired for a
+// click landing on the plan itself.
+document.addEventListener("pointerdown", (e) => {
+  if (pickerPanelEl.hidden) return;
+  if (pickerPanelEl.contains(e.target)) return;
+  if (e.target.closest("#plan-open-btn, #plan-new-btn")) return; // their own click handlers toggle it
+  closePlanPicker();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !pickerPanelEl.hidden) closePlanPicker();
 });
 
 document.getElementById("cloud-signin-btn").addEventListener("click", openAuthModal);
@@ -2084,7 +2203,7 @@ document.getElementById("cloud-signin-btn").addEventListener("click", openAuthMo
 document.getElementById("cloud-signout-btn").addEventListener("click", () => {
   setCloudSession(null, null);
   updateCloudUi();
-  refreshPlanSwitcher();
+  updateActivePlanButton();
   showCloudMessage("signed out.");
 });
 
@@ -2100,7 +2219,7 @@ document.getElementById("rename-btn").addEventListener("click", () => {
   p.name = uniquePlanName(trimmed, p.id);
   p.updatedAt = Date.now();
   savePlansList();
-  refreshPlanSwitcher();
+  updateActivePlanButton();
 });
 
 document.getElementById("grid-toggle-btn").addEventListener("click", toggleGridSetting);
@@ -2252,7 +2371,7 @@ sourceEl.value = activePlan().text;
 resetUndoHistory(activePlan().text);
 fixedViewBox = null;
 updateCloudUi();
-refreshPlanSwitcher();
+updateActivePlanButton();
 rerender();
 
 // Typing commits to undo history in debounced bursts (one step per pause, not per

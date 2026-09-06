@@ -22,9 +22,11 @@ def load_plan(page, text):
 
 
 def select_example(page, name):
-    """Switch to one of the shipped examples (blank/apartment/utility) via the
-    plan-switcher <select>, the same element a real user would use."""
-    page.select_option("#plan-switcher", f"example:{name}")
+    """Switch to one of the shipped examples via the real "New…" plan-picker panel
+    (F-044) -- the same path a real user would take, not a direct JS call."""
+    page.click("#plan-new-btn")
+    page.wait_for_timeout(150)
+    page.click(f'.picker-card[data-action="example:{name}"]')
     page.wait_for_timeout(400)
 
 
