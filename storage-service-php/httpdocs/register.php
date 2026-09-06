@@ -36,8 +36,8 @@ try {
     enforce_rate_limit($db, 'register:' . client_ip(), 5, 3600); // 5 registrations / hour
 
     $wpUser = create_wp_user($config, $email, $password);
-    $token = create_unverified_user($db, $wpUser['id'], $wpUser['slug']);
-    send_verification_email($config, $email, $wpUser['slug'], $token);
+    $token = create_unverified_user($db, $wpUser['id'], $wpUser['username']);
+    send_verification_email($config, $email, $wpUser['username'], $token);
 
     send_json(201, ['message' => 'Check your email to confirm your account before signing in.']);
 } catch (RegistrationException $e) {

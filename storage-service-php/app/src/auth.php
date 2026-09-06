@@ -57,8 +57,16 @@ class AccountNotVerifiedException extends Exception {}
 // the site's homepage instead of routing to the REST API at all, found by testing this
 // against the real instance, not assumed. Fixed there via `wp rewrite structure
 // "/%postname%/"` + `wp rewrite flush --hard`.
+//
+// context=edit is required here, not the default (view) — a real bug found live: WP's
+// default "view" response for /users/me has no "username" field at all, only "slug" (a
+// URL-safe *nicename*, e.g. "t.ch.minder" -> "t-ch-minder" — a different value from the
+// real login whenever the username contains a character the nicename sanitizer changes).
+// Confirmed directly that a "subscriber"-role account can request context=edit on their
+// *own* /users/me (this isn't an elevated-permission ask), and that it's exactly what
+// carries the real "username" field this needs.
 function verify_credentials(array $config, PDO $db, string $username, string $password): ?array {
-    $ch = curl_init(rtrim($config['wp_url'], '/') . '/wp-json/wp/v2/users/me');
+    $ch = curl_init(rtrim($config['wp_url'], '/') . '/wp-json/wp/v2/users/me?context=edit');
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_USERPWD => "$username:$password",
@@ -75,8 +83,8 @@ function verify_credentials(array $config, PDO $db, string $username, string $pa
     if ($status !== 200) return null;
 
     $wpUser = json_decode($body, true);
-    if (!is_array($wpUser) || !isset($wpUser['id'], $wpUser['slug'])) return null;
-    $user = ensure_user($db, (string) $wpUser['id'], $wpUser['slug']); // WP's own id becomes this service's user id
+    if (!is_array($wpUser) || !isset($wpUser['id'], $wpUser['username'])) return null;
+    $user = ensure_user($db, (string) $wpUser['id'], $wpUser['username']); // WP's own id becomes this service's user id
     if (!$user['verified']) throw new AccountNotVerifiedException();
     return $user;
 }

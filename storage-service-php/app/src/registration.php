@@ -29,9 +29,19 @@ function derive_username(string $email): string {
 // own REST API returns the specific error code "existing_user_login" for that case,
 // checked for by name rather than treating every rejection as retryable, since an
 // "existing_user_email" (a genuine duplicate account) or an invalid password should fail
-// immediately, not loop. Returns WP's own {id, slug} — the slug is what actually got
-// used, which may carry a suffix the caller (and the visitor, on the confirmation page)
-// needs to know about.
+// immediately, not loop. Returns WP's own {id, username} — the username is what actually
+// got used, which may carry a suffix the caller (and the visitor, on the confirmation
+// page) needs to know about.
+//
+// A real, high-frequency bug found live: this used to return WP's own "slug" field
+// instead — a URL-safe *nicename* WP derives from the username (dots become hyphens,
+// e.g. "t.ch.minder" -> "t-ch-minder"), a completely different value from the actual
+// login name Basic Auth checks against. Any email whose local part contains a dot (an
+// extremely common pattern) got a username shown/stored that could never actually sign
+// in — confirmed directly: authenticating as the real "t.ch.minder" succeeds, the
+// slug "t-ch-minder" gets a flat 401. "username" and "slug" happen to be identical for
+// a plain alphanumeric-and-hyphens name, which is exactly why this went unnoticed for
+// every account tested before one with a dot in it came along.
 function create_wp_user(array $config, string $email, string $password): array {
     $base = derive_username($email);
     for ($suffix = 0; $suffix <= 20; $suffix++) {
@@ -62,10 +72,10 @@ function create_wp_user(array $config, string $email, string $password): array {
 
         $data = json_decode($body, true);
         if ($status === 201) {
-            if (!is_array($data) || !isset($data['id'], $data['slug'])) {
+            if (!is_array($data) || !isset($data['id'], $data['username'])) {
                 throw new RegistrationException('Unexpected response from the account service');
             }
-            return ['id' => (string) $data['id'], 'slug' => $data['slug']];
+            return ['id' => (string) $data['id'], 'username' => $data['username']];
         }
 
         $code = is_array($data) ? ($data['code'] ?? '') : '';
