@@ -94,10 +94,6 @@ Today every static-validation finding only appears in the validation panel — a
 
 `grid-module.js` always inserts its pattern as the SVG's first children, painting behind every shape unconditionally. The ask: a plan should be able to choose a grid that sits *in front*, at reduced opacity — useful as an alignment overlay once a plan is dense enough that a background grid gets fully hidden. Not designed: the settings shape (a `layer: "front"|"back"` sibling to `size`/`type`), the default opacity, whether "front" means literally last in the SVG or needs to stay behind interactivity's own overlay icons, and re-confirming `pointer-events: none` once a front-layer grid sits visually above shapes (a regression there would be far more noticeable than for a background grid).
 
-## F-040 The code/viewer pane split should be resizable
-
-`textarea { flex: 0 0 420px; resize: none; }` hard-codes the split with the browser's native resize handle explicitly disabled — there is no draggable divider anywhere. Not designed: the mechanism (a thin draggable handle vs. reviving native `resize`), whether the chosen width persists (`localStorage`) or resets per session, and how this interacts with the mobile layout (no side-by-side panes there at all — presumably a desktop-only concept).
-
 ## F-041 Alternatives to the drop-shadow "glow" for selection and hover
 
 Selection and hover both use a colored `drop-shadow` filter, differing only by hue — established early, reused since. (Connection-highlight used to be a third, distinctly-colored member of this family; it's since been unified to match plain hover's own color, [decisions.md D-101](decisions.md#d-101-a-connected-elements-hover-highlight-is-the-same-color-as-plain-hover), narrowing what "alternatives" would need to cover.) Not designed: what the alternatives actually are (a stroke/outline treatment, a background tint, a corner-handle indicator), or whether selection and hover should even keep sharing one visual family now that selection has a behavior (raising to the front) hover doesn't.

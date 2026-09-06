@@ -110,6 +110,16 @@
   .layout { display: flex; gap: 1rem; flex: 1 1 auto; min-height: 0; width: 100%; }
   textarea { flex: 0 0 420px; height: 100%; font-family: ui-monospace, Consolas, monospace; font-size: 13px;
     padding: 0.75rem; border: 1px solid #ccc; border-radius: 6px; resize: none; }
+  /* F-040: a real draggable divider rather than the textarea's own native corner-resize
+     handle (which would only ever resize the textarea itself, not "the split" as a
+     whole) — the standard pattern this kind of two-pane layout already uses elsewhere
+     (VS Code, browser devtools). A generous 8px hit area with a slim visible 2px bar
+     centered inside it, so the actual grab target is comfortably wider than what's drawn. */
+  .pane-resizer { flex: 0 0 8px; cursor: col-resize; position: relative; border-radius: 3px; }
+  .pane-resizer::after { content: ""; position: absolute; left: 3px; top: 0; bottom: 0; width: 2px;
+    background: #ccc; border-radius: 1px; }
+  .pane-resizer:hover::after, .pane-resizer:focus-visible::after, .pane-resizer.active::after { background: #888; }
+  .pane-resizer:focus-visible { outline: 2px solid #2c5f7c; outline-offset: 2px; }
   /* position: relative anchors .status-overlay below — kept here in the page's own CSS
      (not left to the interactivity module) since error display is core, not module,
      behavior and must still work with no module loaded at all. */
@@ -166,8 +176,11 @@
     main { padding: 0.5rem; }
     .layout { flex-direction: column; }
     /* Only the active tab's pane is shown at all, so it gets the whole remaining height —
-       no percentage split needed the way the earlier two-pane-stacked version needed one. */
+       no percentage split needed the way the earlier two-pane-stacked version needed one.
+       The resizer has nothing to do here — F-040 is a desktop-only concept, panes never
+       sit side by side below this breakpoint. */
     textarea, .viewer-pane, #code-highlight-wrap { flex: 1 1 auto; min-height: 0; width: 100%; height: auto; }
+    .pane-resizer { display: none; }
     .layout[data-mobile-tab="code"] .viewer-pane { display: none; }
     /* Hides the bare textarea when code-highlight-module.js hasn't loaded, and its
        wrapper (#code-highlight-wrap, D-042) when it has — the module moves the real
@@ -279,6 +292,7 @@
 <main>
   <div class="layout" id="layout" data-mobile-tab="viewer">
     <textarea id="source" spellcheck="false"></textarea>
+    <div id="pane-resizer" class="pane-resizer" role="separator" aria-orientation="vertical" aria-label="Resize code editor" tabindex="0"></div>
     <div class="viewer-pane">
       <div id="plan-root"></div>
       <div class="status-overlay">
@@ -1290,6 +1304,21 @@ function nodeDragEdits(node, parent, dx, dy, base, cornerUsers, warnings) {
 
 // ---------- Wire up ----------
 const sourceEl = document.getElementById("source");
+
+// F-040: restored here, on the bare textarea, before code-highlight-module.js (one of the
+// always-auto-loaded AUTO_MODULES, injected as a <script> moments from now) gets a chance
+// to run — that module moves this same textarea into its own wrapper and copies the
+// textarea's *computed* flex-basis onto it once, at that exact moment. Restoring later
+// (e.g. from the resizer's own wiring near the bottom of this file) would either miss that
+// copy entirely or need to know which of the two elements is currently "the" sized one;
+// setting it here means whichever one ends up responsible for sizing already has the
+// right value by the time it matters.
+const PANE_WIDTH_KEY = "planagonia:codePaneWidth";
+try {
+  const savedWidth = Number(localStorage.getItem(PANE_WIDTH_KEY));
+  if (savedWidth > 0) sourceEl.style.flexBasis = `${savedWidth}px`;
+} catch (e) { /* private mode/quota — not fatal, falls back to the default 420px */ }
+
 const rootEl = document.getElementById("plan-root");
 const errorEl = document.getElementById("error");
 const dragmsgEl = document.getElementById("dragmsg");
@@ -2082,6 +2111,64 @@ document.addEventListener("keydown", (e) => {
   const key = e.key.toLowerCase();
   if (key === "z" && !e.shiftKey) { e.preventDefault(); undo(); }
   else if ((key === "z" && e.shiftKey) || key === "y") { e.preventDefault(); redo(); }
+});
+
+// ---------- F-040: the code/viewer pane split is resizable ----------
+// Whichever element is actually responsible for the pane's width depends on whether
+// code-highlight-module.js has wrapped the textarea yet (see the restore-on-load comment
+// near sourceEl's own declaration) -- resolved fresh here rather than cached, since that
+// can change across a module reload.
+const MIN_CODE_PANE_WIDTH = 240;
+const MIN_VIEWER_PANE_WIDTH = 300;
+const PANE_RESIZE_STEP = 20; // px per arrow-key press
+const paneResizerEl = document.getElementById("pane-resizer");
+
+function resizeTargetEl() {
+  return document.getElementById("code-highlight-wrap") || sourceEl;
+}
+
+function clampPaneWidth(width) {
+  // The space actually available to trade between the two flexible panes — measured
+  // directly from their own current rendered widths rather than layoutEl.clientWidth
+  // minus a guessed allowance, since that would also need to account for the resizer's
+  // own width and .layout's two gaps around it (a real bug found by testing an overshoot
+  // drag: the viewer pane ended up narrower than MIN_VIEWER_PANE_WIDTH because that fixed
+  // overhead was never subtracted).
+  const viewerEl = document.querySelector(".viewer-pane");
+  const availableForPanes = resizeTargetEl().getBoundingClientRect().width + viewerEl.getBoundingClientRect().width;
+  const max = Math.max(MIN_CODE_PANE_WIDTH, availableForPanes - MIN_VIEWER_PANE_WIDTH);
+  return Math.min(max, Math.max(MIN_CODE_PANE_WIDTH, width));
+}
+
+function applyPaneWidth(width) {
+  const clamped = clampPaneWidth(width);
+  resizeTargetEl().style.flexBasis = `${clamped}px`;
+  try { localStorage.setItem(PANE_WIDTH_KEY, String(clamped)); } catch (e) { /* private mode/quota — not fatal */ }
+}
+
+let paneResizeStart = null; // { startX, startWidth } while a drag is in progress
+function handlePaneResizeMove(e) {
+  if (!paneResizeStart) return;
+  applyPaneWidth(paneResizeStart.startWidth + (e.clientX - paneResizeStart.startX));
+}
+function handlePaneResizeUp() {
+  paneResizeStart = null;
+  paneResizerEl.classList.remove("active");
+  window.removeEventListener("pointermove", handlePaneResizeMove);
+  window.removeEventListener("pointerup", handlePaneResizeUp);
+}
+paneResizerEl.addEventListener("pointerdown", (e) => {
+  paneResizeStart = { startX: e.clientX, startWidth: resizeTargetEl().getBoundingClientRect().width };
+  paneResizerEl.classList.add("active");
+  window.addEventListener("pointermove", handlePaneResizeMove);
+  window.addEventListener("pointerup", handlePaneResizeUp);
+  e.preventDefault(); // matches interactivity-module.js's own drag handling — no stray text selection mid-drag
+});
+// A focusable role="separator" that didn't also respond to the keyboard would be a worse
+// accessibility story than not making it focusable at all.
+paneResizerEl.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowLeft") { e.preventDefault(); applyPaneWidth(resizeTargetEl().getBoundingClientRect().width - PANE_RESIZE_STEP); }
+  else if (e.key === "ArrowRight") { e.preventDefault(); applyPaneWidth(resizeTargetEl().getBoundingClientRect().width + PANE_RESIZE_STEP); }
 });
 </script>
 </body>
