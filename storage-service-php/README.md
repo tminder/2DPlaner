@@ -23,8 +23,10 @@ below — none of which would have been caught by code review alone.
   plain SQL, no ORM.
 - **Auth (`app/src/auth.php`) is real, not a stub.** `verify_credentials()` calls a live
   WordPress instance's REST API (`auth.planagonia.com`, D-019) via HTTP Basic Auth with a
-  WordPress Application Password, trusting a `200` response from `/wp-json/wp/v2/users/me`
-  and mapping WP's own user id/slug onto this service's local `users` table.
+  WordPress Application Password, trusting a `200` response from `/wp-json/wp/v2/users/me?context=edit`
+  and mapping WP's own user id/username onto this service's local `users` table — `context=edit`
+  specifically, since the default response has no `username` field at all, only a separate
+  URL-safe `slug` that isn't the real login (D-118).
 - **Session tokens are real** — HMAC-SHA256 signed, hand-rolled rather than a JWT
   library (no Composer dependency needed for something this small, and it deliberately
   supports exactly one algorithm with no "alg" field to negotiate — sidesteps a whole
