@@ -54,9 +54,9 @@ Whether a plan (or the app) should support feet/inches display. The language is 
 
 A plan's settings are otherwise purely textual — turning on e.g. `edgeLengths` or `allowCollisions` means typing it. **One concrete case is now built:** the header menu's "Show grid" toggle reads/writes `settings.grid` directly ([decisions.md D-103](decisions.md#d-103-the-app-header-every-distinct-action-flat-and-always-visible-icon-led-export-grouped-as-its-one-deliberate-flyout--plus-a-settings-toggle-and-a-real-sign-in-popup)). Whether this generalizes to a real settings panel covering every setting, or stays a small set of individually-added toggles for the settings that are genuine on/off flags, is open.
 
-## F-016 Context menu: Scale
+## F-016 Scale for a corner-reference-built polygon/polyline
 
-Duplicate is built ([decisions.md D-074](decisions.md#d-074-f-016-duplicate--scale-kept-as-its-own-follow-up-not-bundled-in)). **A `rect`/`circle` now has a real resize gesture — Shift+arrow keys ([D-109](decisions.md#d-109-f-043-keyboard-driven-movenudge-and-resize-for-the-selected-element))** — but nothing from the *context menu itself* exists yet (no menu item, no resize-handle UI shown once an element is selected). For a corner-reference-built polygon/polyline, scale would still mean moving every referenced corner outward from a pivot — a materially different mechanism, deliberately out of scope for D-109 too, and still fully undesigned.
+Duplicate is built ([D-074](decisions.md#d-074-f-016-duplicate--scale-kept-as-its-own-follow-up-not-bundled-in)); `rect`/`circle` now has two real resize mechanisms — Shift+arrow keys ([D-109](decisions.md#d-109-f-043-keyboard-driven-movenudge-and-resize-for-the-selected-element)) and visible, draggable resize handles ([D-116](decisions.md#d-116-f-016-visible-draggable-resize-handles-for-the-selected-rectcircle)). Still fully undesigned: a corner-reference-built polygon/polyline has no resize mechanism at all — scaling one would mean moving every referenced corner outward from a pivot, a materially different mechanism than either of the two `rect`/`circle` approaches, deliberately kept out of scope both times.
 
 ## F-024 No rotation, and domain coverage hasn't been audited against what a real floor plan needs
 

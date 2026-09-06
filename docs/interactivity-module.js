@@ -38,6 +38,10 @@
          touches stroke-width at all, so it reads consistently regardless of how thick or
          thin the shape's own stroke already is. */
       svg .obj.selected { filter: drop-shadow(0 0 2px rgba(124,58,237,0.55)); }
+      /* F-016: matches .selected's own purple accent above, so a handle reads as part of
+         the same selection affordance rather than a separate, unrelated control. */
+      svg .resize-handle { fill: #fff; stroke: #7c3aed; stroke-width: 1.5px; cursor: pointer; }
+      svg .resize-handle:hover { fill: #7c3aed; }
       #plan-root:not(.dragging) .anchor-hit:hover { fill: #e33; opacity: 0.7; }
       /* Live feedback for the Ctrl/Cmd-drag relate gesture: whichever other element is
          currently under the cursor while the source itself stays put — a distinct color
@@ -189,6 +193,14 @@
   let lastPositions = {};
   let selectedId = null;
   let drag = null;
+  // F-016: dragging one of the visible resize handles shown on the selected rect/circle.
+  // kind "corner" (rect): anchorAbs is that handle's own diagonally-opposite corner, fixed
+  // for the gesture's duration; startAbs is the rect's original top-left, used to turn an
+  // absolute delta into a local position edit (see applyResizeDrag). kind "radius" (circle):
+  // startAbs is just the circle's own center, anchorAbs unused. baseText, like drag's own,
+  // is reparsed fresh on every move rather than the live evolving source — see
+  // applyResizeDrag for why.
+  let resizeDrag = null;
   // Ctrl/Cmd+drag on an element (replacing the old +/- icons): fromId never moves for the
   // gesture's duration, candidateId tracks whichever other element is currently under the
   // cursor (null when there's no valid target there) so it can get a live highlight.
@@ -232,7 +244,7 @@
   // order" fragility this entry warns about. A future fourth gesture, or a third guard,
   // now has one place to update instead of a third copy to remember.
   function isGestureActive() {
-    return !!(drag || canvasDrag || relateDrag || pinch);
+    return !!(drag || canvasDrag || relateDrag || pinch || resizeDrag);
   }
 
   // ---------- Snap geometry ----------
@@ -1967,6 +1979,9 @@
     } else {
       delete core.rootEl.dataset.selectedId;
     }
+    // F-016: after bringToFront above, not before — handles must paint on top of the
+    // selected shape (and stay hit-testable there), not get reburied by its own reorder.
+    renderResizeHandles(svgEl, prog, positions);
 
     // A stationary click-cycle click never re-fires pointerover (the hovered DOM node gets
     // destroyed and replaced by this same rerender, but the pointer itself never moves), so
@@ -2138,12 +2153,52 @@
         clearTimeout(longPressTimer);
         longPressTimer = null;
         if (drag) { core.sourceEl.value = drag.baseText; drag = null; core.rerender({ preserveViewBox: true }); }
+        if (resizeDrag) { core.sourceEl.value = resizeDrag.baseText; resizeDrag = null; core.rerender({ preserveViewBox: true }); }
         canvasDrag = null;
         core.rootEl.classList.remove("dragging");
         pinch = { startDist: pinchDistance(), startMid: pinchMidpoint(), startView: viewState || lastCoreFit };
         return;
       }
       if (activeTouches.size > 2) return; // a third finger: stay in the existing 2-finger pinch
+    }
+
+    // F-016: a resize handle always wins over the shape/canvas branching below — it's drawn
+    // on top specifically so it stays hit-testable even where it visually overlaps the
+    // selected shape's own edge.
+    const handle = e.target.closest(".resize-handle");
+    if (handle) {
+      const nodeId = handle.dataset.nodeId;
+      const corner = handle.dataset.corner;
+      const node = program.nodesById[nodeId];
+      const abs = lastPositions[nodeId];
+      if (node && abs) {
+        if (corner === "radius") {
+          const r0 = node.props.radius;
+          if (!core.isEditable(r0)) {
+            core.dragmsgEl.textContent = `'${nodeId}': radius is an expression, can't resize by dragging — edit it directly`;
+          } else {
+            resizeDrag = { id: nodeId, kind: "radius", startAbs: abs, baseText: core.sourceEl.value };
+            core.rootEl.classList.add("dragging");
+          }
+        } else {
+          const [w0, h0] = node.props.size;
+          const [x0, y0] = node.props.position ?? [];
+          const editable = node.props.position && core.isEditable(w0) && core.isEditable(h0)
+            && core.isEditable(x0) && core.isEditable(y0);
+          if (!editable) {
+            core.dragmsgEl.textContent = `'${nodeId}': position/size includes an expression, can't resize by dragging — edit it directly`;
+          } else {
+            const [ox, oy] = abs;
+            const w = core.numOf(w0), h = core.numOf(h0);
+            // Each handle's anchor is its own diagonally-opposite corner — fixed for the
+            // whole gesture, computed once here from the rect's state right now.
+            const anchors = { tl: [ox + w, oy + h], tr: [ox, oy + h], bl: [ox + w, oy], br: [ox, oy] };
+            resizeDrag = { id: nodeId, kind: "corner", anchorAbs: anchors[corner], startAbs: [ox, oy], baseText: core.sourceEl.value };
+            core.rootEl.classList.add("dragging");
+          }
+        }
+      }
+      return;
     }
 
     const el = e.target.closest("[data-id]");
@@ -2274,6 +2329,54 @@
   }
 
   const RESIZE_MIN = 0.01; // a resize can never shrink a dimension to zero/negative
+
+  // F-016: visible, draggable resize handles for the selected rect/circle — real SVG
+  // elements in plan/meters coordinates (× core.M), not fixed-position HTML overlays, so
+  // panning/zooming keeps them correctly anchored for free the same way it already does for
+  // every shape, with no separate screen-space recomputation to keep in sync. Fixed size in
+  // viewBox units, not zoom-compensated — a deliberate v1 simplification. data-node-id, not
+  // data-id, so these never collide with the app-wide [data-id] shape-selector convention
+  // (the exact bug D-112 hit once already). No manual removal of last render's handles
+  // needed: core.rerender() already replaces #plan-root's whole innerHTML every time.
+  const HANDLE_HALF = 7; // viewBox units — a touch-usable ~14x14 square/circle at 1x zoom
+  function renderResizeHandles(svgEl, prog, positions) {
+    if (!selectedId) return;
+    if (isGestureActive() && !resizeDrag) return; // hidden mid-drag/pinch/relate, shown mid-resize itself
+    const node = prog.nodesById[selectedId];
+    const abs = node && positions[selectedId];
+    if (!node || !abs) return;
+    // core's own renderShape falls back to a bare anchor point for a rect/circle with no
+    // declared style at all (a real, deliberate rule, not this module's own) — a styleless
+    // "rect" is never actually drawn as one, so it must not get resize handles either;
+    // found live, not assumed, by testing a rect with no style and seeing handles float
+    // around geometry nothing on screen actually corresponds to.
+    const hasStyle = node.props.style !== undefined;
+    if (node.props.shape === "rect" && node.props.size && node.props.position && hasStyle) {
+      const [ox, oy] = abs;
+      const w = core.numOf(node.props.size[0]), h = core.numOf(node.props.size[1]);
+      // An expression-valued size/position resolves to a function, not a number, here (the
+      // program tree is expanded but not yet rendered) — Number.isFinite rejects that
+      // uniformly rather than drawing 3 of 4 corners at NaN coordinates. Grabbing one of
+      // these is separately guarded against too (handlePointerDown's own isEditable check),
+      // but there's nothing coherent to even show without valid geometry in the first place.
+      if (!Number.isFinite(w) || !Number.isFinite(h)) return;
+      const corners = [
+        ["tl", ox, oy], ["tr", ox + w, oy], ["bl", ox, oy + h], ["br", ox + w, oy + h],
+      ];
+      for (const [corner, x, y] of corners) {
+        svgEl.insertAdjacentHTML("beforeend",
+          `<rect class="resize-handle" data-node-id="${selectedId}" data-corner="${corner}" ` +
+          `x="${x * core.M - HANDLE_HALF}" y="${y * core.M - HANDLE_HALF}" width="${HANDLE_HALF * 2}" height="${HANDLE_HALF * 2}" />`);
+      }
+    } else if (node.props.shape === "circle" && node.props.radius !== undefined && hasStyle) {
+      const [cx, cy] = abs;
+      const r = core.numOf(node.props.radius);
+      if (!Number.isFinite(r)) return;
+      svgEl.insertAdjacentHTML("beforeend",
+        `<circle class="resize-handle" data-node-id="${selectedId}" data-corner="radius" ` +
+        `cx="${(cx + r) * core.M}" cy="${cy * core.M}" r="${HANDLE_HALF}" />`);
+    }
+  }
 
   // A keyboard nudge is exactly "a drag of a fixed, small magnitude" — applyDrag only ever
   // reads dragState.id/baseText/singleOnly (its own body never touches clientX/clientY/
@@ -2498,11 +2601,47 @@
     updateScaleBar();
   }
 
+  // F-016: dragging a resize handle. Reparses resizeDrag.baseText fresh every call — not
+  // the live evolving sourceEl.value — the same reason applyDrag does: every move computes
+  // an *absolute* target from the gesture's own fixed start state (anchorAbs/startAbs),
+  // never accumulated from whatever the previous move already wrote, so spans and original
+  // literal values both stay exactly as they were at gesture-start regardless of how many
+  // moves have already happened.
+  function applyResizeDrag(clientX, clientY) {
+    const cursor = clientToPlanPoint(clientX, clientY);
+    if (!cursor) return;
+    let base;
+    try { base = core.parseExpanded(resizeDrag.baseText); } catch (e) { return; }
+    const node = base.nodesById[resizeDrag.id];
+    if (!node) return;
+    const edits = [];
+    if (resizeDrag.kind === "radius") {
+      const r0 = node.props.radius;
+      const newR = Math.max(RESIZE_MIN, Math.hypot(cursor[0] - resizeDrag.startAbs[0], cursor[1] - resizeDrag.startAbs[1]));
+      edits.push({ start: r0.start, end: r0.end, text: core.formatNumber(newR, r0.unit) });
+    } else {
+      const [ax, ay] = resizeDrag.anchorAbs;
+      const newAbsX = Math.min(ax, cursor[0]), newAbsY = Math.min(ay, cursor[1]);
+      const newW = Math.max(RESIZE_MIN, Math.abs(cursor[0] - ax));
+      const newH = Math.max(RESIZE_MIN, Math.abs(cursor[1] - ay));
+      const [w0, h0] = node.props.size;
+      const [x0, y0] = node.props.position;
+      edits.push({ start: w0.start, end: w0.end, text: core.formatNumber(newW, w0.unit) });
+      edits.push({ start: h0.start, end: h0.end, text: core.formatNumber(newH, h0.unit) });
+      const deltaX = newAbsX - resizeDrag.startAbs[0], deltaY = newAbsY - resizeDrag.startAbs[1];
+      edits.push({ start: x0.start, end: x0.end, text: core.formatNumber(x0.value + deltaX, x0.unit) });
+      edits.push({ start: y0.start, end: y0.end, text: core.formatNumber(y0.value + deltaY, y0.unit) });
+    }
+    core.sourceEl.value = applyEditsDescending(resizeDrag.baseText, edits);
+    core.rerender({ preserveViewBox: true });
+  }
+
   function handlePointerMove(e) {
     if (e.pointerType === "touch" && activeTouches.has(e.pointerId)) {
       activeTouches.set(e.pointerId, { x: e.clientX, y: e.clientY });
     }
     if (pinch) { handlePinchMove(); return; }
+    if (resizeDrag) { applyResizeDrag(e.clientX, e.clientY); return; }
     if (canvasDrag) {
       const svg = core.rootEl.querySelector("svg");
       if (!svg) return;
@@ -2575,6 +2714,11 @@
       // single-finger pan with whichever touch remains; release both and start a fresh
       // gesture instead.
       if (activeTouches.size < 2) pinch = null;
+      return;
+    }
+    if (resizeDrag) {
+      resizeDrag = null;
+      core.commitUndoStep();
       return;
     }
     if (relateDrag) {
@@ -2759,5 +2903,6 @@
     pinch = null;
     clearTimeout(longPressTimer);
     longPressTimer = null;
+    resizeDrag = null;
   });
 })();
