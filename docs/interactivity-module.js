@@ -1060,6 +1060,42 @@
     return false;
   }
 
+  // F-031: grid-snapped dragging/resizing — coupled to settings.grid's own presence
+  // (no second flag) specifically so the snap increment can never drift from the visible
+  // grid's own size, matching grid-module.js's own reading of the same setting. Hard
+  // snap, always on while a grid is declared — no modifier-key exception.
+  function gridSnapSize() {
+    const grid = program?.settings?.grid;
+    if (!grid) return null;
+    const size = core.numOf(grid.size ?? 1);
+    return size > 0 ? size : null;
+  }
+
+  // Snaps a delta, not a position directly — computes the dragged node's own absolute
+  // *target* (startAbs + dx/dy), rounds that to the nearest grid multiple, and returns
+  // the delta that lands there instead. Letting applyDrag's own containment/collision
+  // clamps run afterward on this already-snapped delta (unchanged, no special-casing)
+  // means they can still shrink it further in a tight space — the same way they already
+  // override plain dragging today, not a new exception.
+  function snappedDragDelta(startAbs, dx, dy) {
+    const size = gridSnapSize();
+    if (!size || !startAbs) return [dx, dy];
+    const targetX = startAbs[0] + dx, targetY = startAbs[1] + dy;
+    const snappedX = Math.round(targetX / size) * size;
+    const snappedY = Math.round(targetY / size) * size;
+    return [snappedX - startAbs[0], snappedY - startAbs[1]];
+  }
+
+  // For a resize handle's corner drag — snaps the cursor's own plan point to the nearest
+  // grid *intersection*, so the dragged corner visibly lands on the grid; every dependent
+  // value (position, width, height) is then derived from this one already-snapped point,
+  // not re-snapped independently.
+  function snappedGridPoint(x, y) {
+    const size = gridSnapSize();
+    if (!size) return [x, y];
+    return [Math.round(x / size) * size, Math.round(y / size) * size];
+  }
+
   function applyDrag(dragState, dx, dy) {
     let base;
     try {
@@ -2251,7 +2287,13 @@
       core.dragmsgEl.textContent = `${node.id}: has no explicit position/points in source, nothing to drag`;
       return;
     }
-    drag = { id: node.id, baseText: core.sourceEl.value, clientX: e.clientX, clientY: e.clientY, moved: false, singleOnly: e.shiftKey };
+    // F-031: the node's own absolute anchor at gesture-start, captured once — every kind
+    // of dragged node (position-based, points-based polygon/polyline, or a bare point)
+    // has one via lastPositions, and snapping *that* landing on the grid (then applying
+    // the resulting uniform delta to whatever's actually being edited) stays coherent
+    // regardless of shape, the same way connected-group propagation already applies one
+    // shared delta to more than one thing.
+    drag = { id: node.id, baseText: core.sourceEl.value, clientX: e.clientX, clientY: e.clientY, moved: false, singleOnly: e.shiftKey, startAbs: lastPositions[node.id] };
     core.rootEl.classList.add("dragging");
 
     // F-036: touch's own equivalent of the right-click context menu — contextmenu via
@@ -2617,13 +2659,25 @@
     const edits = [];
     if (resizeDrag.kind === "radius") {
       const r0 = node.props.radius;
-      const newR = Math.max(RESIZE_MIN, Math.hypot(cursor[0] - resizeDrag.startAbs[0], cursor[1] - resizeDrag.startAbs[1]));
+      // F-031: snaps the resulting radius *value* to the nearest grid multiple, not the
+      // cursor's raw (x, y) — snapping the cursor to a grid intersection would rarely
+      // land the distance-from-center on a clean multiple at all (that distance is
+      // sqrt(2)*size for a diagonal intersection, etc.), unlike a rect corner's own
+      // straightforward x/y.
+      const rawR = Math.hypot(cursor[0] - resizeDrag.startAbs[0], cursor[1] - resizeDrag.startAbs[1]);
+      const snapSize = gridSnapSize();
+      const newR = Math.max(RESIZE_MIN, snapSize ? Math.round(rawR / snapSize) * snapSize : rawR);
       edits.push({ start: r0.start, end: r0.end, text: core.formatNumber(newR, r0.unit) });
     } else {
       const [ax, ay] = resizeDrag.anchorAbs;
-      const newAbsX = Math.min(ax, cursor[0]), newAbsY = Math.min(ay, cursor[1]);
-      const newW = Math.max(RESIZE_MIN, Math.abs(cursor[0] - ax));
-      const newH = Math.max(RESIZE_MIN, Math.abs(cursor[1] - ay));
+      // F-031: snaps the cursor's own plan point to the nearest grid intersection first —
+      // every dependent value below (position, width, height) is then derived from this
+      // one already-snapped point, consistent by construction rather than re-snapped
+      // independently.
+      const [snapX, snapY] = snappedGridPoint(cursor[0], cursor[1]);
+      const newAbsX = Math.min(ax, snapX), newAbsY = Math.min(ay, snapY);
+      const newW = Math.max(RESIZE_MIN, Math.abs(snapX - ax));
+      const newH = Math.max(RESIZE_MIN, Math.abs(snapY - ay));
       const [w0, h0] = node.props.size;
       const [x0, y0] = node.props.position;
       edits.push({ start: w0.start, end: w0.end, text: core.formatNumber(newW, w0.unit) });
@@ -2699,8 +2753,9 @@
       longPressTimer = null;
     }
     const pxPerMeter = currentPxPerMeter();
-    const dx = (e.clientX - drag.clientX) / pxPerMeter;
-    const dy = (e.clientY - drag.clientY) / pxPerMeter;
+    let dx = (e.clientX - drag.clientX) / pxPerMeter;
+    let dy = (e.clientY - drag.clientY) / pxPerMeter;
+    [dx, dy] = snappedDragDelta(drag.startAbs, dx, dy);
     applyDrag(drag, dx, dy);
   }
 

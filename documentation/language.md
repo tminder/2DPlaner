@@ -548,13 +548,29 @@ all to tell which revision an old saved plan assumed — costless to add now, ex
 retrofit once plans are saved somewhere longer-lived than a single browser's own
 `localStorage`.
 
+**`grid` (F-014/F-031) — a visual background grid, and (once declared) the increment
+every mouse/touch drag and resize snaps to.** `settings { grid: { size: 1, type:
+"checker" } }` — `size` in meters (default `1`), `type` `"checker"` (default) or
+`"lines"`. Purely display via `grid-module.js` until F-031: declaring `grid` at all now
+also makes every ordinary drag and every resize-handle drag (D-116) land on an exact
+multiple of `size` — hard snap, always on while declared, no modifier-key exception, and
+deliberately coupled to the one setting rather than a second flag so the visible grid and
+the snap increment can never show two different values. A rect resize handle's own
+dragged corner snaps to a grid intersection directly; a circle's radius handle snaps the
+resulting radius to a clean multiple of `size` instead (the cursor's raw position on the
+circle's edge has no reason to land on an intersection at all). Containment/collision
+clamping still runs after snapping and can shrink the result further, same as it already
+overrides an unsnapped drag; a connected group still moves by one shared, already-snapped
+delta rather than each member re-snapping independently, preserving the rigid-group
+guarantee connections already depend on.
+
 **`keyboardStep` (F-043) — the distance (in meters) one arrow-key press moves or resizes
 the selected element.** `settings { keyboardStep: 0.1 }` is the default if omitted; one
 shared value drives both the plain-arrow move and the Shift+arrow resize described under
-"Editing and drag-and-drop" above. Deliberately independent of `grid-module.js`'s own `settings { grid: { size } }` — the
-visual grid has no effect on where a drag can land (F-031 is still open), so tying
-keyboard-step to it would make this shortcut's behavior depend on an unrelated, optional
-module being declared at all.
+"Editing and drag-and-drop" above. Deliberately independent of `grid`'s own `size` even
+though a declared grid now affects mouse/touch dragging (F-031) — tying keyboard-step to
+it would make this shortcut's behavior silently depend on an unrelated setting being
+declared at all, purely because both happen to be a distance in meters.
 
 ## Worked examples
 
