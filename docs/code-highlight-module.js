@@ -51,6 +51,11 @@
     .tok-comment { color: #8a8a8a; font-style: italic; }
     .tok-ident { color: #1a4b8c; }
     .tok-selected { background: rgba(255, 213, 74, 0.4); }
+    /* F-037: distinct from tok-selected's background wash on purpose -- a wavy underline
+       reads as "something's wrong here" without visually competing when both apply to the
+       same text (a violation on the currently-selected element's own property). */
+    .tok-violation { text-decoration: underline wavy #c0392b; text-decoration-thickness: 1.5px;
+      text-underline-offset: 3px; }
   `;
   document.head.appendChild(styleEl);
 
@@ -116,19 +121,27 @@
   // textarea's (required for the overlay to stay aligned), with a comment's own // to
   // end-of-line colored separately from plain whitespace within those gaps.
   //
-  // Colors [rangeStart, rangeEnd) purely by token type — no selection awareness. Splitting
-  // this out from the selection wrapping below (rather than putting a tok-selected class on
-  // every individual token span inside the selection, as an earlier version did) is what
-  // avoids a real rendering artifact that version had: many adjacent inline <span>s each
-  // painting their own background color show a faint seam at every boundary between them,
-  // reading as a thin border around each separate word. One outer span per contiguous
-  // range, with these purely-colored spans nested inside painting no background of their
-  // own, has nothing to seam against.
-  function colorRange(text, tokens, rangeStart, rangeEnd) {
+  // Colors [rangeStart, rangeEnd) by token type, nesting a F-037 violation-mark span
+  // (wavy underline, hover title) around any slice a violation range exactly covers — no
+  // selection awareness here, that's the outer wrapping in renderHighlighted below.
+  // Splitting per-token coloring out from range wrapping (rather than putting a
+  // tok-selected/tok-violation class on every individual token span inside a range, as an
+  // earlier version of the selection mark did) is what avoids a real rendering artifact
+  // that version had: many adjacent inline <span>s each painting their own background
+  // color show a faint seam at every boundary between them, reading as a thin border
+  // around each separate word. One outer span per contiguous *range* (not per final
+  // token-sized slice), with purely-colored spans nested inside painting no background of
+  // their own, has nothing to seam against — a violation range is always exactly one
+  // IDENT token's own span (interactivity-module.js's idSpan/keySpan), so it can only
+  // ever produce exactly one wrapped slice here too, never adjacent same-class slices.
+  function colorRange(text, tokens, rangeStart, rangeEnd, violationRanges) {
     if (rangeStart >= rangeEnd) return "";
     const real = tokens.filter((t) => t.type !== "EOF" && t.start < rangeEnd && t.end > rangeStart);
     const cuts = new Set([rangeStart, rangeEnd]);
     for (const t of real) { cuts.add(Math.max(t.start, rangeStart)); cuts.add(Math.min(t.end, rangeEnd)); }
+    for (const v of violationRanges) {
+      if (v.start < rangeEnd && v.end > rangeStart) { cuts.add(Math.max(v.start, rangeStart)); cuts.add(Math.min(v.end, rangeEnd)); }
+    }
     const sorted = [...cuts].sort((a, b) => a - b);
 
     let ti = 0, html = "";
@@ -140,7 +153,14 @@
       let escaped = escapeHtml(text.slice(start, end));
       if (!tok) escaped = escaped.replace(/\/\/[^\n]*/g, (m) => `<span class="tok-comment">${m}</span>`);
       const cls = tok ? tokenClass(tok) : null;
-      html += cls ? `<span class="tok-${cls}">${escaped}</span>` : escaped;
+      let piece = cls ? `<span class="tok-${cls}">${escaped}</span>` : escaped;
+      // No title= here -- the backdrop's own pointer-events: none (below) means it never
+      // receives a real hover event, so a native tooltip attribute would never fire. The
+      // hover message instead comes from a custom tooltip (see handleViolationHover)
+      // driven by hit-testing the textarea's own real mousemove against this same span.
+      const violation = violationRanges.find((v) => v.start <= start && end <= v.end);
+      if (violation) piece = `<span class="tok-violation">${piece}</span>`;
+      html += piece;
     }
     return html;
   }
@@ -150,16 +170,19 @@
   // wraps around every child's). Each becomes its own tok-selected wrapper around the
   // ordinarily-colored text inside it, rather than one wrapper spanning the whole gap
   // between the first and last range, so a child's own text sitting between two of a
-  // parent's ranges is never itself marked.
-  function renderHighlighted(text, tokens, selRanges) {
-    if (!selRanges.length) return colorRange(text, tokens, 0, text.length);
+  // parent's ranges is never itself marked. violationRanges (F-037) nests *inside* that —
+  // always passed straight through to colorRange regardless of which side of a selection
+  // boundary it falls on, since a violation span can never straddle one (see idSpan/
+  // keySpan: always exactly one element's own property-key or id token).
+  function renderHighlighted(text, tokens, selRanges, violationRanges) {
+    if (!selRanges.length) return colorRange(text, tokens, 0, text.length, violationRanges);
     let html = "", cursor = 0;
     for (const [start, end] of selRanges) {
-      html += colorRange(text, tokens, cursor, start);
-      html += `<span class="tok-selected">${colorRange(text, tokens, start, end)}</span>`;
+      html += colorRange(text, tokens, cursor, start, violationRanges);
+      html += `<span class="tok-selected">${colorRange(text, tokens, start, end, violationRanges)}</span>`;
       cursor = end;
     }
-    html += colorRange(text, tokens, cursor, text.length);
+    html += colorRange(text, tokens, cursor, text.length, violationRanges);
     return html;
   }
 
@@ -192,7 +215,36 @@
     return node ? ownRanges(node) : [];
   }
 
+  // F-037: reads the same "loose DOM signal" interactivity-module.js's own validation
+  // panel already carries for another reason (showing the message on load) — data-spans
+  // ("start:end" pairs, comma-joined) and the li's own title (the full violation message,
+  // reused verbatim for the inline mark's own hover tooltip). No formal cross-module API,
+  // matching how currentSelectionRanges() above already reads core.rootEl's own dataset
+  // rather than a dedicated PlanCore field.
+  function currentViolationRanges() {
+    const ranges = [];
+    for (const li of document.querySelectorAll("#interactivity-validation-panel li[data-spans]")) {
+      const title = li.getAttribute("title") || "";
+      for (const pair of li.dataset.spans.split(",")) {
+        const [start, end] = pair.split(":").map(Number);
+        ranges.push({ start, end, title });
+      }
+    }
+    return ranges;
+  }
+
   let lastSelectedId; // undefined until the first render — see the scroll-into-view note below
+
+  // F-037's own inline mark has no hover tooltip of its own — tried a custom one
+  // (caretRangeFromPoint-based hit-testing against the backdrop's text), abandoned once
+  // testing showed it's not just an edge-case reliability issue: caretRangeFromPoint hit-
+  // tests the topmost *painted* surface, which is always the (invisible but opaque in
+  // paint order) textarea sitting on top, regardless of the backdrop's own
+  // pointer-events: none — it can never reach the backdrop's text nodes behind it at all.
+  // A correct fix would need real manual pixel-to-character text layout, soft-wrap
+  // included (the backdrop uses word-break: break-word) — decided directly that isn't
+  // worth it for this: the wavy underline shows *where*, and the panel (already working,
+  // its own native title tooltip included) still shows every full message.
 
   function refresh() {
     const text = textarea.value;
@@ -203,7 +255,7 @@
       backdrop.textContent = text; // an invalid character mid-edit — plain uncolored text beats nothing
       return;
     }
-    backdrop.innerHTML = renderHighlighted(text, tokens, currentSelectionRanges());
+    backdrop.innerHTML = renderHighlighted(text, tokens, currentSelectionRanges(), currentViolationRanges());
     // A <pre> needs a trailing blank line to actually render a trailing newline — without
     // this the backdrop comes up one line short of the textarea at the very end of the text.
     if (text.endsWith("\n")) backdrop.innerHTML += " ";

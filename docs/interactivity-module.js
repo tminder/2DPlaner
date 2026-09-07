@@ -791,6 +791,21 @@
     return out;
   }
 
+  // F-037: a violation's own `spans` — where to mark it inline in the code pane, in
+  // addition to naming it in the message. Always the property *key* token or the
+  // element's own *id* token (never a value span — most values don't carry one at all,
+  // e.g. a bare STRING) — both are plain IDENT tokens parseElementDecl already keeps
+  // (docs/index.html). A composite-synthesized node (wall-with-door-module.js, D-046)
+  // won't have either field; these helpers just return no spans for it rather than
+  // throwing, so the violation still shows in the panel with no inline mark.
+  function idSpan(node) {
+    return node.idStart !== undefined ? [{ start: node.idStart, end: node.idEnd }] : [];
+  }
+  function keySpan(node, key) {
+    const span = node.propKeySpans?.[key];
+    return span ? [{ start: span.start, end: span.end }] : [];
+  }
+
   // Same pairwise rule clampToNoCollision/firstCollidingSibling already apply mid-drag:
   // either shape opting itself out via its own allowCollisions is enough to suppress the
   // pair — a node's own allowCollisions means "I don't mind being overlapped", not "only
@@ -809,7 +824,8 @@
           if (collisionsAllowedFor(b, base.settings)) continue;
           const geomB = solidGeometryFor(b, positions);
           if (geomB && shapesOverlap(geomA, geomB)) {
-            violations.push({ type: "collision", message: `'${a.id}' and '${b.id}' overlap` });
+            // Marks both sides — a collision is never really just one element's fault.
+            violations.push({ type: "collision", message: `'${a.id}' and '${b.id}' overlap`, spans: [...idSpan(a), ...idSpan(b)] });
           }
         }
       }
@@ -833,7 +849,7 @@
       if (!containerPoly) continue;
       const childCorners = childRectCornersAt(node, 0, 0, positions);
       if (!isContained(childCorners, containerPoly)) {
-        violations.push({ type: "containment", message: `'${node.id}' is placed "inside" '${container.id}' but isn't actually inside it` });
+        violations.push({ type: "containment", message: `'${node.id}' is placed "inside" '${container.id}' but isn't actually inside it`, spans: idSpan(node) });
       }
     }
   }
@@ -841,16 +857,22 @@
   // F-028: two elements sharing an id doesn't error anywhere today, but silently corrupts
   // drag targeting (nodesById[id] = node last-writer-wins during parsing) — reported once
   // per duplicated id, not once per extra occurrence, since the fix is the same either way
-  // (rename one of them).
+  // (rename one of them). Collects the actual node list per id, not just a count (F-037) —
+  // every occurrence gets its own inline mark, not just a message naming the id once.
   function checkDuplicateIds(base, violations) {
-    const counts = new Map();
+    const byId = new Map();
     for (const node of collectAllNodes(base.root, [])) {
       if (!node.id) continue;
-      counts.set(node.id, (counts.get(node.id) || 0) + 1);
+      if (!byId.has(node.id)) byId.set(node.id, []);
+      byId.get(node.id).push(node);
     }
-    for (const [id, count] of counts) {
-      if (count > 1) {
-        violations.push({ type: "duplicate-id", message: `id '${id}' is declared ${count} times — dragging one may silently move a different one instead` });
+    for (const [id, nodes] of byId) {
+      if (nodes.length > 1) {
+        violations.push({
+          type: "duplicate-id",
+          message: `id '${id}' is declared ${nodes.length} times — dragging one may silently move a different one instead`,
+          spans: nodes.flatMap(idSpan),
+        });
       }
     }
   }
@@ -886,7 +908,7 @@
       if (shape === undefined) continue; // a shapeless node is a documented, legitimate pattern (D-018's corner elements)
       if (CORE_SHAPES.includes(shape)) continue;
       if (window.PlanModules && window.PlanModules[shape]) continue;
-      violations.push({ type: "unrecognized-shape", message: `'${node.id}': shape "${shape}" isn't recognized — rendering as an invisible point` });
+      violations.push({ type: "unrecognized-shape", message: `'${node.id}': shape "${shape}" isn't recognized — rendering as an invisible point`, spans: keySpan(node, "shape") });
     }
   }
 
@@ -902,7 +924,7 @@
       const allowed = shape === undefined ? SHAPELESS_PROPS : SHAPE_PROPS[shape];
       for (const key of Object.keys(node.props)) {
         if (key === "shape" || allowed.includes(key)) continue;
-        violations.push({ type: "unsupported-property", message: `'${node.id}': "${key}" isn't used by ${shape === undefined ? "a shapeless element" : `shape "${shape}"`} — ignored` });
+        violations.push({ type: "unsupported-property", message: `'${node.id}': "${key}" isn't used by ${shape === undefined ? "a shapeless element" : `shape "${shape}"`} — ignored`, spans: keySpan(node, key) });
       }
     }
   }
@@ -920,10 +942,10 @@
       const parent = base.nodesById[node.parentId];
       const { placement } = resolveContainer(node, parent, base);
       if (node.props.flush === true && placement !== "inside") {
-        violations.push({ type: "flush-without-inside", message: `'${node.id}': flush: true has no effect unless placement resolves to "inside" (currently: ${placement ?? "none"})` });
+        violations.push({ type: "flush-without-inside", message: `'${node.id}': flush: true has no effect unless placement resolves to "inside" (currently: ${placement ?? "none"})`, spans: keySpan(node, "flush") });
       }
       if (typeof node.props.placement === "string" && placement !== "inside" && placement !== "outside") {
-        violations.push({ type: "unrecognized-placement", message: `'${node.id}': placement "${node.props.placement}" isn't recognized (expected "inside" or "outside") — ignored` });
+        violations.push({ type: "unrecognized-placement", message: `'${node.id}': placement "${node.props.placement}" isn't recognized (expected "inside" or "outside") — ignored`, spans: keySpan(node, "placement") });
       }
     }
   }
@@ -946,9 +968,18 @@
       return;
     }
     validationPanelEl.hidden = false;
+    // F-037: data-spans is a "loose DOM signal" for code-highlight-module.js to pick up,
+    // the same pattern core.rootEl.dataset.selectedId already is for the selection mark —
+    // no formal cross-module API, just an attribute the other module knows to look for.
+    // "start:end" pairs, comma-joined; absent (or empty) when a violation has no span at
+    // all (a composite-synthesized node, no idStart/propKeySpans) — the message still
+    // shows here regardless.
     validationPanelEl.innerHTML =
       `<div class="validation-title">${violations.length} issue${violations.length === 1 ? "" : "s"} found</div>` +
-      `<ul>${violations.map((v) => `<li>${escapeHtml(v.message)}</li>`).join("")}</ul>`;
+      `<ul>${violations.map((v) => {
+        const spansAttr = (v.spans || []).map((s) => `${s.start}:${s.end}`).join(",");
+        return `<li title="${escapeHtml(v.message)}"${spansAttr ? ` data-spans="${spansAttr}"` : ""}>${escapeHtml(v.message)}</li>`;
+      }).join("")}</ul>`;
   }
 
   // ---------- Text-splice helpers ----------

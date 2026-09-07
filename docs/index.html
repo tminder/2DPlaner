@@ -1039,21 +1039,32 @@ function parse(src) {
 
   function parseElementDecl(parentId) {
     const startTok = expect("ELEMENT");
-    const id = expect("IDENT").value;
+    const idTok = expect("IDENT");
+    const id = idTok.value;
     expect("LBRACE");
     const props = {};
+    // F-037: each property's own key token span, kept alongside its parsed value — not a
+    // value span (most values don't carry one, e.g. a bare STRING), but every property
+    // key is always a plain IDENT token, trivial to keep and enough for every existing
+    // validation check to point inline at the right property, not just name it in a
+    // message. Same reasoning for idTok below: the element's own id token span.
+    const propKeySpans = {};
     const children = [];
     while (peek().type !== "RBRACE") {
       if (peek().type === "ELEMENT") {
         children.push(parseElementDecl(id));
       } else {
-        const key = expect("IDENT").value;
+        const keyTok = expect("IDENT");
         expect("COLON");
-        props[key] = parseValue();
+        props[keyTok.value] = parseValue();
+        propKeySpans[keyTok.value] = { start: keyTok.start, end: keyTok.end };
       }
     }
     const endTok = expect("RBRACE");
-    const node = { id, props, children, parentId, start: startTok.start, end: endTok.end };
+    const node = {
+      id, props, propKeySpans, children, parentId, start: startTok.start, end: endTok.end,
+      idStart: idTok.start, idEnd: idTok.end,
+    };
     nodesById[id] = node;
     return node;
   }
