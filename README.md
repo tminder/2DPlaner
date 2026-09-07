@@ -57,3 +57,8 @@ built: a homepage at the root, the app under `/app`, human-facing documentation 
   `pip install -r tests/requirements.txt && playwright install chromium`, then `pytest tests/`.
   Runs automatically on every push/PR via [GitHub Actions](.github/workflows/tests.yml) (D-108).
 - [Prototypes/](Prototypes/) — throwaway experiments/sketches, not a staged build plan; superseded by [docs/](docs/) as the thing to actually run
+
+## License
+
+Source-available, all rights reserved — see [LICENSE](LICENSE). Public for reading and
+reference; no license is granted to reuse, redistribute, or host this code (D-121).
