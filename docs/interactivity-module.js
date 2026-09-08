@@ -192,6 +192,13 @@
   let lastBboxes = {};
   let lastPositions = {};
   let selectedId = null;
+  // F-029: the full multi-selection, including selectedId itself whenever it's non-empty
+  // (both are empty/null together) — selectedId stays the "primary" member, still driving
+  // everything that's deliberately single-element-only (resize handles, keyboard
+  // nudge/resize, the dataset.selectedId DOM signal code-highlight-module.js's own
+  // selection-range reading depends on). Alt+click toggles membership; Shift and Ctrl/Cmd
+  // are both already taken (drag-alone, connect), so Alt is the only unused modifier.
+  let selectedIds = new Set();
   let drag = null;
   // F-016: dragging one of the visible resize handles shown on the selected rect/circle.
   // kind "corner" (rect): anchorAbs is that handle's own diagonally-opposite corner, fixed
@@ -1144,6 +1151,9 @@
     const warnings = [];
     const node = base.nodesById[dragState.id];
     const parent = node.parentId ? base.nodesById[node.parentId] : null;
+    // F-029: every node that already got its own edits below, so the group-drag step
+    // further down never adds a second, duplicate edit for the same span.
+    const coveredIds = new Set([dragState.id]);
 
     // Checked first, against siblings and the parent's own boundary, before any edits are
     // computed — a bare point (the only thing trySlideAlongConnectedRect below handles)
@@ -1189,7 +1199,25 @@
           const otherNode = base.nodesById[otherId];
           const otherParent = otherNode.parentId ? base.nodesById[otherNode.parentId] : null;
           edits.push(...dragEditsFor(otherNode, otherParent, dx, dy, base, cornerUsers, warnings));
+          coveredIds.add(otherId);
         }
+      }
+    }
+
+    // F-029: group-drag — every other explicitly multi-selected member also rides the same
+    // already-clamped/snapped delta, exactly like a connected "other" node above; the only
+    // difference is the source of "who else moves" (the explicit selection, not the
+    // connection graph). Skipped for anything already covered above (no duplicate edit on
+    // the same span) and for an ancestor/descendant of the primary, same guard as above.
+    if (!dragState.singleOnly && dragState.groupIds) {
+      for (const otherId of dragState.groupIds) {
+        if (coveredIds.has(otherId)) continue;
+        if (isAncestorOf(otherId, dragState.id, base) || isAncestorOf(dragState.id, otherId, base)) continue;
+        const otherNode = base.nodesById[otherId];
+        if (!otherNode) continue;
+        const otherParent = otherNode.parentId ? base.nodesById[otherNode.parentId] : null;
+        edits.push(...dragEditsFor(otherNode, otherParent, dx, dy, base, cornerUsers, warnings));
+        coveredIds.add(otherId);
       }
     }
 
@@ -1572,6 +1600,70 @@
   // too (both ids rewritten); one where only one end is inside is deliberately left
   // alone — duplicating it would silently connect the new copy to whatever the original
   // was connected to, which is a relationship nobody asked for.
+  // F-029: the actual "clone a subtree" computation, factored out of duplicateElement's
+  // own former single-node body so duplicateElements (below) can call it once per selected
+  // root against one *shared* usedIds/idMap scope — a fresh id picked for one root's own
+  // clone can then never collide with another root's clone either, not just with whatever
+  // already existed in the plan. Never mutates `text`; only computes where/what to insert.
+  function computeDuplication(text, base, nodeId, usedIds, idMap) {
+    const node = base.nodesById[nodeId];
+    const subtreeIds = [];
+    collectSubtreeIds(node, subtreeIds);
+    const subtreeIdSet = new Set(subtreeIds);
+    for (const id of subtreeIds) {
+      const fresh = uniqueId(`${id}_copy`, usedIds);
+      usedIds.add(fresh);
+      idMap.set(id, fresh);
+    }
+
+    // Every edit below is computed against absolute source positions, then converted to
+    // be relative to node.start once collected — the splice itself runs against the
+    // *extracted* subtree text, not the full source, so descendant declarations' own
+    // start/end (also absolute) need the same conversion.
+    const edits = [];
+    (function walkDecls(n) {
+      const idSpan = findElementIdSpan(text, n.start, n.id);
+      if (idSpan) edits.push({ start: idSpan.start - node.start, end: idSpan.end - node.start, text: idMap.get(n.id) });
+      for (const child of n.children) walkDecls(child);
+    })(node);
+
+    const cornerRefAsts = [];
+    collectCornerRefAsts(node, cornerRefAsts);
+    for (const ast of cornerRefAsts) {
+      if (typeof ast.start !== "number") continue; // defensive; always set now (parser change alongside this feature)
+      const refId = ast.segments[0];
+      if (subtreeIdSet.has(refId)) {
+        edits.push({ start: ast.start - node.start, end: ast.end - node.start, text: idMap.get(refId) });
+      }
+    }
+
+    // The clone gets a small position offset so it doesn't land exactly on top of the
+    // original — only for plain literals; an expression-backed position is left
+    // untouched rather than guessed at (same judgment call D-012's own solve-backward
+    // machinery makes elsewhere: don't be clever about what isn't a simple literal).
+    const OFFSET = 0.3;
+    if (node.props.position && core.isEditable(node.props.position[0]) && core.isEditable(node.props.position[1])) {
+      const [x, y] = node.props.position;
+      edits.push({ start: x.start - node.start, end: x.end - node.start, text: core.formatNumber(x.value + OFFSET, x.unit) });
+      edits.push({ start: y.start - node.start, end: y.end - node.start, text: core.formatNumber(y.value + OFFSET, y.unit) });
+    } else if (node.props.points) {
+      for (const pt of node.props.points) {
+        if (!Array.isArray(pt)) continue;
+        const [x, y] = pt;
+        if (core.isEditable(x)) edits.push({ start: x.start - node.start, end: x.end - node.start, text: core.formatNumber(x.value + OFFSET, x.unit) });
+        if (core.isEditable(y)) edits.push({ start: y.start - node.start, end: y.end - node.start, text: core.formatNumber(y.value + OFFSET, y.unit) });
+      }
+    }
+
+    const clone = applyEditsDescending(text.slice(node.start, node.end), edits);
+    const newConnections = base.connections
+      .filter((c) => subtreeIdSet.has(c.from) && subtreeIdSet.has(c.to))
+      .map((c) => `connection ${idMap.get(c.from)} ${idMap.get(c.to)}\n`)
+      .join("");
+
+    return { insertAt: node.end, cloneText: clone, connectionsText: newConnections, newId: idMap.get(nodeId) };
+  }
+
   function duplicateElement(nodeId) {
     withParsedSource((text, base) => {
       const node = base.nodesById[nodeId];
@@ -1580,68 +1672,47 @@
         core.dragmsgEl.textContent = `${nodeId}: can't duplicate the plan's root element.`;
         return;
       }
-
-      const subtreeIds = [];
-      collectSubtreeIds(node, subtreeIds);
-      const subtreeIdSet = new Set(subtreeIds);
       const usedIds = new Set(Object.keys(base.nodesById));
       const idMap = new Map();
-      for (const id of subtreeIds) {
-        const fresh = uniqueId(`${id}_copy`, usedIds);
-        usedIds.add(fresh);
-        idMap.set(id, fresh);
-      }
+      const { insertAt, cloneText, connectionsText, newId } = computeDuplication(text, base, nodeId, usedIds, idMap);
 
-      // Every edit below is computed against absolute source positions, then converted to
-      // be relative to node.start once collected — the splice itself runs against the
-      // *extracted* subtree text, not the full source, so descendant declarations' own
-      // start/end (also absolute) need the same conversion.
-      const edits = [];
-      (function walkDecls(n) {
-        const idSpan = findElementIdSpan(text, n.start, n.id);
-        if (idSpan) edits.push({ start: idSpan.start - node.start, end: idSpan.end - node.start, text: idMap.get(n.id) });
-        for (const child of n.children) walkDecls(child);
-      })(node);
+      let newText = text.slice(0, insertAt) + "\n" + cloneText + text.slice(insertAt);
+      if (connectionsText) newText = newText.trimEnd() + "\n" + connectionsText;
 
-      const cornerRefAsts = [];
-      collectCornerRefAsts(node, cornerRefAsts);
-      for (const ast of cornerRefAsts) {
-        if (typeof ast.start !== "number") continue; // defensive; always set now (parser change alongside this feature)
-        const refId = ast.segments[0];
-        if (subtreeIdSet.has(refId)) {
-          edits.push({ start: ast.start - node.start, end: ast.end - node.start, text: idMap.get(refId) });
+      commitSourceEdit(newText, `Duplicated '${nodeId}' as '${newId}'.`);
+    });
+  }
+
+  // F-029: bulk duplicate for a multi-selection. Filtered to selection *roots* first —
+  // any selected id that's a descendant of another selected id is dropped, since its
+  // ancestor's own subtree clone (computeDuplication always clones the whole subtree)
+  // already carries it along; cloning it a second time would double it. One
+  // computeDuplication call per root against a single shared usedIds/idMap scope, then
+  // combined into one edit list and one commit — one undo step for the whole group.
+  function duplicateElements(ids) {
+    withParsedSource((text, base) => {
+      const roots = ids.filter((id) => base.nodesById[id]
+        && !ids.some((other) => other !== id && isAncestorOf(other, id, base)));
+      for (const id of roots) {
+        if (!base.nodesById[id].parentId) {
+          core.dragmsgEl.textContent = `${id}: can't duplicate the plan's root element.`;
+          return;
         }
       }
+      if (!roots.length) return;
 
-      // The clone gets a small position offset so it doesn't land exactly on top of the
-      // original — only for plain literals; an expression-backed position is left
-      // untouched rather than guessed at (same judgment call D-012's own solve-backward
-      // machinery makes elsewhere: don't be clever about what isn't a simple literal).
-      const OFFSET = 0.3;
-      if (node.props.position && core.isEditable(node.props.position[0]) && core.isEditable(node.props.position[1])) {
-        const [x, y] = node.props.position;
-        edits.push({ start: x.start - node.start, end: x.end - node.start, text: core.formatNumber(x.value + OFFSET, x.unit) });
-        edits.push({ start: y.start - node.start, end: y.end - node.start, text: core.formatNumber(y.value + OFFSET, y.unit) });
-      } else if (node.props.points) {
-        for (const pt of node.props.points) {
-          if (!Array.isArray(pt)) continue;
-          const [x, y] = pt;
-          if (core.isEditable(x)) edits.push({ start: x.start - node.start, end: x.end - node.start, text: core.formatNumber(x.value + OFFSET, x.unit) });
-          if (core.isEditable(y)) edits.push({ start: y.start - node.start, end: y.end - node.start, text: core.formatNumber(y.value + OFFSET, y.unit) });
-        }
+      const usedIds = new Set(Object.keys(base.nodesById));
+      const idMap = new Map();
+      const results = roots.map((id) => computeDuplication(text, base, id, usedIds, idMap));
+
+      let newText = text;
+      for (const r of [...results].sort((a, b) => b.insertAt - a.insertAt)) {
+        newText = newText.slice(0, r.insertAt) + "\n" + r.cloneText + newText.slice(r.insertAt);
       }
+      const allConnections = results.map((r) => r.connectionsText).filter(Boolean).join("");
+      if (allConnections) newText = newText.trimEnd() + "\n" + allConnections;
 
-      const clone = applyEditsDescending(text.slice(node.start, node.end), edits);
-
-      const newConnections = base.connections
-        .filter((c) => subtreeIdSet.has(c.from) && subtreeIdSet.has(c.to))
-        .map((c) => `connection ${idMap.get(c.from)} ${idMap.get(c.to)}\n`)
-        .join("");
-
-      let newText = text.slice(0, node.end) + "\n" + clone + text.slice(node.end);
-      if (newConnections) newText = newText.trimEnd() + "\n" + newConnections;
-
-      commitSourceEdit(newText, `Duplicated '${nodeId}' as '${idMap.get(nodeId)}'.`);
+      commitSourceEdit(newText, `Duplicated ${roots.length} element${roots.length === 1 ? "" : "s"}.`);
     });
   }
 
@@ -1663,7 +1734,50 @@
 
       const spans = [node, ...base.connections.filter((c) => c.from === nodeId || c.to === nodeId)];
       if (selectedId === nodeId) selectedId = null;
+      selectedIds.delete(nodeId);
       commitSourceEdit(deleteSpans(text, spans), `Deleted '${nodeId}'.`);
+    });
+  }
+
+  // F-029: bulk delete for a multi-selection. Same selection-roots filtering as
+  // duplicateElements (a descendant's own span is already inside its ancestor's, deleting
+  // the ancestor already removes it too), then deleteElement's own two existing guards
+  // (root; still referenced as a corner) applied per root — a corner reference from
+  // another element *also* in this same bulk delete doesn't block it (that reference is
+  // going away too), only one from outside the selection does. Any guard failure aborts
+  // the whole bulk action with one message naming which id and why, rather than silently
+  // deleting only some of what was selected (matches this project's own established "loud
+  // failures" preference, S-017). One combined deleteSpans + one commit either way.
+  function deleteElements(ids) {
+    withParsedSource((text, base) => {
+      const idSet = new Set(ids);
+      const roots = ids.filter((id) => base.nodesById[id]
+        && !ids.some((other) => other !== id && isAncestorOf(other, id, base)));
+
+      const cornerUsers = {};
+      core.computeCornerUsers(base.root, cornerUsers);
+
+      for (const id of roots) {
+        if (!base.nodesById[id].parentId) {
+          core.dragmsgEl.textContent = `${id}: can't delete the plan's root element.`;
+          return;
+        }
+        const users = (cornerUsers[id] || []).filter((u) => !idSet.has(u));
+        if (users.length) {
+          core.dragmsgEl.textContent = `${id}: still referenced as a corner by ${users.join(", ")} — remove those references first.`;
+          return;
+        }
+      }
+      if (!roots.length) return;
+
+      const spans = [];
+      for (const id of roots) {
+        const node = base.nodesById[id];
+        spans.push(node, ...base.connections.filter((c) => c.from === id || c.to === id));
+      }
+      if (selectedId && idSet.has(selectedId)) selectedId = null;
+      selectedIds = new Set();
+      commitSourceEdit(deleteSpans(text, spans), `Deleted ${roots.length} element${roots.length === 1 ? "" : "s"}.`);
     });
   }
 
@@ -1867,8 +1981,18 @@
     const renderItems = [];
     const push = (item) => { contextMenuItems.push(item); return contextMenuItems.length - 1; };
 
-    renderItems.push({ i: push({ label: "Duplicate", action: () => duplicateElement(nodeId) }) });
-    renderItems.push({ i: push({ label: "Delete Element", danger: true, action: () => deleteElement(nodeId) }) });
+    // F-029: a right-click on a member of a real (>1) multi-selection offers bulk actions
+    // over the whole group instead of the ordinary single-element ones — everything below
+    // this (Front/Back, Placement, Disconnect) stays scoped to nodeId alone, since none of
+    // those have an obvious/requested group meaning.
+    const groupTargets = selectedIds.size > 1 && selectedIds.has(nodeId) ? [...selectedIds] : null;
+    if (groupTargets) {
+      renderItems.push({ i: push({ label: `Duplicate ${groupTargets.length} Elements`, action: () => duplicateElements(groupTargets) }) });
+      renderItems.push({ i: push({ label: `Delete ${groupTargets.length} Elements`, danger: true, action: () => deleteElements(groupTargets) }) });
+    } else {
+      renderItems.push({ i: push({ label: "Duplicate", action: () => duplicateElement(nodeId) }) });
+      renderItems.push({ i: push({ label: "Delete Element", danger: true, action: () => deleteElement(nodeId) }) });
+    }
 
     // Front/back items offered whenever the element has any sibling at all — not gated on
     // detecting an actual overlap at this exact pixel (found not to be intuitive: an author
@@ -1973,15 +2097,23 @@
   // left behind at the old position — preserves the exact sibling adjacency
   // annotations-module.js's own hover CSS rule depends on.
   function bringToFront(svgEl, prog) {
-    const node = prog.nodesById[selectedId];
-    if (!node) return;
-    for (const n of collectAllNodes(node, [])) {
-      const el = svgEl.querySelector(`[data-id="${CSS.escape(n.id)}"]`);
-      if (!el) continue;
-      const next = el.nextElementSibling;
-      const annotation = next && next.tagName === "g" && next.classList.contains("annotation") ? next : null;
-      svgEl.appendChild(el);
-      if (annotation) svgEl.appendChild(annotation);
+    // F-029: every multi-selected member is raised, others first and the primary
+    // (selectedId) last, so it still paints topmost — same per-subtree raise as before,
+    // just looped once per member instead of once total.
+    const ids = selectedIds.size
+      ? [...selectedIds].filter((id) => id !== selectedId).concat(selectedId)
+      : [selectedId];
+    for (const id of ids) {
+      const node = prog.nodesById[id];
+      if (!node) continue;
+      for (const n of collectAllNodes(node, [])) {
+        const el = svgEl.querySelector(`[data-id="${CSS.escape(n.id)}"]`);
+        if (!el) continue;
+        const next = el.nextElementSibling;
+        const annotation = next && next.tagName === "g" && next.classList.contains("annotation") ? next : null;
+        svgEl.appendChild(el);
+        if (annotation) svgEl.appendChild(annotation);
+      }
     }
   }
 
@@ -2040,7 +2172,14 @@
     // rather than exposed as new PlanCore API, since selection itself stays this module's
     // own private state.
     if (selectedId) {
-      core.rootEl.querySelector(`[data-id="${CSS.escape(selectedId)}"]`)?.classList.add("selected");
+      // F-029: every member of a multi-selection gets the same .selected visual (falls
+      // back to just selectedId itself when nothing beyond it is selected — identical to
+      // the single-element behavior this replaces). dataset.selectedId still names only
+      // the primary — code-highlight-module.js's own selection-range reading stays
+      // single-element, deliberately not generalized to the group.
+      for (const id of selectedIds.size ? selectedIds : [selectedId]) {
+        core.rootEl.querySelector(`[data-id="${CSS.escape(id)}"]`)?.classList.add("selected");
+      }
       core.rootEl.dataset.selectedId = selectedId;
       bringToFront(svgEl, prog);
     } else {
@@ -2299,6 +2438,23 @@
       return;
     }
 
+    // F-029: Alt+click toggles this element's own membership in the multi-selection and
+    // takes over the whole gesture (no drag started) — mirrors the Ctrl/Cmd branch above.
+    // A plain click (no modifier) always collapses back to single-selecting whatever it
+    // hits (see handlePointerUp), so this is the only way to grow or shrink a group.
+    if (e.altKey) {
+      const id = el.dataset.id;
+      if (selectedIds.has(id)) {
+        selectedIds.delete(id);
+        if (selectedId === id) selectedId = selectedIds.values().next().value ?? null;
+      } else {
+        selectedIds.add(id);
+        selectedId = id;
+      }
+      core.rerender({ preserveViewBox: true });
+      return;
+    }
+
     // Which element a click actually targets: normally whatever's topmost at this pixel
     // (el.dataset.id, same as before) — unless this click lands within tolerance of the
     // *previous* plain click's own point, in which case it steps to whatever was one layer
@@ -2324,7 +2480,13 @@
     // the resulting uniform delta to whatever's actually being edited) stays coherent
     // regardless of shape, the same way connected-group propagation already applies one
     // shared delta to more than one thing.
-    drag = { id: node.id, baseText: core.sourceEl.value, clientX: e.clientX, clientY: e.clientY, moved: false, singleOnly: e.shiftKey, startAbs: lastPositions[node.id] };
+    // F-029: dragging from inside an existing multi-selection moves the whole group by the
+    // same delta — groupIds is empty (zero behavior change) for every ordinary single/
+    // connected-only drag, including a plain drag that starts on an element outside the
+    // current multi-selection.
+    const groupIds = selectedIds.size > 1 && selectedIds.has(node.id)
+      ? [...selectedIds].filter((id) => id !== node.id) : [];
+    drag = { id: node.id, groupIds, baseText: core.sourceEl.value, clientX: e.clientX, clientY: e.clientY, moved: false, singleOnly: e.shiftKey, startAbs: lastPositions[node.id] };
     core.rootEl.classList.add("dragging");
 
     // F-036: touch's own equivalent of the right-click context menu — contextmenu via
@@ -2371,8 +2533,13 @@
     // forcing the topmost candidate into the selection there would make it impossible to
     // right-click a still-covered element without first fighting the stack back into
     // place via a left-click.
-    if (!stacked && targetId !== selectedId) {
+    // F-029: right-clicking a member of an existing multi-selection keeps the whole group
+    // intact (so the menu can offer the bulk actions below) — right-clicking anything else
+    // collapses to single-selecting just that element, same as a plain left-click would.
+    const inGroup = selectedIds.size > 1 && selectedIds.has(targetId);
+    if (!stacked && !inGroup && (targetId !== selectedId || selectedIds.size > 1)) {
       selectedId = targetId;
+      selectedIds = new Set([targetId]);
       core.rerender({ preserveViewBox: true });
     }
     openContextMenu(targetId, e.clientX, e.clientY);
@@ -2522,7 +2689,14 @@
   }
 
   function handleKeyDown(e) {
-    if (e.key === "Escape") { closeContextMenu(); return; }
+    if (e.key === "Escape") {
+      if (!contextMenuEl.hidden) { closeContextMenu(); return; }
+      // F-029: with the menu already closed, Escape clears a multi-selection instead —
+      // standard "deselect the group" convention, left off collapsing to the single
+      // primary element since a plain click already covers that.
+      if (selectedIds.size > 1) { selectedIds = new Set(); selectedId = null; core.rerender({ preserveViewBox: true }); }
+      return;
+    }
     const arrow = ARROW_KEY_DELTAS[e.key];
     if (!arrow || !selectedId || !program || isTextEditableFocus()) return;
     // Bail during any other concurrent gesture/menu, the same way other handlers already
@@ -2821,11 +2995,16 @@
     if (canvasDrag) {
       const wasClick = !canvasDrag.moved;
       canvasDrag = null;
-      if (wasClick) { selectedId = null; core.rerender({ preserveViewBox: true }); }
+      if (wasClick) { selectedId = null; selectedIds = new Set(); core.rerender({ preserveViewBox: true }); }
       return;
     }
     if (drag) {
       selectedId = drag.id; // click or drag-and-release both select the element
+      // F-029: an actual group-drag (moved, started from inside a multi-selection) keeps
+      // the whole group selected; a plain click (never moved) always collapses to just the
+      // one element clicked, whether or not it was already part of a group — no "sticky"
+      // multi-select survives a plain click.
+      selectedIds = drag.moved && drag.groupIds.length ? new Set([drag.id, ...drag.groupIds]) : new Set([drag.id]);
       // A plain click (never moved) remembers its own point + chosen id, so a repeated
       // click right there can step to the next thing underneath next time; an actual drag
       // invalidates it — dragging is a deliberate move, not "try again at this spot".
@@ -2976,6 +3155,7 @@
     lastBboxes = {};
     lastPositions = {};
     selectedId = null;
+    selectedIds = new Set();
     drag = null;
     relateDrag = null;
     contextMenuItems = [];

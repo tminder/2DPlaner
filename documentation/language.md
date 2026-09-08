@@ -118,6 +118,17 @@ to the nearest point on the target's boundary — see the Drag-and-drop section 
 `settings { showConnections: true }` draws a thin dashed line between every connected pair's
 centers as a permanent, opt-in visibility aid (off by default, mirroring `grid`).
 
+**Multi-select (F-029):** Alt+click an element to add or remove it from the current
+selection (Shift and Ctrl/Cmd are both already taken — dragging alone and connecting,
+respectively). A plain click always collapses back to selecting just the one element
+clicked, whether or not it was already part of a group. Dragging from inside a
+multi-selection moves every selected element by the same delta at once; right-clicking a
+member of the selection offers "Duplicate N Elements" / "Delete N Elements" in place of the
+usual single-element actions, both as one undo step. Resize handles, keyboard nudge/resize,
+and connect/disconnect stay single-element only — connecting is inherently a relationship
+between two specific elements, and group-resize was never asked for. There's no marquee
+(rubber-band) selection yet — only Alt+click.
+
 Higher-level concepts like a wall-with-a-door are not language keywords; they're composed
 from Elements and Connections by the plan's author, or provided as a reusable composition
 by a module (see Modules below).

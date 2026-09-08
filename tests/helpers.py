@@ -145,6 +145,24 @@ def ctrl_drag(page, from_x, from_y, to_x, to_y, steps=6):
     page.wait_for_timeout(150)
 
 
+def alt_click(page, x, y):
+    """F-029's multi-select toggle: holds Alt for the click itself, mirroring ctrl_drag's
+    own reasoning -- released only after mouseup so the browser's own click-event
+    synthesis doesn't fire with the modifier already gone."""
+    page.keyboard.down("Alt")
+    page.mouse.click(x, y)
+    page.keyboard.up("Alt")
+    page.wait_for_timeout(150)
+
+
+def selected_ids_classlist(page):
+    """ids of every element currently carrying the .selected class -- multi-select can put
+    it on more than one at once."""
+    return page.evaluate(
+        """() => Array.from(document.querySelectorAll('[data-id].selected')).map(el => el.dataset.id)"""
+    )
+
+
 def dispatch_pointer(page, event_type, pointer_id, x, y, pointer_type="touch"):
     """F-036: Playwright has no multi-touch gesture API, so pinch/long-press are driven by
     dispatching raw synthetic PointerEvents directly -- pointerdown on whatever's really at

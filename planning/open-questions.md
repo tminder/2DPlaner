@@ -62,10 +62,6 @@ Duplicate is built ([D-074](decisions.md#d-074-f-016-duplicate--scale-kept-as-it
 
 `rotation` isn't implemented anywhere — a `rect` is always axis-aligned; declaring `rotation: 45` parses and is silently ignored. For this language's own stated domain, an angled wall or a non-rectangular footprint is ordinary, not an edge case — today it's only reachable by hand-computing rotated polygon coordinates, forfeiting `rect`'s own conveniences (exact containment clamp, `flush`, collision fast paths). No curves/arcs and no multi-level/floor concept either. Not designed: whether `rotation` becomes a flat sibling property next to `position`/`size` (the natural fit, matching this language's flat style — a `transform: {}` grouping object was considered and rejected), and how far to take the rest (curves, multi-level) versus leaving them a stated limitation.
 
-## F-029 No multi-select for bulk actions
-
-Every interaction (drag, Duplicate, Delete, connect/disconnect) operates on exactly one element at a time — no shift-click, no marquee selection, no "delete/duplicate this cluster together" for elements that don't already share a parent (nesting already covers the case where they do). A real, missing convenience, not designed at all yet.
-
 ## F-030 A reusable component/sub-plan concept
 
 `compose` lets a *module* generate a structure from parameters (D-046/D-072), but there's no way to reuse a whole hand-authored *subtree* as data — "here's a bathroom layout, drop it into three different van plans." Related to F-027's now-built style presets (both are "define once, reuse without repeating") but at the granularity of a whole composition instead of one style object. Needs real thought before a shape is proposed: what identifies a reusable component, whether it lives inside one plan or is shared across files, how drag-editing a placed instance relates to editing the definition.
@@ -103,4 +99,8 @@ Requested directly, not yet designed at all. A page/section listing external mod
 - **A formal Terms of Service** for the hosted accounts/cloud-sync service doesn't exist yet — today's protection is copyright-only (the `LICENSE`), nothing governs the *service* itself (data handling, account terms, acceptable use).
 
 Not a decision to make preemptively — recorded so the next concrete choice that touches any of this (F-045 itself, a pricing page, opening accounts more broadly) gets weighed against it rather than decided in isolation.
+
+## F-047 Marquee (rubber-band) selection
+
+F-029's own multi-select ([decisions.md D-124](decisions.md#d-124-f-029-multi-select-for-bulk-drag-delete-and-duplicate--altclick-not-marquee)) only ever grows a selection one Alt+click at a time — no drag-a-rectangle-over-several-elements gesture. Deliberately deferred, not forgotten: an empty-canvas drag is already the pan gesture, so a marquee would need its own way to be told apart from a plain pan (a modifier key, most likely) plus hit-testing every element's bbox against the drawn rectangle — a materially bigger interaction change than Alt+click was, not attempted this round.
 
