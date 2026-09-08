@@ -146,6 +146,7 @@ rejected path, not delete it once superseded.
 | SEO exclusion for `auth.`/`test.`(`api.`) | — | **Done** — `auth.planagonia.com` set to WordPress's own "discourage search engines" (confirmed: `noindex, nofollow` meta tag live); `test.planagonia.com` given a `Disallow: /` `robots.txt` |
 | Sitemap + main-domain `robots.txt` | `planagonia.com/sitemap.xml` | **Done** (D-057, revised by D-062) — dynamically generated from Homepage/Documentation/App's real file mtimes. The App was originally excluded (nobody searches their way into a signed-in tool) but is now included in both the sitemap and `robots.txt`'s allow, at the user's direct request (D-062) — Profile stays excluded. GitHub Pages' own copy of the App still has no `robots.txt` — a separate, unaddressed host |
 | Impressum | `planagonia.com/impressum` | **Done** (D-063) — name/address/contact as a small standalone page, `noindex`, linked from Homepage/Docs/Profile's shared footer |
+| Modules (F-045) | `planagonia.com/modules` | **Done** (D-125) — manually-curated community module listing, ships with an empty state (no submissions yet); linked from the shared nav/footer everywhere else is, and from `sitemap.php` |
 
 ## Open questions, collected here rather than scattered across the conversation
 

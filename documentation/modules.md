@@ -56,6 +56,10 @@ contains `://` — anything else is looked up in a small built-in registry
 built-in module; every module a plan uses today is external, fetched via a dynamically
 created `<script src>` tag.
 
+Community-published external modules (F-045) are listed at
+[planagonia.com/modules](https://www.planagonia.com/modules/) — check there for an
+existing URL before writing a new module from scratch.
+
 **Every plan in the hosted app gets every auto-loaded module whether it declares them or
 not.** `docs/`'s `loadPlan()` checks the source text for each of `AUTO_MODULES` (currently
 `["grid-module.js", "annotations-module.js", "interactivity-module.js",

@@ -17,6 +17,7 @@ $pages = [
     ['path' => '/', 'file' => __DIR__ . '/index.html', 'priority' => '1.0'],
     ['path' => '/docs/', 'file' => __DIR__ . '/docs/index.html', 'priority' => '0.8'],
     ['path' => '/app/', 'file' => __DIR__ . '/app/index.html', 'priority' => '0.6'],
+    ['path' => '/modules/', 'file' => __DIR__ . '/modules/index.html', 'priority' => '0.6'],
     ['path' => '/blog/', 'file' => __DIR__ . '/blog/index.html', 'priority' => '0.7'],
 ];
 

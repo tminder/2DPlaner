@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Blog — Planagonia</title>
+<title>Modules — Planagonia</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="alternate icon" href="favicon.ico">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<meta name="description" content="Progress updates from the team building Planagonia, written for everyone — not just developers.">
+<meta name="description" content="Community-published modules that extend Planagonia's plan language with new shapes, interactivity, or reusable building blocks.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -58,21 +58,43 @@
     text-transform: uppercase; color: var(--amber); margin: 0 0 0.9rem;
   }
   h1.page-title { font-size: clamp(1.9rem, 3.4vw, 2.5rem); margin: 0 0 0.6rem; }
-  p.lede { color: var(--ink-soft); font-size: 1.05rem; max-width: 52ch; margin: 0 0 2.6rem; }
+  p.lede { color: var(--ink-soft); font-size: 1.05rem; max-width: 56ch; margin: 0 0 1.6rem; }
+  p.lede a { color: var(--blue-deep); }
 
-  .post-list { display: flex; flex-direction: column; gap: 1.1rem; }
-  .post-card {
-    display: block; text-decoration: none; color: inherit;
+  .callout {
+    background: var(--amber-soft); border-left: 3px solid var(--amber); border-radius: 0 8px 8px 0;
+    padding: 1rem 1.3rem; margin: 0 0 2.4rem; font-size: 0.95rem;
+  }
+  .callout strong { display: block; margin-bottom: 0.3rem; }
+  .callout a { font-weight: 600; }
+
+  .module-list { display: flex; flex-direction: column; gap: 1.1rem; margin: 0 0 3rem; }
+  .module-card {
     background: var(--paper-raised); border: 1px solid var(--line); border-radius: 12px;
-    padding: 1.6rem 1.8rem; transition: transform 0.12s ease, border-color 0.12s ease;
+    padding: 1.6rem 1.8rem;
   }
-  .post-card:hover { transform: translateY(-1px); border-color: var(--ink-soft); }
-  .post-card .date {
-    font-family: "IBM Plex Mono", monospace; font-size: 0.76rem; letter-spacing: 0.06em;
-    text-transform: uppercase; color: var(--amber); margin: 0 0 0.6rem;
+  .module-card h2 { font-size: 1.2rem; margin: 0 0 0.5rem; }
+  .module-card p.desc { color: var(--ink-soft); font-size: 0.95rem; margin: 0 0 0.9rem; }
+  .module-card pre {
+    font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 0.85rem;
+    background: var(--paper); border: 1px solid var(--line); border-radius: 6px;
+    padding: 0.6rem 0.8rem; margin: 0 0 0.7rem; overflow-x: auto;
   }
-  .post-card h2 { font-size: 1.25rem; margin: 0 0 0.6rem; }
-  .post-card p.excerpt { color: var(--ink-soft); font-size: 0.95rem; margin: 0; font-family: "IBM Plex Sans", system-ui, sans-serif; }
+  .module-card p.author { font-size: 0.85rem; color: var(--ink-soft); margin: 0; }
+
+  .empty-state {
+    background: var(--paper-raised); border: 1px dashed var(--line); border-radius: 12px;
+    padding: 2.2rem 1.8rem; text-align: center; color: var(--ink-soft); margin: 0 0 3rem;
+  }
+  .empty-state p { margin: 0; }
+  .empty-state p.headline { color: var(--ink); font-weight: 600; margin-bottom: 0.4rem; font-family: "IBM Plex Mono", monospace; font-size: 0.95rem; }
+
+  h2.section-title { font-size: 1.3rem; margin: 0 0 0.8rem; }
+  section.submit p { color: var(--ink-soft); font-size: 0.98rem; max-width: 60ch; }
+  section.submit code {
+    font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 0.88em;
+    background: var(--amber-soft); color: var(--ink); padding: 0.1em 0.4em; border-radius: 4px;
+  }
 
   footer.site {
     padding: 2.5rem 0 3rem; color: var(--ink-soft); font-size: 0.86rem;
@@ -107,7 +129,7 @@
     nav.site.open { display: flex; }
     nav.site a { margin-left: 0; font-size: 1rem; }
     footer.site { flex-direction: column; align-items: flex-start; }
-    .post-card { padding: 1.3rem 1.4rem; }
+    .module-card { padding: 1.3rem 1.4rem; }
   }
 </style>
 </head>
@@ -139,32 +161,24 @@
 
 <div class="wrap">
   <main>
-    <p class="eyebrow">Blog</p>
-    <h1 class="page-title">What's new at Planagonia</h1>
-    <p class="lede">Progress updates from the team building this, written for anyone — not just people who read code for fun.</p>
+    <p class="eyebrow">Modules</p>
+    <h1 class="page-title">Community modules</h1>
+    <p class="lede">A <a href="/docs/#settings-modules">module</a> extends a plan with new rendering, new interactivity, or a reusable higher-level building block — loaded straight from a URL with <code>module "&lt;url&gt;"</code>. This page lists modules other authors have published.</p>
 
-    <div class="post-list">
-      <a class="post-card" href="/blog/pinch-snap-and-hide/">
-        <p class="date">September 7, 2026</p>
-        <h2>Pinch, Snap, and Hide: The Editor's Biggest Update Yet</h2>
-        <p class="excerpt">Layers you can hide, a plan picker with real previews, a workspace you can resize, and — the big one — the editor finally works properly on a phone: pinch to zoom, hold to open the menu, drag a shape's own corner to resize it.</p>
-      </a>
-      <a class="post-card" href="/blog/the-toolbar-we-redesigned-three-times/">
-        <p class="date">September 5, 2026</p>
-        <h2>The Toolbar We Redesigned Three Times in One Afternoon</h2>
-        <p class="excerpt">We rebuilt the app's toolbar three different ways in one afternoon before landing on the simplest one — plus a real sign-in popup, an automated test suite, and a showcase example built from reusable style presets.</p>
-      </a>
-      <a class="post-card" href="/blog/six-bugs-we-found/">
-        <p class="date">September 3, 2026</p>
-        <h2>Two AIs, One Camper Van: Stress-Testing Planagonia's Core Idea</h2>
-        <p class="excerpt">Planagonia's whole pitch is that an AI can write your floor plan for you. We'd never tested that against a second, independent AI — so we had two design the same camper van and compared notes.</p>
-      </a>
-      <a class="post-card" href="/blog/planagonia-is-live/">
-        <p class="date">August 31, 2026</p>
-        <h2>Planagonia Is Live: What's New</h2>
-        <p class="excerpt">Planagonia's whole idea is that a floor plan can be a small program, not a drawing — one an AI can write for you and you can still drag around by hand. Here's what that looks like now that it's live.</p>
-      </a>
+    <div class="callout">
+      <strong>Third-party code — read it before you trust it</strong>
+      A listed module is someone else's code, not covered by Planagonia's own <a href="/impressum/">license</a>. It runs unsandboxed, with the same access to the page any script would have — the app still asks you to confirm before loading one it hasn't seen before, and that's worth taking seriously here too.
     </div>
+
+    <div class="empty-state">
+      <p class="headline">No community modules yet</p>
+      <p>Be the first — see "Submitting a module" below.</p>
+    </div>
+
+    <section class="submit">
+      <h2 class="section-title">Submitting a module</h2>
+      <p>Built a module you'd like listed here? Open a pull request against this page on <a href="https://github.com/tminder/2DPlaner">GitHub</a>, adding a card with its name, a one-line description, the <code>module "&lt;url&gt;"</code> line to load it, and a link back to its own source — or email <a href="mailto:info@planagonia.com">info@planagonia.com</a> and it'll get added by hand.</p>
+    </section>
   </main>
 </div>
 
@@ -186,7 +200,7 @@
     try { if (!localStorage.getItem(KEY)) el.hidden = false; } catch (e) { el.hidden = false; }
     document.getElementById("cookie-notice-dismiss").addEventListener("click", function () {
       el.hidden = true;
-      try { localStorage.setItem(KEY, "1"); } catch (e) { /* private mode — not fatal */ }
+      try { localStorage.setItem(KEY, "1"); } catch (e) { /* private mode -- not fatal */ }
     });
   })();
 </script>
