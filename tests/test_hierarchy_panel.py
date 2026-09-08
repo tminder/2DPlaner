@@ -1,8 +1,11 @@
 """D-112: the hierarchy/layers panel -- open/close persistence, the full tree in reverse
 declaration order, per-parent show/hide (`hidden: true`, a new core-level rendering
-property), and sibling reordering via the panel's own up/down buttons."""
+property), and sibling reordering via the panel's own up/down buttons.
 
-from helpers import element_center, load_plan, select_example
+D-126: hierarchy-module.js is no longer force-loaded on every render -- it loads the first
+time the panel is opened (or eagerly, if a plan's own text explicitly declares it)."""
+
+from helpers import drag, element_center, load_plan, select_example
 
 VAN_PLAN = """
 element van {
@@ -160,3 +163,35 @@ def test_campervan_example_demonstrates_a_layer_hiding_something_underneath(app_
     assert "wassertank" in remaining  # still there
     assert "sitzbank" not in remaining  # the bench that was covering it is gone
     assert "kueche" not in remaining and "bett" not in remaining  # whole layer hidden
+
+
+def test_panel_is_empty_until_first_opened_then_loads_the_module(app_page):
+    """D-126: hierarchy-module.js isn't force-loaded -- a plan with no module declarations
+    at all gets an inert, empty panel until the button is actually clicked."""
+    load_plan(app_page, VAN_PLAN)
+    assert tree_labels(app_page) == []
+    open_panel(app_page)
+    assert tree_labels(app_page) == ["van", "elektrik", "kabel", "einrichtung", "bett"]
+
+
+def test_panel_survives_an_unrelated_edit_after_being_opened(app_page):
+    """D-126's own real risk: once loaded on demand rather than via AUTO_MODULES,
+    hierarchy-module.js has to stay in every later render's own required-modules set or
+    rerender()'s deactivateRemovedModules would tear it straight back down again -- proven
+    here by making an ordinary edit (a drag) right after opening and confirming the panel
+    still shows the tree afterward, not a wiped-out panel."""
+    load_plan(app_page, VAN_PLAN)
+    open_panel(app_page)
+    assert tree_labels(app_page) == ["van", "elektrik", "kabel", "einrichtung", "bett"]
+
+    cx, cy = element_center(app_page, "bett")
+    drag(app_page, cx, cy, cx + 30, cy + 20)
+
+    assert tree_labels(app_page) == ["van", "elektrik", "kabel", "einrichtung", "bett"]
+
+
+def test_an_explicit_declaration_loads_it_eagerly_without_a_click(app_page):
+    """The explicit-declaration path (parsed.modules) still works exactly as it does for
+    any other module, unaffected by removing hierarchy-module.js from AUTO_MODULES."""
+    load_plan(app_page, 'module "hierarchy-module.js"\n' + VAN_PLAN)
+    assert tree_labels(app_page) == ["van", "elektrik", "kabel", "einrichtung", "bett"]

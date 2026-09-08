@@ -962,17 +962,22 @@ element camper {
 // EXAMPLES' own keys since those are also used as (stable, never user-facing) identifiers.
 const EXAMPLE_LABELS = { blank: "Blank", apartment: "Studio Apartment", utility: "Electrical Grid", campervan: "Campervan Build" };
 
-// None of the examples declare these themselves, so all three are added automatically if
-// missing (see withAutoModules below) — every plan gets display (label/dimensions/edgeLengths),
-// interaction (drag/select/connect), and a highlighted code pane for free, the same way
-// core aim #1 intends, without every plan having to remember three module declarations.
+// Every plan gets these regardless of its own text — display (label/dimensions/
+// edgeLengths), interaction (drag/select/connect), and a highlighted code pane, the same
+// way core aim #1 intends, without every plan having to remember module declarations.
 // Order matters: annotations-module.js has to run first so its labels render like part of
 // the base shapes, with interactivity's own icons/scale-bar/fit-button still ending up on
 // top of them (D-039); code-highlight-module.js has to run after interactivity-module.js
 // since it reads the selectedId signal interactivity's own render pass sets.
 // grid-module.js (F-014) always inserts itself as the SVG's very first child regardless of
 // callback order, so its position in this list doesn't affect stacking.
-const AUTO_MODULES = ["grid-module.js", "annotations-module.js", "interactivity-module.js", "code-highlight-module.js", "hierarchy-module.js"];
+const AUTO_MODULES = ["grid-module.js", "annotations-module.js", "interactivity-module.js", "code-highlight-module.js"];
+
+// hierarchy-module.js is trusted the same as any AUTO_MODULES entry (never prompts D-045's
+// confirm() dialog) but isn't force-loaded on every render — it's genuinely optional,
+// purely behind the Layers header button, see setHierarchyPanelOpen below for why that
+// makes it a real candidate to load on demand instead.
+const TRUSTED_MODULES = [...AUTO_MODULES, "hierarchy-module.js"];
 
 // ---------- Built-in ("internal") module registry — none shipped by default; a plan can
 // still load its own via module "name.js" (external) or a bare internal name if one is
@@ -1282,25 +1287,26 @@ function deactivateRemovedModules(currentModuleNames) {
 
 function isUrlLike(name) { return name.includes("/") || name.endsWith(".js") || name.includes("://"); }
 
-// The three modules this app ships and auto-injects itself (AUTO_MODULES) run with the
-// same trust as core — a plan declaring exactly one of these by name never prompts, no
-// matter how it was declared (auto-injected or written out explicitly). Anything else
-// URL-like is code from wherever the plan's author (often an AI, D-003) pointed it,
+// The modules this app ships itself (TRUSTED_MODULES — AUTO_MODULES plus
+// hierarchy-module.js, loaded on demand rather than force-injected, see
+// setHierarchyPanelOpen) run with the same trust as core — a plan declaring one of these
+// by name never prompts, whether that declaration was force-injected, written out
+// explicitly, or (hierarchy-module.js) triggered by clicking its own header button.
+// Anything else URL-like is code from wherever the plan's author (often an AI, D-003) pointed it,
 // fetched and run with full page access and no sandboxing (D-020) — see project-overview.md's
 // risk #2. Not solved here (no sandbox added, none is possible without a real trust
 // model), just moved from "happens silently" to "a deliberate choice", asked once per
 // session per URL — loadedExternal's existing dedup means this never re-prompts for a
 // module already accepted this session.
 //
-// Shared with hasModuleDeclared (below) so "is this specifier really this shipped module,
-// however it's spelled" can never drift between the two again (S-013) — a bare name match,
-// or a path ending in "/<canonicalName>", e.g. "modules/grid-module.js" still names
-// "grid-module.js".
+// "Is this specifier really this shipped module, however it's spelled" (S-013) — a bare
+// name match, or a path ending in "/<canonicalName>", e.g. "modules/grid-module.js" still
+// names "grid-module.js".
 function specifierNamesModule(specifier, canonicalName) {
   return specifier === canonicalName || specifier.endsWith("/" + canonicalName);
 }
 
-function isTrustedModule(name) { return AUTO_MODULES.some((canonical) => specifierNamesModule(name, canonical)); }
+function isTrustedModule(name) { return TRUSTED_MODULES.some((canonical) => specifierNamesModule(name, canonical)); }
 
 function loadExternalScript(src) {
   return new Promise((resolve, reject) => {
@@ -1856,7 +1862,7 @@ async function openCloudPlan(cloudId) {
     const res = await cloudFetch(`/plans.php?id=${encodeURIComponent(cloudId)}`);
     if (!res.ok) throw new Error(`load failed (${res.status})`);
     const cp = await res.json();
-    const plan = createPlan(cp.name, withAutoModules(cp.text));
+    const plan = createPlan(cp.name, cp.text);
     plan.cloudId = cp.id;
     savePlansList();
     switchToPlan(plan.id);
@@ -2005,14 +2011,17 @@ async function rerender(opts = {}) {
   }
   try {
     const parsed = parse(sourceEl.value);
-    // D-034: every plan gets interactivity (and the other two shipped modules) by default,
-    // regardless of whether its own text declares them — withAutoModules() only bakes that
-    // guarantee into the text at specific entry points (new plan, load example/cloud plan),
-    // so a plan that reached the editor any other way (typed or pasted directly, replacing
-    // the whole source — the actual D-003 AI-copy-paste workflow) still needs it honored
-    // here, on every render, not just at creation. Never rewrites the visible source text —
-    // just what's kept active — so a deliberate edit to sourceEl.value is never second-guessed.
-    const requiredModules = [...new Set([...AUTO_MODULES, ...parsed.modules])];
+    // D-034: every plan gets interactivity (and the other AUTO_MODULES) by default,
+    // regardless of whether its own text declares them — true on every render, not just at
+    // creation, so a plan that reached the editor any way at all (typed, pasted, loaded)
+    // gets the same guarantee. hierarchy-module.js isn't in AUTO_MODULES (D-126, loaded on
+    // demand instead — see setHierarchyPanelOpen) but once loaded stays required on every
+    // later render too: deactivateRemovedModules (below) tears down anything currently
+    // loaded that isn't in this set, so without this it would be evicted again the very
+    // next render after being opened — self-reinforcing once loadedExternal has it, a
+    // fixed point that needs no separate tracking variable.
+    const stickyLazyModules = ["hierarchy-module.js"].filter((name) => loadedExternal.has(name));
+    const requiredModules = [...new Set([...AUTO_MODULES, ...parsed.modules, ...stickyLazyModules])];
     deactivateRemovedModules(requiredModules);
     await ensureModulesLoaded(requiredModules);
     program = expandTree(parsed);
@@ -2051,19 +2060,6 @@ window.PlanCore = {
 };
 
 // ---------- Toolbar: plan switcher, rename/delete, open/save ----------
-function hasModuleDeclared(text, filename) {
-  const escaped = filename.replace(/\./g, "\\.");
-  // Path-boundary tolerant (matches specifierNamesModule's own rule above, S-013) — a
-  // declared "modules/grid-module.js" counts as declaring "grid-module.js", but a bare
-  // substring like "supergrid-module.js" does not.
-  return new RegExp(`^\\s*module\\s+"(?:[^"]*/)?${escaped}"`, "m").test(text);
-}
-
-function withAutoModules(text) {
-  const missing = AUTO_MODULES.filter((name) => !hasModuleDeclared(text, name));
-  const prefix = missing.map((name) => `module "${name}"\n`).join("") + (missing.length ? "\n" : "");
-  return prefix + text;
-}
 
 // F-042: the View menu's "Show grid" toggle needs to find (and precisely edit) the
 // `settings { grid: {...} } ` entry directly in the raw source text — `parseObjectLiteral`
@@ -2161,7 +2157,7 @@ function updateShowConnectionsToggleUi() {
 }
 
 function newPlanFromExample(key) {
-  const text = withAutoModules(EXAMPLES[key]);
+  const text = EXAMPLES[key];
   unsavedExample = { key, name: EXAMPLE_LABELS[key], text };
   setActivePlan(null);
   sourceEl.value = text;
@@ -2332,7 +2328,7 @@ document.getElementById("delete-btn").addEventListener("click", () => {
     const next = [...plans].sort((a, b) => b.updatedAt - a.updatedAt)[0];
     switchToPlan(next.id);
   } else {
-    const fresh = createPlan(EXAMPLE_LABELS.apartment, withAutoModules(EXAMPLES.apartment));
+    const fresh = createPlan(EXAMPLE_LABELS.apartment, EXAMPLES.apartment);
     switchToPlan(fresh.id);
   }
 });
@@ -2452,13 +2448,13 @@ fileInput.addEventListener("change", async () => {
   if (!file) return;
   const text = await file.text();
   const name = file.name.replace(/\.[^.]+$/, "") || "Imported plan";
-  const plan = createPlan(name, withAutoModules(text));
+  const plan = createPlan(name, text);
   switchToPlan(plan.id);
 });
 
 // ---------- Startup: resume the last-active plan from this browser, or start fresh ----------
 if (!plans.length) {
-  const fresh = createPlan(EXAMPLE_LABELS.apartment, withAutoModules(EXAMPLES.apartment));
+  const fresh = createPlan(EXAMPLE_LABELS.apartment, EXAMPLES.apartment);
   activePlanId = fresh.id;
 } else if (!activePlan()) {
   activePlanId = [...plans].sort((a, b) => b.updatedAt - a.updatedAt)[0].id;
@@ -2559,14 +2555,29 @@ paneResizerEl.addEventListener("keydown", (e) => {
 // not the module -- the same reasoning D-111's own pane-resizer state used: whether it's
 // open is a session UI preference (localStorage), not plan content, so core's header
 // button only ever toggles a class + persists it. #hierarchy-panel itself is a stable,
-// always-present empty slot (see its own HTML comment) that the module fills; this code
-// never needs to know whether that module has actually loaded yet. ----------
+// always-present empty slot (see its own HTML comment) that the module fills.
+//
+// D-126: hierarchy-module.js is loaded on demand (not AUTO_MODULES) — this is the one
+// place both real ways the panel can open (a click, or restoring "left open" from
+// localStorage below) already funnel through, so it's the right place to trigger the
+// load too. ensureModulesLoaded's own dedup (loadedExternal) makes the guard here just an
+// optimization, not a correctness requirement -- calling it again once already loaded
+// would simply resolve immediately. The extra rerender() after loading is NOT optional,
+// though: core.onRendered(cb) only registers a callback for the *next* render, it doesn't
+// hand the newly-loaded module whatever `program` already exists, so without this the
+// panel would otherwise sit registered-but-empty until some unrelated edit happened to
+// trigger a render on its own. ----------
 const HIERARCHY_PANEL_OPEN_KEY = "planagonia:hierarchyPanelOpen";
 const hierarchyToggleBtn = document.getElementById("hierarchy-toggle-btn");
 function setHierarchyPanelOpen(open) {
   layoutEl.classList.toggle("hierarchy-open", open);
   hierarchyToggleBtn.classList.toggle("active", open);
   try { localStorage.setItem(HIERARCHY_PANEL_OPEN_KEY, open ? "1" : "0"); } catch (e) { /* private mode/quota — not fatal */ }
+  if (open && !loadedExternal.has("hierarchy-module.js")) {
+    ensureModulesLoaded(["hierarchy-module.js"])
+      .then(() => rerender({ preserveViewBox: true }))
+      .catch((e) => showError("Error: " + e.message));
+  }
 }
 hierarchyToggleBtn.addEventListener("click", () => {
   setHierarchyPanelOpen(!layoutEl.classList.contains("hierarchy-open"));

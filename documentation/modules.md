@@ -17,9 +17,11 @@ interactivity module (D-031) and is unchanged since. [docs/](../docs/) — the a
 app — reuses that architecture verbatim: `docs/index.html` is core (parse/render only).
 Documented here in depth: `docs/interactivity-module.js` (D-031),
 `docs/annotations-module.js` (D-039), `docs/code-highlight-module.js` (D-043), and
-`docs/hierarchy-module.js` (D-112) — loaded exactly like any other. (`docs/grid-module.js`
-and `docs/wall-with-door-module.js` also ship and auto-load; not yet written up here, a
-tracked gap — [planning/tech-debt.md](../planning/tech-debt.md) S-031.)
+`docs/hierarchy-module.js` (D-112) — the first three force-injected into every plan,
+`hierarchy-module.js` loaded on demand instead (D-126, see below). (`docs/grid-module.js`
+also ships and force-injects the same way; `docs/wall-with-door-module.js` ships but needs
+an explicit declaration like any external module, S-025; neither is yet written up here in
+depth, a tracked gap — [planning/tech-debt.md](../planning/tech-debt.md) S-031.)
 
 ## What a module can do
 
@@ -60,25 +62,31 @@ Community-published external modules (F-045) are listed at
 [planagonia.com/modules](https://www.planagonia.com/modules/) — check there for an
 existing URL before writing a new module from scratch.
 
-**Every plan in the hosted app gets every auto-loaded module whether it declares them or
-not.** `docs/`'s `loadPlan()` checks the source text for each of `AUTO_MODULES` (currently
-`["grid-module.js", "annotations-module.js", "interactivity-module.js",
-"code-highlight-module.js", "hierarchy-module.js"]` — `wall-with-door-module.js` ships too
-but is *not* auto-loaded, S-025) and prepends a declaration for whichever is missing, in
-that order (D-034, extended by D-039, D-043, and D-112) — D-020's own loading mechanism
-stays opt-in per plan; this is `docs/`'s own
-convenience on top of it, not a change to how modules work. The order is deliberate, not
-alphabetical: annotations has to finish registering its `onRendered` callback before
-interactivity does, so its labels land in the SVG *before* interactivity's own
-icons/scale-bar/fit-button (see "The annotations module" below); code-highlight has to run
-after interactivity since it reads a signal interactivity's own render pass sets (see "The
-code-highlight module" below). **This ordering only holds when a plan declares none of them
-itself** — `withAutoModules()` only ever prepends what's *missing*, so a plan that already
-explicitly declares one out of order (e.g. only `interactivity-module.js`, mid-file) can
-still end up with the others auto-inserted ahead of it in the wrong relative order; the
-fix used for `docs/`'s own `utility` example was to stop declaring any of them explicitly
-and let auto-injection place all three consistently, rather than teaching the injector to
-interleave with an already-partially-declared list.
+**Every plan in the hosted app gets every `AUTO_MODULES` entry whether it declares them or
+not, on every render.** Currently `["grid-module.js", "annotations-module.js",
+"interactivity-module.js", "code-highlight-module.js"]`, force-injected by `docs/`'s own
+`rerender()` regardless of what the plan's own text says (D-034, extended by D-039 and
+D-043) — D-020's own loading mechanism stays opt-in per plan; this is `docs/`'s own
+convenience layered on top of it, not a change to how modules work generally. The order is
+deliberate, not alphabetical: annotations has to finish registering its `onRendered`
+callback before interactivity does, so its labels land in the SVG *before* interactivity's
+own icons/scale-bar/fit-button (see "The annotations module" below); code-highlight has to
+run after interactivity since it reads a signal interactivity's own render pass sets (see
+"The code-highlight module" below). This force-injection is unconditional and silent —
+`docs/`'s own plan-switcher and examples don't write a `module "..."` line for any of these
+into a plan's own text either (D-126: doing so used to be `withAutoModules()`'s whole job,
+removed once it became clear the lines it wrote were purely decorative, since force-
+injection never actually depended on them being present).
+
+**`hierarchy-module.js` and `wall-with-door-module.js` both ship but are deliberately *not*
+in `AUTO_MODULES` (D-112, D-126)** — neither is force-loaded on every render.
+`wall-with-door-module.js` needs an explicit `module` declaration like any external module
+(S-025's own still-open note: nothing warns an author if `compose: "wallWithDoor"` is used
+without one). `hierarchy-module.js` is loaded on demand instead: `docs/`'s own header
+"Layers" button loads it the first time the panel is opened — or immediately, if a plan's
+own text happens to declare it explicitly, exactly like any other module. Both are still
+trusted the same as any `AUTO_MODULES` entry (`TRUSTED_MODULES`, below) — they just aren't
+force-loaded.
 
 ## Trust model
 
@@ -89,18 +97,19 @@ choosing an npm package than an end user clicking an untrusted link. Whether tha
 still holds if the audience broadens is F-009, open.
 
 **One real gate, added directly in response to project-overview.md's risk review, not a
-sandbox:** the first time a session would load a module that isn't one of the three
-`AUTO_MODULES` this app ships and injects itself, `ensureModulesLoaded()` shows a native
-`confirm()` naming the exact URL before fetching/running it. Declining throws instead of
-loading — the plan simply doesn't render past that point, same as any other unresolved
-error (D-015). This doesn't make the code any safer to run once accepted (still no
-sandboxing, still full page access) — it only turns "runs automatically because a plan
+sandbox:** the first time a session would load a module that isn't in `TRUSTED_MODULES`
+(`AUTO_MODULES` plus `hierarchy-module.js`, see above), `ensureModulesLoaded()` shows a
+native `confirm()` naming the exact URL before fetching/running it. Declining throws
+instead of loading — the plan simply doesn't render past that point, same as any other
+unresolved error (D-015). This doesn't make the code any safer to run once accepted (still
+no sandboxing, still full page access) — it only turns "runs automatically because a plan
 declared it" into a deliberate per-URL choice, asked once per session (`loadedExternal`'s
 existing dedup) and remembered if declined too (`declinedExternal`, cleared only if the
 module's declaration is actually removed from the plan and re-added, or the page reloads —
 otherwise a declined module would re-prompt on every keystroke, since `rerender()` runs on
-every edit). The three shipped modules never prompt, however they're declared (auto-injected
-or written out explicitly) — they run with the same trust as core itself.
+every edit). Every `TRUSTED_MODULES` entry never prompts, however it was loaded —
+force-injected, written out explicitly, or (`hierarchy-module.js` only) triggered by its
+own header button — they all run with the same trust as core itself.
 
 ## Loading and lifecycle
 

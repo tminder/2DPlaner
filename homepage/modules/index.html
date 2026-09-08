@@ -166,7 +166,7 @@
   <main>
     <p class="eyebrow">Modules</p>
     <h1 class="page-title">Modules</h1>
-    <p class="lede">A <a href="/docs/#settings-modules">module</a> extends a plan with new rendering, new interactivity, or a reusable higher-level building block — loaded straight from a URL with <code>module "&lt;url&gt;"</code>. Below: the modules Planagonia ships with itself, marked <span class="badge">Built-in</span>, plus anything the community has published since.</p>
+    <p class="lede">A <a href="/docs/#settings-modules">module</a> extends a plan with new rendering, new interactivity, or a reusable higher-level building block — loaded straight from a URL with <code>module "&lt;url&gt;"</code>. Some of the app's own editor tooling (drag-and-drop, labels, syntax highlighting, the grid) is itself built as a module, but it's always active and never something you load yourself, so it isn't listed here. Below: the modules Planagonia ships that you actually load on request, marked <span class="badge">Built-in</span>, plus anything the community has published since.</p>
 
     <div class="callout">
       <strong>Anything without the Built-in badge is third-party code — read it before you trust it</strong>
@@ -175,40 +175,16 @@
 
     <div class="module-list">
       <div class="module-card">
-        <h2>Drag-and-drop editing <span class="badge">Built-in</span></h2>
-        <p class="desc">Drag, select (including multi-select), resize, connect elements to each other, and the right-click context menu.</p>
-        <p class="note">Loaded automatically — nothing to declare.</p>
-        <p class="author">interactivity-module.js</p>
-      </div>
-      <div class="module-card">
-        <h2>Labels &amp; dimensions <span class="badge">Built-in</span></h2>
-        <p class="desc">Draws each shape's label, size, and (opt-in) edge lengths as text overlaid on the plan.</p>
-        <p class="note">Loaded automatically — nothing to declare.</p>
-        <p class="author">annotations-module.js</p>
-      </div>
-      <div class="module-card">
-        <h2>Code highlighting &amp; validation <span class="badge">Built-in</span></h2>
-        <p class="desc">Syntax coloring in the code pane, plus inline wavy-underline markers for validation errors.</p>
-        <p class="note">Loaded automatically — nothing to declare.</p>
-        <p class="author">code-highlight-module.js</p>
-      </div>
-      <div class="module-card">
-        <h2>Grid <span class="badge">Built-in</span></h2>
-        <p class="desc">A background or foreground checkered/line grid, plus grid-snapped dragging and resizing when declared.</p>
-        <p class="note">Loaded automatically — nothing to declare.</p>
-        <p class="author">grid-module.js</p>
-      </div>
-      <div class="module-card">
         <h2>Layers panel <span class="badge">Built-in</span></h2>
         <p class="desc">Shows the plan's full parent/child tree; show, hide, and reorder any element or subtree.</p>
-        <p class="note">Loaded automatically — nothing to declare.</p>
+        <p class="note">Loads the first time you open the app's own "Layers" panel — nothing to declare, though you can still declare it explicitly if you want it loaded right away.</p>
         <p class="author">hierarchy-module.js</p>
       </div>
       <div class="module-card">
         <h2>Wall with a door <span class="badge">Built-in</span></h2>
         <p class="desc">A reusable building block — one compact element expands into a matching wall/door/wall structure.</p>
         <pre>module "https://www.planagonia.com/app/wall-with-door-module.js"</pre>
-        <p class="author">wall-with-door-module.js — the one built-in module not loaded automatically, since not every plan needs it</p>
+        <p class="author">wall-with-door-module.js</p>
       </div>
     </div>
 
