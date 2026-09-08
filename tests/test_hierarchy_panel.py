@@ -32,6 +32,8 @@ element van {
 
 
 def open_panel(page):
+    # D-128: Grid/Connections/Layers now live behind the header's own "View" tab.
+    page.click("#menu-tab-view")
     page.click("#hierarchy-toggle-btn")
     page.wait_for_timeout(150)
 

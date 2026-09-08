@@ -7,49 +7,68 @@
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="alternate icon" href="favicon.ico">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-  :root { color-scheme: light; }
+  /* D-128: the header adopts the same token palette/font pair every other page of this
+     product already shares (homepage/blog/docs/profile/modules) -- real brand consistency
+     for the first time, scoped deliberately to the header only (these tokens are used by
+     header-descendant selectors alone; the code pane/SVG viewer/every module's own
+     injected CSS keep their own existing look, out of scope here). Light-only, matching
+     this app's own existing `color-scheme: light` -- no dark-mode pass bundled in. */
+  :root {
+    color-scheme: light;
+    --paper: #f7f4ee; --paper-raised: #ffffff; --ink: #221f1c; --ink-soft: #5b5650;
+    --line: #d8d2c6; --blue: #2c5f7c; --blue-deep: #1e4457; --amber: #b9791f; --amber-soft: #f2dfb8;
+  }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
   body { font-family: system-ui, sans-serif; margin: 0; background: #f4f4f2; color: #222;
     display: flex; flex-direction: column; overflow: hidden; }
-  header { flex: 0 0 auto; display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 1rem;
-    background: #fff; border-bottom: 1px solid #ddd; flex-wrap: wrap; }
-  header h1 { font-size: 1.05rem; margin: 0; margin-right: 0.5rem; white-space: nowrap; display: flex; align-items: center; gap: 0.4rem; }
+  header { flex: 0 0 auto; display: flex; align-items: center; gap: 0.6rem; padding: 0.55rem 1rem;
+    background: var(--paper-raised); border-bottom: 1px solid var(--line); flex-wrap: wrap;
+    font-family: "IBM Plex Sans", system-ui, sans-serif; }
+  header h1 { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 1.05rem; margin: 0;
+    margin-right: 0.5rem; white-space: nowrap; display: flex; align-items: center; gap: 0.4rem; color: var(--ink); }
   header h1 a { color: inherit; text-decoration: none; }
   header h1 a:hover { text-decoration: underline; }
-  .beta-badge { font-size: 0.62rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
-    color: #8a6a1f; background: #f2dfb8; border-radius: 4px; padding: 0.15rem 0.4rem; }
+  .beta-badge { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 0.62rem;
+    font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+    color: var(--amber); background: var(--amber-soft); border-radius: 4px; padding: 0.15rem 0.4rem; }
   header .spacer { flex: 1; }
   button, select { font: inherit; font-size: 0.85rem; padding: 0.4rem 0.7rem; border: 1px solid #ccc;
     border-radius: 5px; background: #fff; cursor: pointer; }
   button:hover, select:hover { background: #f0f0f0; }
   button:disabled { opacity: 0.4; cursor: default; }
   button:disabled:hover { background: #fff; }
-  #undo-btn, #redo-btn { padding: 0.4rem 0.6rem; font-size: 1rem; line-height: 1; }
   #file-input { display: none; }
   .mobile-tabs { display: none; }
 
-  /* F-032/D-103/D-104/D-105/D-106: every DISTINCT action sits directly in the header,
-     always visible, in small icon-on-top/label-below groups — no dropdown/trigger layer
-     for the sake of tidiness alone (D-105, "keine dropdowns"). D-106 narrowed that: a
-     dropdown is still fine specifically to group one action's own several flavors (Export's
-     three file formats), just not to hide otherwise-unrelated actions behind a click. A
-     core-owned rule set, deliberately separate from interactivity-module.js's own
-     .context-menu styles: this chrome has to work with no plan module loaded at all, so it
-     can't depend on one module's runtime-injected CSS just because that module happens to
-     always auto-load (D-034). */
+  /* F-032/D-103/D-104/D-105/D-106: every DISTINCT action sits directly in its group, in
+     small icon-on-top/label-below buttons — no dropdown/trigger layer for the sake of
+     tidiness alone (D-105, "keine dropdowns"). D-106 narrowed that: a dropdown is still
+     fine specifically to group one action's own several flavors (Export's three file
+     formats), just not to hide otherwise-unrelated actions behind a click. D-128 narrows
+     it again, deliberately: the three action groups below (File/View/Account) now sit
+     behind real tabs, only one visible at a time — Open/New/Undo/Redo stay permanently
+     visible outside any tab, since switching plans and undo are too frequent to hide
+     behind a click. A core-owned rule set, deliberately separate from
+     interactivity-module.js's own .context-menu styles: this chrome has to work with no
+     plan module loaded at all, so it can't depend on one module's runtime-injected CSS
+     just because that module happens to always auto-load (D-034). */
   .ribbon-group { display: flex; gap: 2px; }
   .ribbon-btn { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 62px;
-    padding: 4px 2px; border: 1px solid transparent; border-radius: 5px; background: none;
+    padding: 5px 2px; border: 1px solid transparent; border-radius: 8px; background: none;
     font-size: 10.5px; text-align: center; white-space: normal; line-height: 1.2; cursor: pointer;
-    font-family: inherit; color: inherit; position: relative; }
-  .ribbon-icon { font-size: 18px; line-height: 1; opacity: 0.75; }
+    font-family: inherit; color: var(--ink-soft); position: relative; transition: background 0.1s, box-shadow 0.1s; }
+  .ribbon-icon { font-size: 18px; line-height: 1; opacity: 0.8; }
   .ribbon-label { font-size: 10.5px; }
-  .ribbon-btn:hover:not(:disabled) { background: #eef2ff; border-color: #d3ddfa; }
+  .ribbon-btn:hover:not(:disabled) { background: var(--paper); border-color: var(--line);
+    color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
   /* A pressed/highlighted background marks an active toggle (Grid), matching how a real
      ribbon shows Bold/Italic as "on" — not a checkmark glyph. */
-  .ribbon-btn.active { background: #d8e4fc; border-color: #9db8e8; }
+  .ribbon-btn.active { background: var(--amber-soft); border-color: var(--amber); color: var(--ink); }
   .ribbon-btn.danger { color: #a11; }
   /* The cloud sign-in/out buttons are shown/hidden via the plain `hidden` attribute
      (updateCloudUi(), unchanged) -- `.ribbon-btn`'s own `display: flex` would otherwise
@@ -57,8 +76,30 @@
      cloud button at once regardless of sign-in state (the exact D-103 bug, guarded against
      here too even though this is a new rule, not that one). */
   .ribbon-btn[hidden] { display: none; }
-  .ribbon-divider { width: 1px; align-self: stretch; margin: 2px 2px; background: #e5e5e5; }
-  .ribbon-status { font-size: 10.5px; color: #888; white-space: nowrap; }
+  .ribbon-divider { width: 1px; align-self: stretch; margin: 2px 2px; background: var(--line); }
+  .ribbon-status { font-size: 10.5px; color: var(--ink-soft); white-space: nowrap; }
+
+  /* D-128: the tab-strip selecting which of File/View/Account is currently shown --
+     deliberately its own classes (.menu-tab-*), not a reuse of the pre-existing
+     .mobile-tabs/.tab-btn (the unrelated code/viewer pane switcher, D-006), so the two
+     genuinely different "tabs" concepts in this header never collide or read as one
+     feature by accident. */
+  #header-tabs { display: flex; align-items: center; gap: 0.7rem; }
+  .menu-tab-strip { display: flex; gap: 2px; background: var(--paper); border: 1px solid var(--line);
+    border-radius: 8px; padding: 2px; }
+  .menu-tab-btn { font: inherit; font-size: 0.78rem; font-weight: 500; color: var(--ink-soft);
+    background: none; border: none; border-radius: 6px; padding: 0.35rem 0.7rem; cursor: pointer; }
+  .menu-tab-btn:hover { color: var(--ink); }
+  .menu-tab-btn.active { background: var(--paper-raised); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .menu-tab-panel[hidden] { display: none; }
+  .menu-tab-panel { display: flex; align-items: center; gap: 2px; }
+
+  /* D-128: the whole toolbar (Open/New/Undo/Redo + the tabs above) collapses behind this
+     button below the existing 760px breakpoint -- hidden entirely above it, mirroring the
+     exact hamburger pattern already used identically across every marketing page of this
+     product (homepage/blog/docs/profile/modules' own #nav-toggle). */
+  #header-toggle-btn { display: none; }
+  #header-toolbar { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
 
   /* D-106: Export's own three formats, grouped back into one flyout -- same hover-flyout
      pattern the right-click context menu already established (D-097), independently
@@ -201,6 +242,19 @@
     button, select { font-size: 0.78rem; padding: 0.32rem 0.55rem; }
     header .spacer { display: none; }
 
+    /* D-128: the whole toolbar (Open/New/Undo/Redo + the File/View/Account tabs) collapses
+       behind this button -- same collapsed-nav pattern as every marketing page's own
+       #nav-toggle, applied here to the app's own toolbar instead of a nav list. */
+    #header-toggle-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 2.1rem; height: 2.1rem; border: 1px solid var(--line); border-radius: 7px;
+      background: var(--paper-raised); color: var(--ink); font-size: 1.05rem; cursor: pointer;
+      flex: 0 0 auto;
+    }
+    #header-toolbar { display: none; flex-basis: 100%; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+    #header-toolbar.open { display: flex; }
+    #header-tabs { flex-wrap: wrap; }
+
     .mobile-tabs { display: flex; gap: 0.4rem; padding: 0.5rem 0.5rem 0; background: #fff; border-bottom: 1px solid #ddd; }
     .tab-btn {
       flex: 1 1 0; padding: 0.5rem; border: 1px solid #ccc; border-radius: 6px 6px 0 0;
@@ -264,78 +318,100 @@
 <body>
 <header>
   <h1><a href="https://www.planagonia.com/" title="Back to planagonia.com">Planagonia</a> <span class="beta-badge">Beta</span></h1>
-  <!-- F-044: "open" and "new" as separate actions, each opening #plan-picker-panel below
-       in its own mode -- replaces the old <select id="plan-switcher"> outright, one path
-       to switch/start a plan instead of two. This button's own label *is* the active
-       plan's current name (updateActivePlanButton()), so it still shows "which plan" the
-       way the old dropdown's own selected option did. -->
-  <button class="ribbon-btn" id="plan-open-btn" title="Open a plan">
-    <span class="ribbon-icon">📂</span><span class="ribbon-label">Untitled</span>
-  </button>
-  <button class="ribbon-btn" id="plan-new-btn" title="Start a new plan">
-    <span class="ribbon-icon">✚</span><span class="ribbon-label">New…</span>
-  </button>
-  <button id="undo-btn" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
-  <button id="redo-btn" title="Redo (Ctrl+Shift+Z)" aria-label="Redo">↷</button>
-  <!-- D-105/D-106: every DISTINCT action sits directly in the header, always visible --
-       no dropdown for the sake of tidiness alone. A dropdown is still fine specifically to
-       group genuinely-the-same action in different flavors (Export's three file formats
-       below) -- unlike Rename/Import/Delete, those aren't separate actions competing for
-       space, they're one action with a choice to make once you've already committed to it. -->
-  <div class="ribbon-group">
-    <button class="ribbon-btn" id="rename-btn" title="Rename the current plan">
-      <span class="ribbon-icon">✎</span><span class="ribbon-label">Rename…</span>
+  <!-- D-128: hidden above the 760px breakpoint (see CSS), mirrors the marketing pages' own
+       #nav-toggle verbatim -- collapses #header-toolbar below instead of a nav list. -->
+  <button id="header-toggle-btn" aria-label="Menu" aria-expanded="false" aria-controls="header-toolbar">☰</button>
+  <div id="header-toolbar">
+    <!-- F-044: "open" and "new" as separate actions, each opening #plan-picker-panel below
+         in its own mode -- replaces the old <select id="plan-switcher"> outright, one path
+         to switch/start a plan instead of two. This button's own label *is* the active
+         plan's current name (updateActivePlanButton()), so it still shows "which plan" the
+         way the old dropdown's own selected option did. Stays outside the tabs below along
+         with Undo/Redo -- switching plans and undo are too frequent to hide behind a tab
+         click (D-128). -->
+    <button class="ribbon-btn" id="plan-open-btn" title="Open a plan">
+      <span class="ribbon-icon">📂</span><span class="ribbon-label">Untitled</span>
     </button>
-    <button class="ribbon-btn" id="open-btn">
-      <span class="ribbon-icon">⇩</span><span class="ribbon-label">Import…</span>
+    <button class="ribbon-btn" id="plan-new-btn" title="Start a new plan">
+      <span class="ribbon-icon">✚</span><span class="ribbon-label">New…</span>
     </button>
-    <div class="ribbon-btn has-submenu">
-      <span class="ribbon-icon">⇧</span><span class="ribbon-label">Export ▸</span>
-      <ul class="submenu">
-        <li><button id="save-btn">Plan file (.planagon)…</button></li>
-        <li><button id="export-png-btn" title="Save the current plan as a PNG image">PNG image…</button></li>
-        <li><button id="export-svg-btn" title="Save the current plan as an SVG image">SVG image…</button></li>
-      </ul>
+    <button class="ribbon-btn" id="undo-btn" title="Undo (Ctrl+Z)" aria-label="Undo">
+      <span class="ribbon-icon">↶</span><span class="ribbon-label">Undo</span>
+    </button>
+    <button class="ribbon-btn" id="redo-btn" title="Redo (Ctrl+Shift+Z)" aria-label="Redo">
+      <span class="ribbon-icon">↷</span><span class="ribbon-label">Redo</span>
+    </button>
+    <div class="ribbon-divider"></div>
+    <!-- D-128: File/View/Account -- the header's own pre-existing three ribbon-divider
+         groups (D-103/D-104/D-105), now real tabs: only the active panel's buttons are
+         shown, a deliberate narrowing of D-105's earlier "every action always visible"
+         rule now that the header has grown enough to need it. Each panel below holds
+         exactly the same buttons, same ids, as before -- only the wrapping changed. -->
+    <div id="header-tabs">
+      <div class="menu-tab-strip" role="tablist">
+        <button class="menu-tab-btn active" id="menu-tab-file" data-tab="file" role="tab" aria-selected="true">File</button>
+        <button class="menu-tab-btn" id="menu-tab-view" data-tab="view" role="tab" aria-selected="false">View</button>
+        <button class="menu-tab-btn" id="menu-tab-account" data-tab="account" role="tab" aria-selected="false">Account</button>
+      </div>
+      <!-- D-105/D-106: every DISTINCT action sits directly in its panel -- no dropdown for
+           the sake of tidiness alone. A dropdown is still fine specifically to group one
+           action's own several flavors (Export's three file formats below) -- unlike
+           Rename/Import/Delete, those aren't separate actions competing for space, they're
+           one action with a choice to make once you've already committed to it. -->
+      <div class="menu-tab-panel ribbon-group" data-tab="file" role="tabpanel">
+        <button class="ribbon-btn" id="rename-btn" title="Rename the current plan">
+          <span class="ribbon-icon">✎</span><span class="ribbon-label">Rename…</span>
+        </button>
+        <button class="ribbon-btn" id="open-btn">
+          <span class="ribbon-icon">⇩</span><span class="ribbon-label">Import…</span>
+        </button>
+        <div class="ribbon-btn has-submenu">
+          <span class="ribbon-icon">⇧</span><span class="ribbon-label">Export ▸</span>
+          <ul class="submenu">
+            <li><button id="save-btn">Plan file (.planagon)…</button></li>
+            <li><button id="export-png-btn" title="Save the current plan as a PNG image">PNG image…</button></li>
+            <li><button id="export-svg-btn" title="Save the current plan as an SVG image">SVG image…</button></li>
+          </ul>
+        </div>
+        <button class="ribbon-btn danger" id="delete-btn" title="Delete the current plan">
+          <span class="ribbon-icon">✕</span><span class="ribbon-label">Delete</span>
+        </button>
+      </div>
+      <!-- F-042: the one setting with a genuine on/off state today (F-014's grid is either
+           present or absent in `settings`) -- see toggleGridSetting()/updateGridToggleUi()
+           below. Style presets and the always-injected AUTO_MODULES have no real off-state
+           to expose this same way (F-042's own noted caveat), so they're deliberately not
+           offered here. A pressed/highlighted background marks the active state (matching
+           Word's own Bold/Italic toggle-button convention), not a checkmark. -->
+      <div class="menu-tab-panel ribbon-group" data-tab="view" role="tabpanel" hidden>
+        <button class="ribbon-btn" id="grid-toggle-btn">
+          <span class="ribbon-icon">⊞</span><span class="ribbon-label">Grid</span>
+        </button>
+        <button class="ribbon-btn" id="connections-toggle-btn" title="Show a line between every connected pair of elements">
+          <span class="ribbon-icon">⌁</span><span class="ribbon-label">Connections</span>
+        </button>
+        <!-- Unlike its two group-neighbors, this doesn't touch `settings` -- whether the
+             panel is open is a session UI preference (localStorage), not plan content;
+             closing it doesn't change what the plan itself renders. -->
+        <button class="ribbon-btn" id="hierarchy-toggle-btn" title="Show the element hierarchy: reorder and show/hide parents">
+          <span class="ribbon-icon">🗂</span><span class="ribbon-label">Layers</span>
+        </button>
+      </div>
+      <div class="menu-tab-panel ribbon-group" data-tab="account" role="tabpanel" hidden>
+        <!-- D-105: opens the login/register popup (openAuthModal()) instead of native prompt()s. -->
+        <button class="ribbon-btn" id="cloud-signin-btn" title="Sign in to save/load plans in the cloud">
+          <span class="ribbon-icon">⇥</span><span class="ribbon-label">Sign in…</span>
+        </button>
+        <button class="ribbon-btn" id="cloud-save-btn" title="Save the current plan to the cloud" hidden>
+          <span class="ribbon-icon">☁</span><span class="ribbon-label">Save to Cloud</span>
+        </button>
+        <button class="ribbon-btn" id="cloud-signout-btn" title="Sign out" hidden>
+          <span class="ribbon-icon">⇤</span><span class="ribbon-label">Sign out</span>
+        </button>
+        <span class="ribbon-status" id="cloud-status"></span>
+      </div>
     </div>
-    <button class="ribbon-btn danger" id="delete-btn" title="Delete the current plan">
-      <span class="ribbon-icon">✕</span><span class="ribbon-label">Delete</span>
-    </button>
   </div>
-  <div class="ribbon-divider"></div>
-  <!-- F-042: the one setting with a genuine on/off state today (F-014's grid is either
-       present or absent in `settings`) -- see toggleGridSetting()/updateGridToggleUi()
-       below. Style presets and the always-injected AUTO_MODULES have no real off-state to
-       expose this same way (F-042's own noted caveat), so they're deliberately not offered
-       here. A pressed/highlighted background marks the active state (matching Word's own
-       Bold/Italic toggle-button convention), not a checkmark. -->
-  <div class="ribbon-group">
-    <button class="ribbon-btn" id="grid-toggle-btn">
-      <span class="ribbon-icon">⊞</span><span class="ribbon-label">Grid</span>
-    </button>
-    <button class="ribbon-btn" id="connections-toggle-btn" title="Show a line between every connected pair of elements">
-      <span class="ribbon-icon">⌁</span><span class="ribbon-label">Connections</span>
-    </button>
-    <!-- Unlike its two group-neighbors, this doesn't touch `settings` -- whether the panel
-         is open is a session UI preference (localStorage), not plan content; closing it
-         doesn't change what the plan itself renders. -->
-    <button class="ribbon-btn" id="hierarchy-toggle-btn" title="Show the element hierarchy: reorder and show/hide parents">
-      <span class="ribbon-icon">🗂</span><span class="ribbon-label">Layers</span>
-    </button>
-  </div>
-  <div class="ribbon-divider"></div>
-  <div class="ribbon-group">
-    <!-- D-105: opens the login/register popup (openAuthModal()) instead of native prompt()s. -->
-    <button class="ribbon-btn" id="cloud-signin-btn" title="Sign in to save/load plans in the cloud">
-      <span class="ribbon-icon">⇥</span><span class="ribbon-label">Sign in…</span>
-    </button>
-    <button class="ribbon-btn" id="cloud-save-btn" title="Save the current plan to the cloud" hidden>
-      <span class="ribbon-icon">☁</span><span class="ribbon-label">Save to Cloud</span>
-    </button>
-    <button class="ribbon-btn" id="cloud-signout-btn" title="Sign out" hidden>
-      <span class="ribbon-icon">⇤</span><span class="ribbon-label">Sign out</span>
-    </button>
-  </div>
-  <span class="ribbon-status" id="cloud-status"></span>
   <input type="file" id="file-input" accept=".planagon,.2dplan,.txt,text/plain">
   <div class="spacer"></div>
 </header>
@@ -2580,6 +2656,37 @@ hierarchyToggleBtn.addEventListener("click", () => {
   setHierarchyPanelOpen(!layoutEl.classList.contains("hierarchy-open"));
 });
 try { setHierarchyPanelOpen(localStorage.getItem(HIERARCHY_PANEL_OPEN_KEY) === "1"); } catch (e) { /* private mode/quota — defaults closed */ }
+
+// ---------- D-128: the header's File/View/Account tabs -- only one .menu-tab-panel shown
+// at a time, persisted the same way the hierarchy panel's own open state and the code-pane
+// width already are (a session UI preference, not plan content). ----------
+const MENU_TAB_KEY = "planagonia:activeHeaderTab";
+const menuTabBtns = document.querySelectorAll(".menu-tab-btn");
+const menuTabPanels = document.querySelectorAll(".menu-tab-panel");
+function setActiveHeaderTab(tab) {
+  for (const btn of menuTabBtns) {
+    const active = btn.dataset.tab === tab;
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-selected", active ? "true" : "false");
+  }
+  for (const panel of menuTabPanels) panel.hidden = panel.dataset.tab !== tab;
+  try { localStorage.setItem(MENU_TAB_KEY, tab); } catch (e) { /* private mode/quota — not fatal */ }
+}
+for (const btn of menuTabBtns) {
+  btn.addEventListener("click", () => setActiveHeaderTab(btn.dataset.tab));
+}
+try { setActiveHeaderTab(localStorage.getItem(MENU_TAB_KEY) || "file"); } catch (e) { /* private mode/quota — defaults to file */ }
+
+// ---------- D-128: the whole toolbar collapses behind this button below 760px -- same
+// collapsed-nav pattern as every marketing page's own #nav-toggle. ----------
+(function () {
+  const toggle = document.getElementById("header-toggle-btn");
+  const toolbar = document.getElementById("header-toolbar");
+  toggle.addEventListener("click", () => {
+    const open = toolbar.classList.toggle("open");
+    toggle.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+})();
 </script>
 </body>
 </html>

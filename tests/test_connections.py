@@ -250,6 +250,8 @@ def test_disconnect_submenu_lists_all_partners_and_removes_only_one(app_page):
 
 def test_show_connections_toggle_round_trips_and_renders_line(app_page):
     load_plan(app_page, SWITCH_ALREADY_CONNECTED)
+    # D-128: Grid/Connections/Layers now live behind the header's own "View" tab.
+    app_page.click("#menu-tab-view")
     btn = app_page.locator("#connections-toggle-btn")
 
     # Case 1: no settings block at all yet.
