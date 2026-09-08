@@ -7,7 +7,7 @@
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="alternate icon" href="favicon.ico">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<meta name="description" content="Community-published modules that extend Planagonia's plan language with new shapes, interactivity, or reusable building blocks.">
+<meta name="description" content="The modules that extend Planagonia's plan language with new shapes, interactivity, or reusable building blocks -- built-in and community-published.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -73,21 +73,24 @@
     background: var(--paper-raised); border: 1px solid var(--line); border-radius: 12px;
     padding: 1.6rem 1.8rem;
   }
-  .module-card h2 { font-size: 1.2rem; margin: 0 0 0.5rem; }
+  .module-card h2 { font-size: 1.2rem; margin: 0 0 0.5rem; display: flex; align-items: center; gap: 0.6rem; }
   .module-card p.desc { color: var(--ink-soft); font-size: 0.95rem; margin: 0 0 0.9rem; }
   .module-card pre {
     font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 0.85rem;
     background: var(--paper); border: 1px solid var(--line); border-radius: 6px;
     padding: 0.6rem 0.8rem; margin: 0 0 0.7rem; overflow-x: auto;
   }
+  .module-card p.note { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 0.85rem;
+    color: var(--ink-soft); margin: 0 0 0.7rem; }
   .module-card p.author { font-size: 0.85rem; color: var(--ink-soft); margin: 0; }
-
-  .empty-state {
-    background: var(--paper-raised); border: 1px dashed var(--line); border-radius: 12px;
-    padding: 2.2rem 1.8rem; text-align: center; color: var(--ink-soft); margin: 0 0 3rem;
+  .badge {
+    font-family: "IBM Plex Mono", monospace; font-size: 0.68rem; letter-spacing: 0.04em;
+    text-transform: uppercase; color: var(--blue-deep); background: var(--paper);
+    border: 1px solid var(--blue-deep); border-radius: 999px; padding: 0.15em 0.6em;
+    font-weight: 600;
   }
-  .empty-state p { margin: 0; }
-  .empty-state p.headline { color: var(--ink); font-weight: 600; margin-bottom: 0.4rem; font-family: "IBM Plex Mono", monospace; font-size: 0.95rem; }
+
+  p.list-note { color: var(--ink-soft); font-size: 0.92rem; margin: 0 0 3rem; }
 
   h2.section-title { font-size: 1.3rem; margin: 0 0 0.8rem; }
   section.submit p { color: var(--ink-soft); font-size: 0.98rem; max-width: 60ch; }
@@ -162,18 +165,54 @@
 <div class="wrap">
   <main>
     <p class="eyebrow">Modules</p>
-    <h1 class="page-title">Community modules</h1>
-    <p class="lede">A <a href="/docs/#settings-modules">module</a> extends a plan with new rendering, new interactivity, or a reusable higher-level building block — loaded straight from a URL with <code>module "&lt;url&gt;"</code>. This page lists modules other authors have published.</p>
+    <h1 class="page-title">Modules</h1>
+    <p class="lede">A <a href="/docs/#settings-modules">module</a> extends a plan with new rendering, new interactivity, or a reusable higher-level building block — loaded straight from a URL with <code>module "&lt;url&gt;"</code>. Below: the modules Planagonia ships with itself, marked <span class="badge">Built-in</span>, plus anything the community has published since.</p>
 
     <div class="callout">
-      <strong>Third-party code — read it before you trust it</strong>
-      A listed module is someone else's code, not covered by Planagonia's own <a href="/impressum/">license</a>. It runs unsandboxed, with the same access to the page any script would have — the app still asks you to confirm before loading one it hasn't seen before, and that's worth taking seriously here too.
+      <strong>Anything without the Built-in badge is third-party code — read it before you trust it</strong>
+      A community-listed module is someone else's code, not covered by Planagonia's own <a href="/impressum/">license</a>. It runs unsandboxed, with the same access to the page any script would have — the app still asks you to confirm before loading one it hasn't seen before, and that's worth taking seriously here too.
     </div>
 
-    <div class="empty-state">
-      <p class="headline">No community modules yet</p>
-      <p>Be the first — see "Submitting a module" below.</p>
+    <div class="module-list">
+      <div class="module-card">
+        <h2>Drag-and-drop editing <span class="badge">Built-in</span></h2>
+        <p class="desc">Drag, select (including multi-select), resize, connect elements to each other, and the right-click context menu.</p>
+        <p class="note">Loaded automatically — nothing to declare.</p>
+        <p class="author">interactivity-module.js</p>
+      </div>
+      <div class="module-card">
+        <h2>Labels &amp; dimensions <span class="badge">Built-in</span></h2>
+        <p class="desc">Draws each shape's label, size, and (opt-in) edge lengths as text overlaid on the plan.</p>
+        <p class="note">Loaded automatically — nothing to declare.</p>
+        <p class="author">annotations-module.js</p>
+      </div>
+      <div class="module-card">
+        <h2>Code highlighting &amp; validation <span class="badge">Built-in</span></h2>
+        <p class="desc">Syntax coloring in the code pane, plus inline wavy-underline markers for validation errors.</p>
+        <p class="note">Loaded automatically — nothing to declare.</p>
+        <p class="author">code-highlight-module.js</p>
+      </div>
+      <div class="module-card">
+        <h2>Grid <span class="badge">Built-in</span></h2>
+        <p class="desc">A background or foreground checkered/line grid, plus grid-snapped dragging and resizing when declared.</p>
+        <p class="note">Loaded automatically — nothing to declare.</p>
+        <p class="author">grid-module.js</p>
+      </div>
+      <div class="module-card">
+        <h2>Layers panel <span class="badge">Built-in</span></h2>
+        <p class="desc">Shows the plan's full parent/child tree; show, hide, and reorder any element or subtree.</p>
+        <p class="note">Loaded automatically — nothing to declare.</p>
+        <p class="author">hierarchy-module.js</p>
+      </div>
+      <div class="module-card">
+        <h2>Wall with a door <span class="badge">Built-in</span></h2>
+        <p class="desc">A reusable building block — one compact element expands into a matching wall/door/wall structure.</p>
+        <pre>module "https://www.planagonia.com/app/wall-with-door-module.js"</pre>
+        <p class="author">wall-with-door-module.js — the one built-in module not loaded automatically, since not every plan needs it</p>
+      </div>
     </div>
+
+    <p class="list-note">No community-submitted modules yet — be the first, see "Submitting a module" below.</p>
 
     <section class="submit">
       <h2 class="section-title">Submitting a module</h2>
