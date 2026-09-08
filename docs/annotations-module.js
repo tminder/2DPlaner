@@ -20,16 +20,15 @@
   function escapeXml(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" }[c]));
   }
-  function fmtMeters(n) { return (Math.round(n * 100) / 100).toString(); }
 
   function dimensionText(node) {
     if (node.props.shape === "rect") {
       const w = core.numOf(node.props.size[0]), h = core.numOf(node.props.size[1]);
-      return `${fmtMeters(w)} × ${fmtMeters(h)} m`;
+      return `${core.formatNumber(w, "m")} × ${core.formatNumber(h, "m")}`;
     }
     if (node.props.shape === "circle") {
       const r = core.numOf(node.props.radius ?? 0);
-      return `⌀ ${fmtMeters(r * 2)} m`;
+      return `⌀ ${core.formatNumber(r * 2, "m")}`;
     }
     return null;
   }
@@ -71,7 +70,7 @@
       lines.push({
         pos: [mid[0] + nx * OFFSET, mid[1] + ny * OFFSET],
         angle: readableAngle,
-        text: `${fmtMeters(len)} m`,
+        text: core.formatNumber(len, "m"),
       });
     }
     return lines;

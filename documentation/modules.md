@@ -16,12 +16,11 @@ external resolution, load-once caching) was validated in
 interactivity module (D-031) and is unchanged since. [docs/](../docs/) — the actual hosted
 app — reuses that architecture verbatim: `docs/index.html` is core (parse/render only).
 Documented here in depth: `docs/interactivity-module.js` (D-031),
-`docs/annotations-module.js` (D-039), `docs/code-highlight-module.js` (D-043), and
-`docs/hierarchy-module.js` (D-112) — the first three force-injected into every plan,
-`hierarchy-module.js` loaded on demand instead (D-126, see below). (`docs/grid-module.js`
-also ships and force-injects the same way; `docs/wall-with-door-module.js` ships but needs
-an explicit declaration like any external module, S-025; neither is yet written up here in
-depth, a tracked gap — [planning/tech-debt.md](../planning/tech-debt.md) S-031.)
+`docs/annotations-module.js` (D-039), `docs/code-highlight-module.js` (D-043),
+`docs/hierarchy-module.js` (D-112), `docs/grid-module.js` (F-014), and
+`docs/wall-with-door-module.js` (D-046/D-071) — the first three, plus grid, force-injected
+into every plan; `hierarchy-module.js` loaded on demand instead (D-126, see below);
+`wall-with-door-module.js` needs an explicit declaration like any external module (S-025).
 
 ## What a module can do
 
@@ -340,6 +339,73 @@ already has with core's own geometry, now a *second* instance of it. Tracked in
 [planning/tech-debt.md](../planning/tech-debt.md) as a real signal worth revisiting (a
 third module needing the identical capability would make hoisting it onto
 `window.PlanCore` clearly worth the migration), not fixed as part of building this module.
+
+## The grid module
+
+`docs/grid-module.js` (F-014) draws a checkered or line background from
+`settings { grid: { size: 1, type: "checker" } }` (`type` defaults to `"checker"`; the only
+other value is `"lines"`) — a scale reference only, no interactivity dependency at all, not
+even selection state. `size` also drives grid-snapped dragging and resizing
+([language.md](language.md), F-031) via `interactivity-module.js` reading the same
+`settings.grid.size` directly — this module has no involvement in that half at all, purely
+display.
+
+**A single `<rect>` filled with a repeating `<pattern>`, not individually drawn lines/tiles
+covering the viewBox.** SVG's own `patternUnits="userSpaceOnUse"` tiles the pattern
+automatically; the module only ever computes one tile's own markup (`checkerTile`/
+`linesTile`, both returning a tile size plus its inner markup) and one bounding `<rect>` to
+fill with it.
+
+**The bounding rect is a deliberate, finite boundary — 5x the fit-to-content box, centered
+on it — not true infinite tiling.** Comfortably covers this app's own bounded zoom-out (2x,
+`interactivity-module.js`) plus realistic panning, recomputed fresh on every render from the
+current viewBox rather than kept in sync with pan/zoom on every frame — reaching into
+`interactivity-module.js`'s own wheel/drag handlers to do that continuously is exactly the
+cross-module dependency this module exists to not need.
+
+**Always inserts itself as the SVG's very first child, `afterbegin`, regardless of callback
+registration order** — the grid has to paint behind every shape unconditionally, and unlike
+`annotations-module.js` (which has to run *after* `interactivity-module.js`, see above) its
+own position in `AUTO_MODULES`'s list genuinely doesn't matter for stacking.
+
+**Auto-loaded** (`AUTO_MODULES`, `docs/index.html`) specifically so `settings.grid` isn't
+silently inert for a plan author who didn't know to declare the module — the same reasoning
+`annotations-module.js`/`interactivity-module.js`/`code-highlight-module.js` are auto-loaded
+for. `wall-with-door-module.js` (below) is equally settings/property-driven but *not*
+auto-loaded, a known inconsistency ([planning/tech-debt.md](../planning/tech-debt.md)
+S-025).
+
+## The wall-with-door module
+
+`docs/wall-with-door-module.js` (D-046, D-071) is F-002's third module promise — a reusable,
+higher-level building block "composed from Element and Connection," not a new fundamental
+primitive:
+
+```
+element w { compose: "wallWithDoor", from: [0m,0m], to: [5m,0m], doorAt: 2m, doorWidth: 0.9m }
+```
+
+expands into three ordinary `polyline` children (`w_wall_a`, `w_door`, `w_wall_b`) — what
+this app's own `apartment` example still writes by hand as four corner elements plus three
+polylines (D-018's shared-corner pattern) for the identical visual.
+
+**Runs via `core.registerBeforeRender`, not `core.onRendered`, the only module here that
+does** — its synthesized children are pushed into the tree *before* core ever renders, so
+rendering itself needs zero composition-specific code: the expanded polylines are
+indistinguishable from ones typed directly into the plan, drag-editable the same way
+(`interactivity-module.js`'s own `composeDragEdits`, a per-composition-type backward-solve
+this module's own expansion has to stay the mirror image of).
+
+**Needs an explicit `module` declaration — the one built-in module that isn't force-loaded
+or triggered by a button.** Unlike the grid module above, nothing currently warns a plan
+author if `compose: "wallWithDoor"` is used without declaring this module at all; it would
+simply do nothing ([planning/tech-debt.md](../planning/tech-debt.md) S-025's own still-open
+note).
+
+**Known limitation, self-admitted, not yet fixed:** the composite's own `position` isn't
+factored into `from`/`to` — both are treated as already being in the composite's parent's
+own local space. A `wallWithDoor` element nested somewhere with a non-zero `position` will
+likely place its segments wrong ([planning/tech-debt.md](../planning/tech-debt.md) S-028).
 
 ## Known seams
 

@@ -24,10 +24,6 @@ Recomputes bboxes; runs the full plan validation pass; resets/manages pan-zoom `
 
 `evalAst` and `linearize` both walk `num`/`neg`/`bin`/`path` nodes with separate per-operator logic. Adding a new operator or AST node type requires updating both, with nothing enforcing that they stay consistent.
 
-## S-017 Inconsistent failure visibility: one silent warning among otherwise-loud failures
-
-An unresolvable style preset (`resolveStyle`) only `console.warn`s and falls back to `{}`; every other bad-input case on the same render path (an unknown `points` reference, an unknown module) throws and surfaces in the visible `#error` banner. A user will never see why their shape lost its color unless they open devtools.
-
 ## S-018 Storage access repeats an ad hoc try/catch shape with no shared helper
 
 `savePlansList`, `loadPlansList`, `setActivePlan`, `setCloudSession`, `cloudToken`/`cloudUsername` each independently wrap `localStorage`/`sessionStorage` calls in their own `try { } catch (e) { }`. Nothing reminds a future storage read/write elsewhere that this guard is needed.
@@ -62,10 +58,6 @@ Called on every proposed move during an active drag, over the entire plan every 
 
 `grid-module.js` is auto-loaded specifically so `settings.grid` isn't silently inert for an author who didn't know to declare the module. `wall-with-door-module.js` is equally settings/property-driven (`compose: "wallWithDoor"`) but is *not* auto-loaded — an undeclared `compose` would presumably also silently do nothing, the exact gap the grid module's own auto-load exists to avoid.
 
-## S-026 `annotations-module.js`'s `fmtMeters` reimplements number formatting instead of reusing `core.formatNumber`
-
-Produces a second, independently-maintained formatting rule (plain rounding + `.toString()`) that can drift from core's own display convention, despite `core.formatNumber` being exposed on `window.PlanCore` specifically for this.
-
 ## S-027 `wall-with-door-module.js`'s synthesized child ids have no collision check against real sibling ids
 
 `segment`'s hand-built ids (`${node.id}_wall_a`, etc.) aren't checked against existing sibling ids before use. If an author's own plan happens to declare a colliding id, this could silently corrupt drag targeting the same way F-028 describes for hand-authored duplicates — and this path is exempt from the load-time duplicate-id check, since these nodes are synthesized after parsing, not part of the parsed source. Untested edge case, not confirmed broken.
@@ -79,10 +71,6 @@ Produces a second, independently-maintained formatting rule (plain rounding + `.
 The module's own comment states the composite's `position` isn't factored into its `from`/`to` endpoints, "left out to keep this focused." A `wallWithDoor` element nested somewhere with a non-zero `position` would likely place its segments wrong — self-admitted, unaddressed.
 
 ## Project structure / process
-
-## S-031 `documentation/modules.md` is stale — missing two of the six shipped modules
-
-Documents `annotations-module.js`, `interactivity-module.js`, `code-highlight-module.js`, and (D-112) `hierarchy-module.js` in detail, but still has no section for `grid-module.js` or `wall-with-door-module.js` — both real, shipped modules (only the former is actually auto-loaded; the latter isn't, S-025). A reader relying on this file to understand "what modules exist and what they do" gets an incomplete picture, though the gap is now flagged directly in the file's own intro rather than left silent.
 
 ## S-032 Deploying has no CI/CD and no structural safeguard against a skipped step
 

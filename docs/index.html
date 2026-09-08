@@ -1396,13 +1396,10 @@ function resolvePointAbs(pt, ownAbs, positions) {
 function resolveStyle(rawStyle, settings) {
   if (typeof rawStyle !== "string") return rawStyle;
   const preset = settings.styles && settings.styles[rawStyle];
-  if (!preset) {
-    console.warn(`style: "${rawStyle}" isn't defined in settings.styles — rendering with no style`);
-    return {}; // not null: every branch below reads straight off this object
-                // (style.fill, style.stroke, ...) — an empty object degrades to each
-                // one's own existing "no color set" fallback, same as any shape that
-                // simply left a style field out, rather than throwing on a null read.
-  }
+  // S-017: matches every other bad-input case on this same render path (an unknown
+  // `points` reference, an unknown module) — throws and surfaces in the visible #error
+  // banner, rather than a console.warn a user would never see without opening devtools.
+  if (!preset) throw new Error(`style: "${rawStyle}" isn't defined in settings.styles`);
   return preset;
 }
 
