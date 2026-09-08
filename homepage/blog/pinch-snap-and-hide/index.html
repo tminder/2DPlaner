@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>The Dot That Broke Sign-In — Blog</title>
+<title>Pinch, Snap, and Hide: The Editor's Biggest Update Yet — Blog</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="alternate icon" href="favicon.ico">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<meta name="description" content="A reader couldn't log in. Chasing it down turned up a bug that had likely been breaking sign-in for most real email addresses since the day self-service registration launched — and led us to build a real password-recovery flow while we were at it.">
+<meta name="description" content="Layers you can hide, a plan picker with real previews, a workspace you can resize, and the editor finally working properly on a phone -- pinch to zoom, hold to open the menu, drag a shape's own corner to resize it.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@400;600&display=swap" rel="stylesheet">
@@ -148,32 +148,39 @@
 <div class="wrap">
   <main>
     <a class="back-link" href="/blog/">← Back to the blog</a>
-    <p class="eyebrow">Behind the scenes</p>
-    <h1 class="post-title">The Dot That Broke Sign-In</h1>
+    <p class="eyebrow">Product update</p>
+    <h1 class="post-title">Pinch, Snap, and Hide: The Editor's Biggest Update Yet</h1>
     <p class="dateline">September 7, 2026</p>
 
     <div class="post">
-      <p class="lede">A reader told us they couldn't log in. Not "forgot my password" — actually couldn't, no matter what they typed. Chasing that down turned into one of those bugs that starts small and keeps getting bigger the more you look at it, and ended with us fixing something that had probably been quietly breaking sign-in for most real email addresses since the day self-service registration launched.</p>
+      <p class="lede">A plan is never finished in one pass — you sketch the shell, add furniture, hide a layer to see what's underneath, resize a couch, nudge it onto the grid, and start again from your phone on the couch. This update is about making all of that feel natural, not just possible.</p>
 
-      <h2>The report</h2>
-      <p>It started simply: someone registered, clicked the confirmation link in their email, and got a plain "File not found." That part was easy — the link we were sending pointed at the wrong part of our own site, a one-line fix. We shipped it, said so, and figured that was that.</p>
-      <p>It wasn't. The same reader tried again and got a new error: <strong>Invalid credentials.</strong> Wrong username or password, as far as our own login screen was concerned. Except they were copying the exact username and password we'd just shown them.</p>
+      <h2>Layers, the way you'd expect them to work</h2>
+      <p>A real plan is a stack of concerns — the room shell, the furniture, the wiring, the plumbing — and sometimes you want to see just one of them at a time. Planagonia now has a proper layers panel: expand any group, and hide or show it with one click. Hide the seating in a camper van build and the water tank hidden underneath it is suddenly visible, exactly where a real installer would need to see it. Reordering works the same way — drag a layer up, and it comes forward in the drawing, the same way it would in any design tool.</p>
 
-      <h2>Chasing it down</h2>
-      <p>Planagonia's accounts live in WordPress behind the scenes — not something you ever see, just the system that actually checks a password is correct. When we looked at exactly what our own code was sending it, and exactly what WordPress was sending back, we found something we hadn't expected: WordPress hands back a person's account information as <em>two</em> different names. One is the real login — the thing you'd actually type in to sign in. The other is a cleaned-up, web-address-safe version of the same name, used for things like a public profile link — and it turns a dot into a dash.</p>
-      <p>Our own code had been reading the wrong one of those two names the whole time, and showing <em>that</em> to people as if it were their real username.</p>
-      <p>For a username like <code>janedoe</code>, both versions happen to be identical — dashes and dots only differ when there's a dot to begin with. So this had been invisible for exactly as long as nobody had tested it with an email address that actually contains one. Most real email addresses look like <code>first.last@example.com</code>. We'd been quietly showing a huge share of people a username that could never, ever have worked.</p>
+      <h2>Finding — and starting — a plan, properly</h2>
+      <p>Opening or starting a plan used to mean a small dropdown listing names. It's now two dedicated screens, one for each — and every plan shows as a real, live preview of what's actually in it, not just a label. Starting from scratch, picking one of the built-in examples, or going back to something you saved last week are all one click away, and you can actually see what you're picking before you commit to it.</p>
 
-      <h2>The fix, and the safety net we built alongside it</h2>
-      <p>The immediate fix was straightforward once we understood it: read the right name, everywhere we'd been reading the wrong one. We also made sign-in accept an email address directly, not just a username — turns out the underlying check already supported it, we just weren't telling anyone.</p>
-      <p>But the report also pointed at something bigger: if you ever lost the one-time password we show you right after confirming your email, there was genuinely no way to get another one. Not a small oversight — a real dead end. So we built one: a proper "Forgot your password?" link that emails you a fresh sign-in credential, reusing the exact same confirmation flow that already worked correctly for a first-time signup. It works whether you lost your original password, or you're someone whose account existed before self-service registration was even a feature.</p>
+      <h2>A workspace that resizes with you</h2>
+      <p>The code on the left and the drawing on the right now share a draggable divider, so you can give either side more room depending on what you're doing — writing a longer description, or looking closely at a dense layout. It remembers where you left it the next time you open the app.</p>
+
+      <h2>The editor finally works properly on a phone</h2>
+      <p>This is the one we're most excited about. Touch support wasn't an afterthought bolted onto the mouse-driven editor — it now rides the exact same gestures a mouse or trackpad already used:</p>
+      <ul>
+        <li><strong>Pinch to zoom</strong>, with two fingers, the way you'd expect on any map or photo app.</li>
+        <li><strong>Hold a shape</strong> to open its right-click menu — no right mouse button needed.</li>
+        <li><strong>Drag a shape's own corner to resize it</strong> — a small square handle appears on whichever piece of furniture or room you've selected, and dragging it grows or shrinks the shape directly, on both a screen and a trackpad. Circles get one handle on their own edge instead, for resizing the radius.</li>
+      </ul>
+      <p>Sketch a room shell on your laptop, then pull out your phone on site to double-check a measurement or nudge a wall — all of it now works the way you'd actually reach for it.</p>
+
+      <h2>Things line up, if you want them to</h2>
+      <p>Turn on the background grid, and dragging or resizing anything now snaps it to that grid automatically — no more eyeballing whether two walls are actually aligned. It's tied directly to the same grid setting you already use to show the grid at all, so the two never disagree with each other about what "aligned" even means.</p>
 
       <div class="callout">
-        Signed up a while ago and never quite got sign-in working? It's fixed now — and if you ever get stuck again, <a href="/app/">open the app</a> and look for "Forgot your password?" right under the sign-in form.
+        Want to try any of this? <a href="/app/">Open the app</a> — everything above is already live, no update needed on your end. Bring it up on your phone and give the new touch gestures a go.
       </div>
 
-      <h2>What this one taught us</h2>
-      <p>The satisfying kind of bug hunt is the one where each answer raises exactly one more question, until you're standing somewhere you didn't expect to be. "File not found" led to "invalid credentials" led to a mixed-up field name led to "there's no way to recover from this at all" led to a whole feature we hadn't planned on building that day. None of it would have surfaced from us testing our own account — our own usernames don't have dots in them either. It took someone else, hitting it for real, to show us.</p>
+      <p>None of this changes what Planagonia fundamentally is — a plan is still a small program you (or an AI on your behalf) can write and read. What's changed is how much the editor around that program now feels like a real design tool, on whatever device you actually have in hand.</p>
     </div>
   </main>
 </div>
