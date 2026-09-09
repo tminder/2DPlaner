@@ -24,6 +24,8 @@ def load_plan(page, text):
 def select_example(page, name):
     """Switch to one of the shipped examples via the real "New…" plan-picker panel
     (F-044) -- the same path a real user would take, not a direct JS call."""
+    # D-130: Open/New now live inside the header's own File tab flyout.
+    page.click("#menu-tab-file")
     page.click("#plan-new-btn")
     page.wait_for_timeout(150)
     page.click(f'.picker-card[data-action="example:{name}"]')

@@ -5,11 +5,14 @@ from helpers import load_plan, select_example, source_text
 
 
 def open_new_panel(page):
+    # D-130: Open/New now live inside the header's own File tab flyout.
+    page.click("#menu-tab-file")
     page.click("#plan-new-btn")
     page.wait_for_timeout(200)
 
 
 def open_open_panel(page):
+    page.click("#menu-tab-file")
     page.click("#plan-open-btn")
     page.wait_for_timeout(200)
 
