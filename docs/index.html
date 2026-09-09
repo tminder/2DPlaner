@@ -26,13 +26,17 @@
   html, body { height: 100%; }
   body { font-family: system-ui, sans-serif; margin: 0; background: #f4f4f2; color: #222;
     display: flex; flex-direction: column; overflow: hidden; }
-  /* D-130: back to one row -- each tab's own panel is a hover/click flyout (mirrors
-     .has-submenu's own pattern further below), not a persistent second row. Account sits
-     permanently at the header's own right edge (pushed there by .spacer), outside the tab
+  /* D-131: back to a docked two-row layout (D-129's own shape) -- #header-toolbar is a
+     real, always-present second row in normal flow, not a floating overlay (D-130's own
+     flyout read as "glued on" rather than part of the header, reported directly). What it
+     shows still switches on hover *or* click (D-130's own ask, kept) -- see the JS at the
+     bottom of this file for how a docked row does a hover preview a floating flyout got
+     for free from pure CSS. Account stays at the header's own right edge, outside the tab
      system entirely -- it's a signed-in-or-not identity, not a set of plan actions. */
-  header { flex: 0 0 auto; display: flex; align-items: center; gap: 0.8rem; padding: 0.5rem 1rem;
-    background: var(--paper-raised); border-bottom: 1px solid var(--line); flex-wrap: wrap;
+  header { flex: 0 0 auto; display: flex; flex-direction: column; gap: 0.35rem;
+    background: var(--paper-raised); border-bottom: 1px solid var(--line);
     font-family: "IBM Plex Sans", system-ui, sans-serif; }
+  .header-row1 { display: flex; align-items: center; gap: 0.8rem; padding: 0.5rem 1rem 0; flex-wrap: wrap; }
   header h1 { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 1.05rem; margin: 0;
     white-space: nowrap; display: flex; align-items: center; gap: 0.4rem; color: var(--ink); }
   header h1 a { color: inherit; text-decoration: none; }
@@ -83,38 +87,38 @@
   .ribbon-divider { width: 1px; align-self: stretch; margin: 2px 2px; background: var(--line); }
   .ribbon-status { font-size: 10.5px; color: var(--ink-soft); white-space: nowrap; }
 
-  /* D-130: File/Edit/View -- real attached tabs, each one's own panel a hover/click flyout
-     directly below it, not a persistent row (D-129) or a segmented pill group (D-128).
+  /* D-131: File/Edit/View -- real attached tabs (D-130's own visual ask, kept), the
+     currently-shown one's bottom edge merging into #header-toolbar directly below it.
      Deliberately its own classes (.menu-tab-*), not a reuse of the pre-existing
      .mobile-tabs/.tab-btn (the unrelated code/viewer pane switcher, D-006), so the two
      genuinely different "tabs" concepts in this header never collide or read as one
      feature by accident. */
   .menu-tab-strip { display: flex; gap: 3px; align-items: flex-end; }
-  /* .menu-tab wraps one tab button + its own flyout panel -- position: relative anchors
-     the panel (position: absolute) directly beneath this specific tab, the same DOM-
-     adjacency trick .has-submenu/.submenu below already uses for Export's own flyout. */
-  .menu-tab { position: relative; }
   .menu-tab-btn { font: inherit; font-size: 0.8rem; font-weight: 500; color: var(--ink-soft);
     background: var(--paper); border: 1px solid var(--line); border-bottom-color: transparent;
     border-radius: 8px 8px 0 0; padding: 0.4rem 0.8rem; cursor: pointer; display: flex;
-    align-items: center; gap: 0.3rem; position: relative; }
+    align-items: center; gap: 0.3rem; }
   .menu-tab-btn .tab-icon { font-size: 1rem; line-height: 1; }
-  .menu-tab:hover > .menu-tab-btn,
-  .menu-tab.open > .menu-tab-btn { background: var(--paper-raised); color: var(--ink); border-color: var(--line); }
-  /* The active tab's own bottom edge visually merges into the panel below it -- pulled
-     down 1px, its own border-bottom hidden by the panel's own top edge sitting right
+  .menu-tab-btn:hover,
+  .menu-tab-btn.active { background: var(--paper-raised); color: var(--ink); border-color: var(--line); }
+  /* The shown tab's own bottom edge visually merges into #header-toolbar below it -- pulled
+     down 1px, its own border-bottom hidden by the toolbar's own top edge sitting right
      under it, the classic "attached folder tab" look rather than a floating pill. */
-  .menu-tab:hover > .menu-tab-btn,
-  .menu-tab.open > .menu-tab-btn { margin-bottom: -1px; padding-bottom: calc(0.4rem + 1px); }
-  .menu-tab-panel { display: none; position: absolute; top: 100%; left: 0; z-index: 20;
-    background: var(--paper-raised); border: 1px solid var(--line); border-radius: 0 8px 8px 8px;
-    padding: 0.5rem; gap: 2px; align-items: center; box-shadow: 0 6px 18px rgba(0,0,0,0.12); }
-  .menu-tab:hover > .menu-tab-panel,
-  .menu-tab.open > .menu-tab-panel { display: flex; }
+  .menu-tab-btn.active { margin-bottom: -1px; padding-bottom: calc(0.4rem + 1px); }
 
-  /* D-130: Account (Sign in/Save/Sign out + status) sits outside the tab system entirely,
-     reusing .ribbon-group's own plain flex-row layout -- it was never a set of plan
-     actions the way File/Edit/View are, it's a signed-in-or-not identity, permanently
+  /* D-131: a real, always-present second row (D-129's own docked shape) -- what it shows
+     switches on hover or click (see the JS at the bottom of this file: entering a tab
+     button previews that tab's panel immediately, a short grace period lets the pointer
+     travel from the tab down into the toolbar itself without reverting mid-move, and
+     leaving both without clicking reverts to whichever tab was last actually clicked). */
+  #header-toolbar { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
+    padding: 0.5rem 1rem; }
+  .menu-tab-panel[hidden] { display: none; }
+  .menu-tab-panel { display: flex; align-items: center; gap: 2px; }
+
+  /* D-130/D-131: Account (Sign in/Save/Sign out + status) sits outside the tab system
+     entirely, reusing .ribbon-group's own plain flex-row layout -- it was never a set of
+     plan actions the way File/Edit/View are, it's a signed-in-or-not identity, permanently
      visible at the header's own right edge instead of hidden behind a tab. */
 
   /* D-106: Export's own three formats, grouped back into one flyout -- same hover-flyout
@@ -254,12 +258,8 @@
      Below it: the two panes become tabs — showing both panes at once, even stacked, leaves
      neither one tall enough to be usable — rather than a redesign of either. */
   @media (max-width: 760px) {
-    /* D-130: no separate mobile toggle needed anymore -- File/Edit/View's own panels are
-       already click-to-open flyouts (the same mechanism touch relies on at any width), and
-       with no persistent button row left to hide, the header itself is short enough to fit
-       as-is. Account simply wraps onto its own line via header's existing flex-wrap when
-       it doesn't fit beside the logo and tabs. */
-    header { padding: 0.4rem 0.5rem; gap: 0.4rem; }
+    .header-row1 { padding: 0.4rem 0.5rem 0; gap: 0.4rem; }
+    #header-toolbar { padding: 0.4rem 0.5rem; }
     button, select { font-size: 0.78rem; padding: 0.32rem 0.55rem; }
     header .spacer { display: none; }
 
@@ -325,66 +325,82 @@
 </head>
 <body>
 <header>
-  <!-- D-130: File/Edit/View as real attached tabs, each one's own panel a hover/click
-       flyout directly below it (see CSS) -- requested directly against D-129's persistent
-       second row. Account (identity, not a plan action) sits permanently at the header's
-       own right edge instead of behind a tab. -->
-  <h1><a href="https://www.planagonia.com/" title="Back to planagonia.com">Planagonia</a> <span class="beta-badge">Beta</span></h1>
-  <div class="menu-tab-strip" role="tablist">
+  <!-- D-131: File/Edit/View as real attached tabs, back to a docked always-present second
+       row (#header-toolbar, below) rather than a floating flyout (D-130) -- "integrated
+       into the header," requested directly. Still switches on hover or click, just via JS
+       now instead of pure CSS (see the bottom of this file). Account (identity, not a plan
+       action) sits permanently at the header's own right edge instead of behind a tab. -->
+  <div class="header-row1">
+    <h1><a href="https://www.planagonia.com/" title="Back to planagonia.com">Planagonia</a> <span class="beta-badge">Beta</span></h1>
+    <div class="menu-tab-strip" role="tablist">
+      <!-- D-131: a plain document icon, replacing D-130's folder (📁) -- too easily
+           confused with Open's own folder icon (📂) inside this same tab's panel. -->
+      <button class="menu-tab-btn active" id="menu-tab-file" data-tab="file" role="tab" title="File" aria-label="File">
+        <span class="tab-icon">📄</span>
+      </button>
+      <button class="menu-tab-btn" id="menu-tab-edit" data-tab="edit" role="tab">Edit</button>
+      <button class="menu-tab-btn" id="menu-tab-view" data-tab="view" role="tab">View</button>
+    </div>
+    <div class="spacer"></div>
+    <!-- Account, permanently visible, outside the tab system -- see CSS comment. -->
+    <div class="ribbon-group">
+      <!-- D-105: opens the login/register popup (openAuthModal()) instead of native prompt()s. -->
+      <button class="ribbon-btn" id="cloud-signin-btn" title="Sign in to save/load plans in the cloud">
+        <span class="ribbon-icon">⇥</span><span class="ribbon-label">Sign in…</span>
+      </button>
+      <button class="ribbon-btn" id="cloud-save-btn" title="Save the current plan to the cloud" hidden>
+        <span class="ribbon-icon">☁</span><span class="ribbon-label">Save to Cloud</span>
+      </button>
+      <button class="ribbon-btn" id="cloud-signout-btn" title="Sign out" hidden>
+        <span class="ribbon-icon">⇤</span><span class="ribbon-label">Sign out</span>
+      </button>
+      <span class="ribbon-status" id="cloud-status"></span>
+    </div>
+  </div>
+  <div id="header-toolbar">
     <!-- F-044: "open" and "new" as separate actions, each opening #plan-picker-panel
          below in its own mode -- replaces the old <select id="plan-switcher"> outright,
-         one path to switch/start a plan instead of two. This icon-only tab replaces the
-         old text-labeled "File" tab (D-130). -->
-    <div class="menu-tab">
-      <button class="menu-tab-btn" id="menu-tab-file" data-tab="file" role="tab" title="File" aria-label="File">
-        <span class="tab-icon">📁</span>
+         one path to switch/start a plan instead of two. This button's own label *is* the
+         active plan's current name (updateActivePlanButton()), so it still shows "which
+         plan" the way the old dropdown's own selected option did. -->
+    <!-- D-105/D-106: every DISTINCT action sits directly in its panel -- no dropdown for
+         the sake of tidiness alone. A dropdown is still fine specifically to group one
+         action's own several flavors (Export's three file formats below) -- unlike
+         Rename/Import/Delete, those aren't separate actions competing for space, they're
+         one action with a choice to make once you've already committed to it. -->
+    <div class="menu-tab-panel ribbon-group" data-tab="file" role="tabpanel">
+      <button class="ribbon-btn" id="plan-open-btn" title="Open a plan">
+        <span class="ribbon-icon">📂</span><span class="ribbon-label">Untitled</span>
       </button>
-      <!-- D-105/D-106: every DISTINCT action sits directly in its panel -- no dropdown for
-           the sake of tidiness alone. A dropdown is still fine specifically to group one
-           action's own several flavors (Export's three file formats below) -- unlike
-           Rename/Import/Delete, those aren't separate actions competing for space, they're
-           one action with a choice to make once you've already committed to it. -->
-      <div class="menu-tab-panel ribbon-group" data-tab="file" role="tabpanel">
-        <!-- This button's own label *is* the active plan's current name
-             (updateActivePlanButton()), so it still shows "which plan" the way the old
-             dropdown's own selected option did. -->
-        <button class="ribbon-btn" id="plan-open-btn" title="Open a plan">
-          <span class="ribbon-icon">📂</span><span class="ribbon-label">Untitled</span>
-        </button>
-        <button class="ribbon-btn" id="plan-new-btn" title="Start a new plan">
-          <span class="ribbon-icon">✚</span><span class="ribbon-label">New…</span>
-        </button>
-        <div class="ribbon-divider"></div>
-        <button class="ribbon-btn" id="rename-btn" title="Rename the current plan">
-          <span class="ribbon-icon">✎</span><span class="ribbon-label">Rename…</span>
-        </button>
-        <button class="ribbon-btn" id="open-btn">
-          <span class="ribbon-icon">⇩</span><span class="ribbon-label">Import…</span>
-        </button>
-        <div class="ribbon-btn has-submenu">
-          <span class="ribbon-icon">⇧</span><span class="ribbon-label">Export ▸</span>
-          <ul class="submenu">
-            <li><button id="save-btn">Plan file (.planagon)…</button></li>
-            <li><button id="export-png-btn" title="Save the current plan as a PNG image">PNG image…</button></li>
-            <li><button id="export-svg-btn" title="Save the current plan as an SVG image">SVG image…</button></li>
-          </ul>
-        </div>
-        <button class="ribbon-btn danger" id="delete-btn" title="Delete the current plan">
-          <span class="ribbon-icon">✕</span><span class="ribbon-label">Delete</span>
-        </button>
+      <button class="ribbon-btn" id="plan-new-btn" title="Start a new plan">
+        <span class="ribbon-icon">✚</span><span class="ribbon-label">New…</span>
+      </button>
+      <div class="ribbon-divider"></div>
+      <button class="ribbon-btn" id="rename-btn" title="Rename the current plan">
+        <span class="ribbon-icon">✎</span><span class="ribbon-label">Rename…</span>
+      </button>
+      <button class="ribbon-btn" id="open-btn">
+        <span class="ribbon-icon">⇩</span><span class="ribbon-label">Import…</span>
+      </button>
+      <div class="ribbon-btn has-submenu">
+        <span class="ribbon-icon">⇧</span><span class="ribbon-label">Export ▸</span>
+        <ul class="submenu">
+          <li><button id="save-btn">Plan file (.planagon)…</button></li>
+          <li><button id="export-png-btn" title="Save the current plan as a PNG image">PNG image…</button></li>
+          <li><button id="export-svg-btn" title="Save the current plan as an SVG image">SVG image…</button></li>
+        </ul>
       </div>
+      <button class="ribbon-btn danger" id="delete-btn" title="Delete the current plan">
+        <span class="ribbon-icon">✕</span><span class="ribbon-label">Delete</span>
+      </button>
     </div>
-    <!-- D-130: split out of the File tab -- Undo/Redo get their own Edit tab. -->
-    <div class="menu-tab">
-      <button class="menu-tab-btn" id="menu-tab-edit" data-tab="edit" role="tab">Edit</button>
-      <div class="menu-tab-panel ribbon-group" data-tab="edit" role="tabpanel">
-        <button class="ribbon-btn" id="undo-btn" title="Undo (Ctrl+Z)" aria-label="Undo">
-          <span class="ribbon-icon">↶</span><span class="ribbon-label">Undo</span>
-        </button>
-        <button class="ribbon-btn" id="redo-btn" title="Redo (Ctrl+Shift+Z)" aria-label="Redo">
-          <span class="ribbon-icon">↷</span><span class="ribbon-label">Redo</span>
-        </button>
-      </div>
+    <div class="menu-tab-panel ribbon-group" data-tab="edit" role="tabpanel" hidden>
+      <button class="ribbon-btn" id="undo-btn" title="Undo (Ctrl+Z)" aria-label="Undo">
+        <span class="ribbon-icon">↶</span><span class="ribbon-label">Undo</span>
+      </button>
+      <button class="ribbon-btn" id="redo-btn" title="Redo (Ctrl+Shift+Z)" aria-label="Redo">
+        <span class="ribbon-icon">↷</span><span class="ribbon-label">Redo</span>
+      </button>
     </div>
     <!-- F-042: the one setting with a genuine on/off state today (F-014's grid is either
          present or absent in `settings`) -- see toggleGridSetting()/updateGridToggleUi()
@@ -392,38 +408,20 @@
          to expose this same way (F-042's own noted caveat), so they're deliberately not
          offered here. A pressed/highlighted background marks the active state (matching
          Word's own Bold/Italic toggle-button convention), not a checkmark. -->
-    <div class="menu-tab">
-      <button class="menu-tab-btn" id="menu-tab-view" data-tab="view" role="tab">View</button>
-      <div class="menu-tab-panel ribbon-group" data-tab="view" role="tabpanel">
-        <button class="ribbon-btn" id="grid-toggle-btn">
-          <span class="ribbon-icon">⊞</span><span class="ribbon-label">Grid</span>
-        </button>
-        <button class="ribbon-btn" id="connections-toggle-btn" title="Show a line between every connected pair of elements">
-          <span class="ribbon-icon">⌁</span><span class="ribbon-label">Connections</span>
-        </button>
-        <!-- Unlike its two group-neighbors, this doesn't touch `settings` -- whether the
-             panel is open is a session UI preference (localStorage), not plan content;
-             closing it doesn't change what the plan itself renders. -->
-        <button class="ribbon-btn" id="hierarchy-toggle-btn" title="Show the element hierarchy: reorder and show/hide parents">
-          <span class="ribbon-icon">🗂</span><span class="ribbon-label">Layers</span>
-        </button>
-      </div>
+    <div class="menu-tab-panel ribbon-group" data-tab="view" role="tabpanel" hidden>
+      <button class="ribbon-btn" id="grid-toggle-btn">
+        <span class="ribbon-icon">⊞</span><span class="ribbon-label">Grid</span>
+      </button>
+      <button class="ribbon-btn" id="connections-toggle-btn" title="Show a line between every connected pair of elements">
+        <span class="ribbon-icon">⌁</span><span class="ribbon-label">Connections</span>
+      </button>
+      <!-- Unlike its two group-neighbors, this doesn't touch `settings` -- whether the
+           panel is open is a session UI preference (localStorage), not plan content;
+           closing it doesn't change what the plan itself renders. -->
+      <button class="ribbon-btn" id="hierarchy-toggle-btn" title="Show the element hierarchy: reorder and show/hide parents">
+        <span class="ribbon-icon">🗂</span><span class="ribbon-label">Layers</span>
+      </button>
     </div>
-  </div>
-  <div class="spacer"></div>
-  <!-- D-130: Account, permanently visible, outside the tab system -- see CSS comment. -->
-  <div class="ribbon-group">
-    <!-- D-105: opens the login/register popup (openAuthModal()) instead of native prompt()s. -->
-    <button class="ribbon-btn" id="cloud-signin-btn" title="Sign in to save/load plans in the cloud">
-      <span class="ribbon-icon">⇥</span><span class="ribbon-label">Sign in…</span>
-    </button>
-    <button class="ribbon-btn" id="cloud-save-btn" title="Save the current plan to the cloud" hidden>
-      <span class="ribbon-icon">☁</span><span class="ribbon-label">Save to Cloud</span>
-    </button>
-    <button class="ribbon-btn" id="cloud-signout-btn" title="Sign out" hidden>
-      <span class="ribbon-icon">⇤</span><span class="ribbon-label">Sign out</span>
-    </button>
-    <span class="ribbon-status" id="cloud-status"></span>
   </div>
   <input type="file" id="file-input" accept=".planagon,.2dplan,.txt,text/plain">
 </header>
@@ -2669,38 +2667,44 @@ hierarchyToggleBtn.addEventListener("click", () => {
 });
 try { setHierarchyPanelOpen(localStorage.getItem(HIERARCHY_PANEL_OPEN_KEY) === "1"); } catch (e) { /* private mode/quota — defaults closed */ }
 
-// ---------- D-130: the header's File/Edit/View tabs -- each one's own panel is a
-// hover/click flyout (CSS :hover rule handles the desktop/mouse case on its own). Click
-// toggles the same "open" state touch and keyboard use rely on, since neither reaches a
-// pure :hover; only one open via click at a time. Closes on an outside pointerdown or
-// Escape, mirroring closePlanPicker's own listener shape exactly (pointerdown, not click,
-// for the same reason that comment gives: interactivity-module.js's own handlePointerDown
-// preventDefault()s over the viewer, which also suppresses the click event a naive
-// click-outside listener would otherwise expect there). ----------
-const menuTabs = document.querySelectorAll(".menu-tab");
-function closeAllMenuTabs() {
-  for (const tab of menuTabs) tab.classList.remove("open");
+// ---------- D-131: the header's File/Edit/View tabs -- #header-toolbar is a real,
+// always-present second row (D-129's own docked shape, not D-130's floating flyout: "the
+// buttons should be integrated into the header," reported directly). What it shows still
+// switches on hover *or* click (D-130's own ask, kept). The *active* tab (persisted, same
+// pattern the hierarchy panel's own open state and the code-pane width already use) is
+// what shows by default and what a hover reverts back to once the pointer leaves; hovering
+// a different tab previews it immediately without changing which one is active. A short
+// grace period on leaving a tab lets the pointer travel down into the toolbar itself (now
+// a real, separate row, not a panel nested under the tab) without the preview reverting
+// mid-move. ----------
+const MENU_TAB_KEY = "planagonia:activeHeaderTab";
+const menuTabBtns = document.querySelectorAll(".menu-tab-btn");
+const menuTabPanels = document.querySelectorAll(".menu-tab-panel");
+const headerToolbarEl = document.getElementById("header-toolbar");
+let activeMenuTab = "file";
+let menuTabHoverTimer = null;
+
+function showMenuTab(tab) {
+  for (const btn of menuTabBtns) btn.classList.toggle("active", btn.dataset.tab === tab);
+  for (const panel of menuTabPanels) panel.hidden = panel.dataset.tab !== tab;
 }
-for (const tab of menuTabs) {
-  tab.querySelector(".menu-tab-btn").addEventListener("click", () => {
-    const willOpen = !tab.classList.contains("open");
-    closeAllMenuTabs();
-    if (willOpen) tab.classList.add("open");
-  });
-  // Choosing a real action inside an open panel closes it too (e.g. tapping Undo
-  // shouldn't leave its own flyout open behind it) -- hover, the primary desktop
-  // mechanism, is unaffected: if the pointer is still actually over the tab, :hover alone
-  // keeps the panel visible regardless of this class.
-  tab.querySelector(".menu-tab-panel").addEventListener("click", (e) => {
-    if (e.target.closest("button, a")) closeAllMenuTabs();
-  });
+function setActiveMenuTab(tab) {
+  activeMenuTab = tab;
+  showMenuTab(tab);
+  try { localStorage.setItem(MENU_TAB_KEY, tab); } catch (e) { /* private mode/quota — not fatal */ }
 }
-document.addEventListener("pointerdown", (e) => {
-  if (!e.target.closest(".menu-tab")) closeAllMenuTabs();
-});
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") closeAllMenuTabs();
-});
+function revertMenuTabPreviewSoon() {
+  clearTimeout(menuTabHoverTimer);
+  menuTabHoverTimer = setTimeout(() => showMenuTab(activeMenuTab), 150);
+}
+for (const btn of menuTabBtns) {
+  btn.addEventListener("mouseenter", () => { clearTimeout(menuTabHoverTimer); showMenuTab(btn.dataset.tab); });
+  btn.addEventListener("mouseleave", revertMenuTabPreviewSoon);
+  btn.addEventListener("click", () => setActiveMenuTab(btn.dataset.tab));
+}
+headerToolbarEl.addEventListener("mouseenter", () => clearTimeout(menuTabHoverTimer));
+headerToolbarEl.addEventListener("mouseleave", revertMenuTabPreviewSoon);
+try { setActiveMenuTab(localStorage.getItem(MENU_TAB_KEY) || "file"); } catch (e) { setActiveMenuTab("file"); }
 </script>
 </body>
 </html>
