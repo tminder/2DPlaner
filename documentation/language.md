@@ -126,8 +126,15 @@ multi-selection moves every selected element by the same delta at once; right-cl
 member of the selection offers "Duplicate N Elements" / "Delete N Elements" in place of the
 usual single-element actions, both as one undo step. Resize handles, keyboard nudge/resize,
 and connect/disconnect stay single-element only — connecting is inherently a relationship
-between two specific elements, and group-resize was never asked for. There's no marquee
-(rubber-band) selection yet — only Alt+click.
+between two specific elements, and group-resize was never asked for.
+
+**Marquee selection (F-047):** Alt+drag on empty canvas draws a rectangle and adds every
+element whose rendered bounding box intersects it (not just ones fully enclosed) to the
+current selection — the same Alt modifier as Alt+click, now sweeping a whole region at once
+instead of one element at a time, and just as additive: it never clears a selection made a
+moment earlier by Alt+click or by an earlier marquee. An Alt+drag that never actually moves
+behaves like a plain click on empty canvas (deselects) rather than a zero-size marquee.
+Plain (non-Alt) drag on empty canvas is unchanged — it still pans.
 
 Higher-level concepts like a wall-with-a-door are not language keywords; they're composed
 from Elements and Connections by the plan's author, or provided as a reusable composition

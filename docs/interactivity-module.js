@@ -38,6 +38,10 @@
          touches stroke-width at all, so it reads consistently regardless of how thick or
          thin the shape's own stroke already is. */
       svg .obj.selected { filter: drop-shadow(0 0 2px rgba(124,58,237,0.55)); }
+      /* F-047: a live preview during an in-progress marquee drag -- same purple hue as
+         .selected above (it's a preview of exactly that state), lower alpha so a genuinely
+         selected element and a merely-about-to-be-selected one stay visually distinct. */
+      svg .obj.marquee-candidate { filter: drop-shadow(0 0 2px rgba(124,58,237,0.3)); }
       /* F-016: matches .selected's own purple accent above, so a handle reads as part of
          the same selection affordance rather than a separate, unrelated control. */
       svg .resize-handle { fill: #fff; stroke: #7c3aed; stroke-width: 1.5px; cursor: pointer; }
@@ -231,6 +235,11 @@
   let viewState = null;
   let lastCoreFit = null;
   let canvasDrag = null; // pointerdown on empty space: pending pan-or-click, see handlePointerDown
+  // F-047: Alt+pointerdown on empty space instead starts a marquee, not a pan -- see
+  // handlePointerDown. bboxes: a one-time Map<id, DOMRect> snapshot (Element.getBBox(),
+  // already in viewBox units) taken at gesture start, since nothing moves during this
+  // gesture -- re-querying on every pointermove would be pure waste.
+  let marqueeDrag = null;
 
   // F-036: pinch-to-zoom. activeTouches tracks every currently-down touch pointer
   // (pointerId -> {x,y}) regardless of what other gesture, if any, is in progress — purely
@@ -251,7 +260,7 @@
   // order" fragility this entry warns about. A future fourth gesture, or a third guard,
   // now has one place to update instead of a third copy to remember.
   function isGestureActive() {
-    return !!(drag || canvasDrag || relateDrag || pinch || resizeDrag);
+    return !!(drag || canvasDrag || relateDrag || pinch || resizeDrag || marqueeDrag);
   }
 
   // ---------- Snap geometry ----------
@@ -1442,6 +1451,12 @@
     return vb ? vb.map((v) => v / core.M) : null;
   }
 
+  // F-047: plain axis-aligned intersection (not full containment) between the live marquee
+  // rectangle and a candidate element's own snapshotted getBBox() -- both {x,y,width,height}.
+  function rectsIntersect(a, b) {
+    return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+  }
+
   // The nearest point lying exactly on a rect's boundary to an arbitrary point — unlike
   // nearestRectEdge (which only ever answers for a point already within tolerance of one
   // edge's own span, the "already resting against it" case), this always has an answer:
@@ -2360,6 +2375,11 @@
         longPressTimer = null;
         if (drag) { core.sourceEl.value = drag.baseText; drag = null; core.rerender({ preserveViewBox: true }); }
         if (resizeDrag) { core.sourceEl.value = resizeDrag.baseText; resizeDrag = null; core.rerender({ preserveViewBox: true }); }
+        if (marqueeDrag) {
+          marqueeDrag.rectEl?.remove();
+          for (const id of marqueeDrag.candidateIds) core.rootEl.querySelector(`[data-id="${CSS.escape(id)}"]`)?.classList.remove("marquee-candidate");
+          marqueeDrag = null;
+        }
         canvasDrag = null;
         core.rootEl.classList.remove("dragging");
         pinch = { startDist: pinchDistance(), startMid: pinchMidpoint(), startView: viewState || lastCoreFit };
@@ -2409,6 +2429,28 @@
 
     const el = e.target.closest("[data-id]");
     if (!el) {
+      // F-047: Alt+drag on empty canvas starts a marquee selection instead of a pan --
+      // the same modifier Alt+click already uses to add one element at a time, now doing
+      // the same thing over a whole region at once. Bboxes are snapshotted once, right
+      // here, via the real rendered geometry (Element.getBBox(), already in viewBox units,
+      // works identically for every shape kind unlike this file's own computeBboxes, which
+      // only ever covers rects and bare points) -- nothing moves during this gesture, so
+      // there's no need to re-query on every pointermove.
+      if (e.altKey) {
+        const bboxes = new Map();
+        for (const shapeEl of core.rootEl.querySelectorAll("[data-id]")) {
+          try { bboxes.set(shapeEl.dataset.id, shapeEl.getBBox()); } catch (err) { /* detached/zero-size — skip */ }
+        }
+        const svgEl = core.rootEl.querySelector("svg");
+        let rectEl = null;
+        if (svgEl) {
+          svgEl.insertAdjacentHTML("beforeend",
+            `<rect class="marquee-rect" x="0" y="0" width="0" height="0" fill="rgba(124,58,237,0.08)" stroke="#7c3aed" stroke-width="1" stroke-dasharray="4 3" pointer-events="none" />`);
+          rectEl = svgEl.lastElementChild;
+        }
+        marqueeDrag = { startClientX: e.clientX, startClientY: e.clientY, moved: false, bboxes, rectEl, candidateIds: new Set() };
+        return;
+      }
       // Empty canvas: could be a plain click (deselect) or the start of a pan — decided by
       // whether the pointer actually moves before release, see handlePointerMove/Up.
       canvasDrag = { startClientX: e.clientX, startClientY: e.clientY, moved: false,
@@ -2921,6 +2963,41 @@
       svg.setAttribute("viewBox", `${newX} ${newY} ${base.width} ${base.height}`);
       return;
     }
+    if (marqueeDrag) {
+      const dxScreen = e.clientX - marqueeDrag.startClientX;
+      const dyScreen = e.clientY - marqueeDrag.startClientY;
+      if (!marqueeDrag.moved && Math.hypot(dxScreen, dyScreen) > 3) {
+        marqueeDrag.moved = true;
+        core.rootEl.classList.add("dragging");
+      }
+      if (!marqueeDrag.moved) return;
+      const start = clientToViewBoxPoint(marqueeDrag.startClientX, marqueeDrag.startClientY);
+      const current = clientToViewBoxPoint(e.clientX, e.clientY);
+      if (!start || !current) return;
+      const mx = Math.min(start[0], current[0]), my = Math.min(start[1], current[1]);
+      const mw = Math.abs(current[0] - start[0]), mh = Math.abs(current[1] - start[1]);
+      if (marqueeDrag.rectEl) {
+        marqueeDrag.rectEl.setAttribute("x", mx);
+        marqueeDrag.rectEl.setAttribute("y", my);
+        marqueeDrag.rectEl.setAttribute("width", mw);
+        marqueeDrag.rectEl.setAttribute("height", mh);
+      }
+      // Cheap since bboxes were snapshotted once at gesture start (see handlePointerDown)
+      // -- only the marquee rectangle itself needs recomputing on every frame.
+      const marqueeRect = { x: mx, y: my, width: mw, height: mh };
+      const newCandidates = new Set();
+      for (const [id, bbox] of marqueeDrag.bboxes) {
+        if (rectsIntersect(marqueeRect, bbox)) newCandidates.add(id);
+      }
+      for (const id of marqueeDrag.candidateIds) {
+        if (!newCandidates.has(id)) core.rootEl.querySelector(`[data-id="${CSS.escape(id)}"]`)?.classList.remove("marquee-candidate");
+      }
+      for (const id of newCandidates) {
+        if (!marqueeDrag.candidateIds.has(id)) core.rootEl.querySelector(`[data-id="${CSS.escape(id)}"]`)?.classList.add("marquee-candidate");
+      }
+      marqueeDrag.candidateIds = newCandidates;
+      return;
+    }
     if (relateDrag) {
       if (relateDrag.lineEl) {
         const vb = clientToViewBoxPoint(e.clientX, e.clientY);
@@ -2996,6 +3073,31 @@
       const wasClick = !canvasDrag.moved;
       canvasDrag = null;
       if (wasClick) { selectedId = null; selectedIds = new Set(); core.rerender({ preserveViewBox: true }); }
+      return;
+    }
+    if (marqueeDrag) {
+      const wasClick = !marqueeDrag.moved;
+      marqueeDrag.rectEl?.remove();
+      for (const id of marqueeDrag.candidateIds) {
+        core.rootEl.querySelector(`[data-id="${CSS.escape(id)}"]`)?.classList.remove("marquee-candidate");
+      }
+      // A marquee that never actually moved is just a stray Alt+click on empty canvas --
+      // deselects, matching canvasDrag's own "plain click on nothing" convention exactly,
+      // rather than doing nothing (a zero-size marquee "selecting" nothing would otherwise
+      // just silently leave whatever was already selected untouched, a surprising result
+      // for what looks like a deliberate click).
+      if (wasClick) {
+        selectedId = null; selectedIds = new Set();
+        marqueeDrag = null;
+        core.rerender({ preserveViewBox: true });
+        return;
+      }
+      // F-047: additive, matching Alt+click's own behavior -- a marquee never clears a
+      // selection made a moment earlier, by Alt+click or by an earlier marquee.
+      for (const id of marqueeDrag.candidateIds) selectedIds.add(id);
+      if (marqueeDrag.candidateIds.size) selectedId = [...marqueeDrag.candidateIds].pop();
+      marqueeDrag = null;
+      core.rerender({ preserveViewBox: true });
       return;
     }
     if (drag) {
@@ -3164,6 +3266,7 @@
     viewState = null;
     lastCoreFit = null;
     canvasDrag = null;
+    marqueeDrag = null;
     paintOrderRank = new Map();
     activeTouches.clear();
     pinch = null;

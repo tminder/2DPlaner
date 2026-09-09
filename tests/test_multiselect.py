@@ -7,13 +7,16 @@ import re
 
 from helpers import (
     alt_click,
+    alt_drag,
     click_menu_item,
     drag,
     element_center,
+    empty_canvas_point,
     load_plan,
     open_context_menu,
     selected_ids_classlist,
     source_text,
+    view_box,
 )
 
 PLAN = """
@@ -47,6 +50,51 @@ element room {
     size: [0.5m, 0.5m]
     position: [4m, 3m]
     style: { fill: "#963" }
+  }
+}
+"""
+
+
+# F-047: marquee selection. Its own plan, not the shared PLAN above -- adds a polyline
+# ("wire") specifically to cover the non-rect regression guard below, positioned in room's
+# top-right corner so it never overlaps the lamp/chair cluster the other marquee tests
+# deliberately target.
+MARQUEE_PLAN = """
+element room {
+  shape: "rect"
+  size: [5m, 4m]
+  position: [0m, 0m]
+  style: { fill: "#eee" }
+
+  element sofa {
+    shape: "rect"
+    size: [1m, 0.6m]
+    position: [0.5m, 0.5m]
+    style: { fill: "#8ab" }
+
+    element cushion {
+      shape: "rect"
+      size: [0.3m, 0.3m]
+      position: [0.1m, 0.1m]
+      style: { fill: "#fff" }
+    }
+  }
+  element lamp {
+    shape: "circle"
+    radius: 0.2m
+    position: [3m, 3m]
+    style: { fill: "#fc6" }
+  }
+  element chair {
+    shape: "rect"
+    size: [0.5m, 0.5m]
+    position: [4m, 3m]
+    style: { fill: "#963" }
+  }
+  element wire {
+    shape: "polyline"
+    points: [[3.6m, 0.2m], [4.4m, 0.5m]]
+    style: { stroke: "#333", strokeWidth: 0.03m }
   }
 }
 """
@@ -192,3 +240,95 @@ def test_selection_with_a_parent_and_its_own_child_collapses_to_the_parent(app_p
     # The original subtree (both sofa and its child cushion) is untouched.
     assert "element cushion {" in before
     assert before.count("element cushion {") == after.count("element cushion {")
+
+
+def test_marquee_drag_selects_every_element_whose_bbox_intersects_it(app_page):
+    load_plan(app_page, MARQUEE_PLAN)
+    # room itself has a data-id like any other node, and its own bbox spans the whole
+    # plan -- any marquee inside the plan necessarily intersects it too, so it's expected
+    # in every result below alongside whatever else the marquee actually targets.
+    sx, sy = empty_canvas_point(app_page, "room", 0.9, "bottom")
+    lamp_box = app_page.locator('[data-id="lamp"]').bounding_box()
+    ex, ey = lamp_box["x"] - 12, lamp_box["y"] - 12
+
+    alt_drag(app_page, sx, sy, ex, ey)
+
+    assert set(selected_ids_classlist(app_page)) == {"room", "lamp", "chair"}
+
+
+def test_marquee_partial_overlap_still_selects_not_full_containment(app_page):
+    load_plan(app_page, MARQUEE_PLAN)
+    sx, sy = empty_canvas_point(app_page, "room", 0.85, "bottom")
+    chair_box = app_page.locator('[data-id="chair"]').bounding_box()
+    # Stops partway into chair's own bbox, not past its far edge -- proves the rule is
+    # *intersects*, not *fully contains*.
+    ex = chair_box["x"] + chair_box["width"] * 0.3
+    ey = chair_box["y"] + chair_box["height"] * 0.3
+
+    alt_drag(app_page, sx, sy, ex, ey)
+
+    assert set(selected_ids_classlist(app_page)) == {"room", "chair"}
+
+
+def test_marquee_selects_circle_and_polyline_shapes_too(app_page):
+    """Regression guard for the gap this feature's own design found: this file's own
+    computeBboxes (used elsewhere for hover/stack-hint purposes) only ever computes a bbox
+    for shape:"rect" and bare points, silently omitting circles/polygons/polylines --
+    marquee hit-testing instead uses the native Element.getBBox(), which is shape-agnostic.
+    Covering lamp (circle) and wire (polyline) here, alongside the rects, proves it."""
+    load_plan(app_page, MARQUEE_PLAN)
+    sx, sy = empty_canvas_point(app_page, "room", 0.0, "top")
+    ex, ey = empty_canvas_point(app_page, "room", 1.0, "bottom")
+
+    alt_drag(app_page, sx, sy, ex, ey)
+
+    assert set(selected_ids_classlist(app_page)) == {
+        "room", "sofa", "cushion", "lamp", "chair", "wire",
+    }
+
+
+def test_marquee_selection_is_additive_with_alt_click(app_page):
+    load_plan(app_page, MARQUEE_PLAN)
+    select_group(app_page, "sofa")
+    assert selected_ids_classlist(app_page) == ["sofa"]
+
+    sx, sy = empty_canvas_point(app_page, "room", 0.9, "bottom")
+    lamp_box = app_page.locator('[data-id="lamp"]').bounding_box()
+    ex, ey = lamp_box["x"] - 12, lamp_box["y"] - 12
+    alt_drag(app_page, sx, sy, ex, ey)
+
+    # A marquee never clears a selection made a moment earlier by Alt+click -- both unions
+    # into the same selectedIds, exactly like a second Alt+click would.
+    assert set(selected_ids_classlist(app_page)) == {"sofa", "room", "lamp", "chair"}
+
+
+def test_marquee_that_never_moves_deselects_like_a_plain_click(app_page):
+    load_plan(app_page, MARQUEE_PLAN)
+    select_group(app_page, "sofa", "lamp")
+    assert set(selected_ids_classlist(app_page)) == {"sofa", "lamp"}
+
+    x, y = empty_canvas_point(app_page, "room", 0.9, "bottom")
+    app_page.keyboard.down("Alt")
+    app_page.mouse.move(x, y)
+    app_page.mouse.down()
+    app_page.wait_for_timeout(30)
+    app_page.mouse.up()
+    app_page.keyboard.up("Alt")
+    app_page.wait_for_timeout(150)
+
+    # A stray Alt+click on empty canvas that never actually dragged is just a plain click
+    # on nothing -- deselects, rather than a zero-size marquee silently doing nothing.
+    assert selected_ids_classlist(app_page) == []
+
+
+def test_plain_empty_canvas_drag_still_pans(app_page):
+    """Regression guard: the new Alt+drag branch in handlePointerDown's empty-canvas case
+    must not disturb the existing (non-Alt) pan gesture it sits right next to."""
+    load_plan(app_page, MARQUEE_PLAN)
+    before = view_box(app_page)
+    x, y = empty_canvas_point(app_page, "room", 0.9, "bottom")
+
+    drag(app_page, x, y, x + 40, y + 30)
+
+    after = view_box(app_page)
+    assert before != after

@@ -158,6 +158,42 @@ def alt_click(page, x, y):
     page.wait_for_timeout(150)
 
 
+def alt_drag(page, from_x, from_y, to_x, to_y, steps=6):
+    """F-047's marquee-selection gesture: Alt+drag on empty canvas. Mirrors ctrl_drag's own
+    reasoning -- Alt held for the whole gesture, released only after pointerup so the
+    browser's own click-event synthesis doesn't fire with the modifier already gone."""
+    page.keyboard.down("Alt")
+    page.mouse.move(from_x, from_y)
+    page.mouse.down()
+    page.wait_for_timeout(30)
+    page.mouse.move(to_x, to_y, steps=steps)
+    page.wait_for_timeout(30)
+    page.mouse.up()
+    page.keyboard.up("Alt")
+    page.wait_for_timeout(150)
+
+
+def empty_canvas_point(page, root_id, frac, side, margin=12):
+    """A point in the thin empty margin just outside `root_id`'s own rendered bbox, on the
+    given side ('top'/'bottom'/'left'/'right') at the given fraction along that edge --
+    verified to land on the bare <svg> element itself (not any [data-id] shape). A typical
+    plan's root element fills nearly the whole visible canvas, so "empty canvas" gestures
+    (pan, and F-047's own marquee) can only actually start from this margin, never from a
+    point that merely looks empty visually but is still over the root shape itself."""
+    box = page.locator(f'[data-id="{root_id}"]').bounding_box()
+    if side == "top":
+        x, y = box["x"] + box["width"] * frac, box["y"] - margin
+    elif side == "bottom":
+        x, y = box["x"] + box["width"] * frac, box["y"] + box["height"] + margin
+    elif side == "left":
+        x, y = box["x"] - margin, box["y"] + box["height"] * frac
+    else:
+        x, y = box["x"] + box["width"] + margin, box["y"] + box["height"] * frac
+    tag = page.evaluate("([x, y]) => document.elementFromPoint(x, y)?.tagName?.toLowerCase()", [x, y])
+    assert tag == "svg", f"expected {side} margin of {root_id!r} to hit the bare svg element, got {tag!r}"
+    return x, y
+
+
 def selected_ids_classlist(page):
     """ids of every element currently carrying the .selected class -- multi-select can put
     it on more than one at once."""

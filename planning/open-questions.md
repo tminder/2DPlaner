@@ -102,10 +102,6 @@ A menu that shows which modules/settings are *actually active in this exact plan
 
 Not a decision to make preemptively — recorded so the next concrete choice that touches any of this (F-045 itself, a pricing page, opening accounts more broadly) gets weighed against it rather than decided in isolation.
 
-## F-047 Marquee (rubber-band) selection
-
-F-029's own multi-select ([decisions.md D-124](decisions.md#d-124-f-029-multi-select-for-bulk-drag-delete-and-duplicate--altclick-not-marquee)) only ever grows a selection one Alt+click at a time — no drag-a-rectangle-over-several-elements gesture. Deliberately deferred, not forgotten: an empty-canvas drag is already the pan gesture, so a marquee would need its own way to be told apart from a plain pan (a modifier key, most likely) plus hit-testing every element's bbox against the drawn rectangle — a materially bigger interaction change than Alt+click was, not attempted this round.
-
 ## F-048 A module can't add to or change the app's own header/menu
 
 Raised directly while redesigning the header into tabs (D-128). Per D-011, a module can today do exactly three things — new rendering, new interactivity, new compositions — all scoped to *the plan itself*; none of them touch the surrounding app chrome (the header, its tabs, the toolbar) at all, which stays entirely core-owned with no extension point. A module wanting to add its own button/tab (e.g. a custom export format, a module-specific settings toggle) has no way to do that today short of a real code change to `docs/index.html`. Not designed: what such a hook would even look like (a registration API a module calls, e.g. `core.registerHeaderAction(...)`?), which of File/View/Account — or a new tab entirely — a module-added action would belong in, and how this interacts with F-009's trust model (an external module rewriting the app's own chrome is a materially bigger capability than drawing extra SVG).
