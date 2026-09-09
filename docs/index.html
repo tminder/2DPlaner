@@ -37,10 +37,15 @@
     background: var(--paper-raised); border-bottom: 1px solid var(--line);
     font-family: "IBM Plex Sans", system-ui, sans-serif; }
   .header-row1 { display: flex; align-items: center; gap: 0.8rem; padding: 0.5rem 1rem 0; flex-wrap: wrap; }
+  /* D-132: no longer a link (removed along with its own <a>, "remove the logo's link" —
+     its only job now is triggering the File panel, on hover or click, exactly like an
+     ordinary .menu-tab-btn behaviorally, but keeping its own distinct brand styling below
+     rather than looking like a tab -- cursor/hover color are this element's own version of
+     a .menu-tab-btn's hover affordance. */
   header h1 { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 1.05rem; margin: 0;
-    white-space: nowrap; display: flex; align-items: center; gap: 0.4rem; color: var(--ink); }
-  header h1 a { color: inherit; text-decoration: none; }
-  header h1 a:hover { text-decoration: underline; }
+    white-space: nowrap; display: flex; align-items: center; gap: 0.4rem; color: var(--ink);
+    cursor: pointer; }
+  header h1:hover { color: var(--blue-deep); }
   .beta-badge { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 0.62rem;
     font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
     color: var(--amber); background: var(--amber-soft); border-radius: 4px; padding: 0.15rem 0.4rem; }
@@ -325,19 +330,16 @@
 </head>
 <body>
 <header>
-  <!-- D-131: File/Edit/View as real attached tabs, back to a docked always-present second
-       row (#header-toolbar, below) rather than a floating flyout (D-130) -- "integrated
-       into the header," requested directly. Still switches on hover or click, just via JS
-       now instead of pure CSS (see the bottom of this file). Account (identity, not a plan
-       action) sits permanently at the header's own right edge instead of behind a tab. -->
+  <!-- D-132: Edit/View as real attached tabs, docked in #header-toolbar below. The File
+       panel is still there (below) but has no tab button of its own anymore -- the logo
+       itself triggers it now, on hover (D-132: hovering any tab now locks it in as the
+       active one directly, no more preview-that-reverts) or click. No longer a link (its
+       old job, linking to planagonia.com, is gone -- this is its only job now). Account
+       (identity, not a plan action) sits permanently at the header's own right edge
+       instead of behind a tab. -->
   <div class="header-row1">
-    <h1><a href="https://www.planagonia.com/" title="Back to planagonia.com">Planagonia</a> <span class="beta-badge">Beta</span></h1>
+    <h1 id="header-logo" data-tab="file" role="tab" title="File" aria-label="File">Planagonia <span class="beta-badge">Beta</span></h1>
     <div class="menu-tab-strip" role="tablist">
-      <!-- D-131: a plain document icon, replacing D-130's folder (📁) -- too easily
-           confused with Open's own folder icon (📂) inside this same tab's panel. -->
-      <button class="menu-tab-btn active" id="menu-tab-file" data-tab="file" role="tab" title="File" aria-label="File">
-        <span class="tab-icon">📄</span>
-      </button>
       <button class="menu-tab-btn" id="menu-tab-edit" data-tab="edit" role="tab">Edit</button>
       <button class="menu-tab-btn" id="menu-tab-view" data-tab="view" role="tab">View</button>
     </div>
@@ -2667,43 +2669,26 @@ hierarchyToggleBtn.addEventListener("click", () => {
 });
 try { setHierarchyPanelOpen(localStorage.getItem(HIERARCHY_PANEL_OPEN_KEY) === "1"); } catch (e) { /* private mode/quota — defaults closed */ }
 
-// ---------- D-131: the header's File/Edit/View tabs -- #header-toolbar is a real,
-// always-present second row (D-129's own docked shape, not D-130's floating flyout: "the
-// buttons should be integrated into the header," reported directly). What it shows still
-// switches on hover *or* click (D-130's own ask, kept). The *active* tab (persisted, same
-// pattern the hierarchy panel's own open state and the code-pane width already use) is
-// what shows by default and what a hover reverts back to once the pointer leaves; hovering
-// a different tab previews it immediately without changing which one is active. A short
-// grace period on leaving a tab lets the pointer travel down into the toolbar itself (now
-// a real, separate row, not a panel nested under the tab) without the preview reverting
-// mid-move. ----------
+// ---------- D-132: the header's Edit/View tabs, plus the logo standing in for a File tab
+// (#header-logo, data-tab="file") -- #header-toolbar is a real, always-present second row
+// (D-129's own docked shape). D-131 had hover *preview* a tab temporarily, reverting once
+// the pointer left; simplified here, requested directly: hovering any tab now locks it in
+// as the active one immediately, exactly like a click -- no more preview/revert
+// distinction, no grace-period timer to travel between elements with. Persisted the same
+// pattern the hierarchy panel's own open state and the code-pane width already use. ----------
 const MENU_TAB_KEY = "planagonia:activeHeaderTab";
-const menuTabBtns = document.querySelectorAll(".menu-tab-btn");
+const menuTabBtns = document.querySelectorAll(".menu-tab-btn, #header-logo");
 const menuTabPanels = document.querySelectorAll(".menu-tab-panel");
-const headerToolbarEl = document.getElementById("header-toolbar");
-let activeMenuTab = "file";
-let menuTabHoverTimer = null;
 
-function showMenuTab(tab) {
+function setActiveMenuTab(tab) {
   for (const btn of menuTabBtns) btn.classList.toggle("active", btn.dataset.tab === tab);
   for (const panel of menuTabPanels) panel.hidden = panel.dataset.tab !== tab;
-}
-function setActiveMenuTab(tab) {
-  activeMenuTab = tab;
-  showMenuTab(tab);
   try { localStorage.setItem(MENU_TAB_KEY, tab); } catch (e) { /* private mode/quota — not fatal */ }
 }
-function revertMenuTabPreviewSoon() {
-  clearTimeout(menuTabHoverTimer);
-  menuTabHoverTimer = setTimeout(() => showMenuTab(activeMenuTab), 150);
-}
 for (const btn of menuTabBtns) {
-  btn.addEventListener("mouseenter", () => { clearTimeout(menuTabHoverTimer); showMenuTab(btn.dataset.tab); });
-  btn.addEventListener("mouseleave", revertMenuTabPreviewSoon);
+  btn.addEventListener("mouseenter", () => setActiveMenuTab(btn.dataset.tab));
   btn.addEventListener("click", () => setActiveMenuTab(btn.dataset.tab));
 }
-headerToolbarEl.addEventListener("mouseenter", () => clearTimeout(menuTabHoverTimer));
-headerToolbarEl.addEventListener("mouseleave", revertMenuTabPreviewSoon);
 try { setActiveMenuTab(localStorage.getItem(MENU_TAB_KEY) || "file"); } catch (e) { setActiveMenuTab("file"); }
 </script>
 </body>
