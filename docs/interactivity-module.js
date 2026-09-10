@@ -1066,7 +1066,18 @@
     return false;
   }
 
-  function dragEditsFor(node, parent, dx, dy, base, cornerUsers, warnings) {
+  // F-029/F-047: coveredIds is the same set applyDrag threads through every "other node"
+  // loop (connected, group) to avoid editing one top-level id's own span twice — but a
+  // polygon/polyline referencing a sibling corner (cornerIds below) edits that corner's
+  // own span too, from *inside* this function, invisibly to those loops. If the corner
+  // node is itself also selected/connected/grouped alongside the shape referencing it
+  // (trivial for a marquee to scoop up both at once, where one Alt+click at a time rarely
+  // would), the old code produced two overlapping edits for the same span — silently
+  // corrupting the source text once spliced in (this is what surfaced live as "Can't
+  // continue this drag: the source text is currently invalid"). Consulting/updating the
+  // very same coveredIds set here, not a separate one, closes that regardless of which
+  // side (the shape or its corner) happens to get processed first.
+  function dragEditsFor(node, parent, dx, dy, base, cornerUsers, warnings, coveredIds) {
     const cornerIds = cornerRefIdsOf(node);
     if (!cornerIds.length) return core.nodeDragEdits(node, parent, dx, dy, base, cornerUsers, warnings);
     if (wouldSelfIntersect(cornerIds, dx, dy, base, cornerUsers, warnings, node.id)) return [];
@@ -1084,6 +1095,8 @@
     // parse, so mutating it here has no effect beyond this function call.
     const relaxedBase = { ...base, settings: { ...base.settings, allowSelfIntersectingPolygons: true } };
     for (const cid of cornerIds) {
+      if (coveredIds.has(cid)) continue;
+      coveredIds.add(cid);
       const cornerNode = relaxedBase.nodesById[cid];
       const cornerParent = cornerNode.parentId ? relaxedBase.nodesById[cornerNode.parentId] : null;
       edits.push(...core.nodeDragEdits(cornerNode, cornerParent, dx, dy, relaxedBase, cornerUsers, warnings));
@@ -1201,13 +1214,14 @@
     }
 
     if (!edits) {
-      edits = [...dragEditsFor(node, parent, dx, dy, base, cornerUsers, warnings)];
+      edits = [...dragEditsFor(node, parent, dx, dy, base, cornerUsers, warnings, coveredIds)];
       if (!dragState.singleOnly) {
         for (const otherId of core.connectedNodeIds(dragState.id, base.connections)) {
+          if (coveredIds.has(otherId)) continue;
           if (isAncestorOf(otherId, dragState.id, base) || isAncestorOf(dragState.id, otherId, base)) continue;
           const otherNode = base.nodesById[otherId];
           const otherParent = otherNode.parentId ? base.nodesById[otherNode.parentId] : null;
-          edits.push(...dragEditsFor(otherNode, otherParent, dx, dy, base, cornerUsers, warnings));
+          edits.push(...dragEditsFor(otherNode, otherParent, dx, dy, base, cornerUsers, warnings, coveredIds));
           coveredIds.add(otherId);
         }
       }
@@ -1225,7 +1239,7 @@
         const otherNode = base.nodesById[otherId];
         if (!otherNode) continue;
         const otherParent = otherNode.parentId ? base.nodesById[otherNode.parentId] : null;
-        edits.push(...dragEditsFor(otherNode, otherParent, dx, dy, base, cornerUsers, warnings));
+        edits.push(...dragEditsFor(otherNode, otherParent, dx, dy, base, cornerUsers, warnings, coveredIds));
         coveredIds.add(otherId);
       }
     }

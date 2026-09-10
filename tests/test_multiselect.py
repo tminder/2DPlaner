@@ -10,6 +10,7 @@ from helpers import (
     alt_drag,
     click_menu_item,
     drag,
+    drag_message,
     element_center,
     empty_canvas_point,
     load_plan,
@@ -50,6 +51,41 @@ element room {
     size: [0.5m, 0.5m]
     position: [4m, 3m]
     style: { fill: "#963" }
+  }
+}
+"""
+
+
+# Regression guard below: the "apartment" shipped example's own wall/corner pattern --
+# adjacent polylines referencing shared sibling corner points (docs/index.html's own
+# EXAMPLES.apartment uses exactly this shape for wall_a/door/wall_b/corner_1..4).
+CORNER_PLAN = """
+element room {
+  shape: "rect"
+  size: [5m, 4m]
+  position: [0m, 0m]
+  style: { fill: "#eee" }
+  childPlacement: "inside"
+
+  element corner_1 { position: [0m, 0m] }
+  element corner_2 { position: [2.2m, 0m] }
+  element corner_3 { position: [3.1m, 0m] }
+  element corner_4 { position: [5m, 0m] }
+
+  element wall_a {
+    shape: "polyline"
+    points: [corner_1, corner_2]
+    style: { stroke: "#444", strokeWidth: 0.1 }
+  }
+  element door {
+    shape: "polyline"
+    points: [corner_2, corner_3]
+    style: { stroke: "#8a6a42", strokeWidth: 0.1 }
+  }
+  element wall_b {
+    shape: "polyline"
+    points: [corner_3, corner_4]
+    style: { stroke: "#444", strokeWidth: 0.1 }
   }
 }
 """
@@ -319,6 +355,39 @@ def test_marquee_that_never_moves_deselects_like_a_plain_click(app_page):
     # A stray Alt+click on empty canvas that never actually dragged is just a plain click
     # on nothing -- deselects, rather than a zero-size marquee silently doing nothing.
     assert selected_ids_classlist(app_page) == []
+
+
+def test_group_drag_with_a_shared_corner_reference_does_not_corrupt_the_source(app_page):
+    """Regression guard for a real bug found live via marquee selection: when the group
+    includes both a corner-referencing polyline (wall_a, door -- each of whose own `points`
+    array references sibling corner elements) and one of the corner points they share
+    (corner_2, referenced by both wall_a and door) -- trivial for a marquee to scoop up
+    together in one region, unlikely for one Alt+click at a time -- dragging any member
+    used to double-edit corner_2's own span: once via wall_a's (or door's) own internal
+    cornerIds loop, a second time because corner_2 is *also* directly a selected top-level
+    group member. Splicing both overlapping edits into the source corrupted it into
+    something like "2.346m6m6m" -- surfacing live as "Can't continue this drag: the source
+    text is currently invalid" on the very next drag attempt."""
+    load_plan(app_page, CORNER_PLAN)
+    sx, sy = empty_canvas_point(app_page, "room", 0.15, "top")
+    room_box = app_page.locator('[data-id="room"]').bounding_box()
+    ex, ey = room_box["x"] + room_box["width"], room_box["y"] + 20
+    alt_drag(app_page, sx, sy, ex, ey)
+
+    sel = set(selected_ids_classlist(app_page))
+    assert {"wall_a", "door", "wall_b", "corner_2", "corner_3"} <= sel
+
+    before = position_of(source_text(app_page), "corner_2")
+    wa_box = app_page.locator('[data-id="wall_a"]').bounding_box()
+    wax, way = wa_box["x"] + wa_box["width"] / 2, wa_box["y"] + wa_box["height"] / 2
+    drag(app_page, wax, way, wax + 15, way + 25)
+
+    assert "Can't continue this drag" not in drag_message(app_page)
+    after = source_text(app_page)
+    # A single, well-formed position -- not the double-spliced "2.346m6m6m" the bug used
+    # to leave behind -- and it actually moved, proving the group-drag still took effect.
+    assert re.search(r"element corner_2 \{ position: \[-?[\d.]+m, -?[\d.]+m\] \}", after)
+    assert position_of(after, "corner_2") != before
 
 
 def test_plain_empty_canvas_drag_still_pans(app_page):
