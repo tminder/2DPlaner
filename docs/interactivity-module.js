@@ -31,19 +31,23 @@
          as unrelated features while they didn't match; same color/size as hover now, so a
          connected partner reads as "also part of what's being hovered," not a separate thing. */
       svg .obj.connected-highlight { filter: drop-shadow(0 0 2px rgba(51,119,255,0.55)); }
-      /* A fixed stroke-width doesn't scale with the shape's own — a wall already stroked
-         thicker than 3px actually looked *thinner* once selected, backwards from what a
-         selection indicator should do. A glow (matching hover's own pattern above, same
-         2px size for consistency, a distinct color to stay tell-apart-able from it) never
-         touches stroke-width at all, so it reads consistently regardless of how thick or
-         thin the shape's own stroke already is. */
-      svg .obj.selected { filter: drop-shadow(0 0 2px rgba(124,58,237,0.55)); }
-      /* F-047: a live preview during an in-progress marquee drag -- same purple hue as
-         .selected above (it's a preview of exactly that state), lower alpha so a genuinely
-         selected element and a merely-about-to-be-selected one stay visually distinct. */
+      /* D-136: used to be a drop-shadow glow here, replaced -- with several elements
+         selected at once, a subtle glow read as *less* visually obvious than the resize
+         handles (below), which only ever mark the single primary element, misleadingly
+         suggesting just that one was selected. renderSelectionBoxes() now draws an actual
+         outline box (a <rect class="selection-box">, styled inline, not through this
+         class) around every selected element's own bbox instead -- reads unambiguously
+         per-element regardless of how many are selected. The "selected" class itself is
+         kept exactly as before (still set in the same place, still what tests/other
+         modules query) — it just no longer carries its own visible styling here.
+         F-047: .marquee-candidate below is a separate, transient, in-gesture preview
+         (which elements a marquee-in-progress currently covers) -- still a light glow,
+         not a box, since it previews a state that's about to exist for a brief moment,
+         not the persisted one being emphasized above. */
       svg .obj.marquee-candidate { filter: drop-shadow(0 0 2px rgba(124,58,237,0.3)); }
-      /* F-016: matches .selected's own purple accent above, so a handle reads as part of
-         the same selection affordance rather than a separate, unrelated control. */
+      /* F-016: #7c3aed matches the selection-box's own purple accent (renderSelectionBoxes,
+         inline-styled, not through this stylesheet), so a handle reads as part of the same
+         selection affordance rather than a separate, unrelated control. */
       svg .resize-handle { fill: #fff; stroke: #7c3aed; stroke-width: 1.5px; cursor: pointer; }
       svg .resize-handle:hover { fill: #7c3aed; }
       #plan-root:not(.dragging) .anchor-hit:hover { fill: #e33; opacity: 0.7; }
@@ -2214,8 +2218,11 @@
     } else {
       delete core.rootEl.dataset.selectedId;
     }
-    // F-016: after bringToFront above, not before — handles must paint on top of the
-    // selected shape (and stay hit-testable there), not get reburied by its own reorder.
+    // F-016/D-136: after bringToFront above, not before — both must paint on top of the
+    // selected shape (and, for handles, stay hit-testable there), not get reburied by its
+    // own reorder. Boxes before handles, so a single selection's own handles still sit on
+    // top of its box, matching the layering renderResizeHandles' own comment already uses.
+    renderSelectionBoxes(svgEl, prog, positions);
     renderResizeHandles(svgEl, prog, positions);
 
     // A stationary click-cycle click never re-fires pointerover (the hovered DOM node gets
@@ -2635,8 +2642,33 @@
   // (the exact bug D-112 hit once already). No manual removal of last render's handles
   // needed: core.rerender() already replaces #plan-root's whole innerHTML every time.
   const HANDLE_HALF = 7; // viewBox units — a touch-usable ~14x14 square/circle at 1x zoom
+  // D-136: reported directly -- with several elements selected, the resize handles (below)
+  // were more visually obvious than the actual multi-selection, and since they only ever
+  // mark the one primary element (resize itself stays single-element only, F-029/D-124),
+  // that read as "just this one is selected." Handles now only render for a genuine
+  // single-element selection; renderSelectionBoxes() below is what marks a multi-selection.
+  const SELECTION_BOX_PADDING = 4; // viewBox units — outward margin so the box doesn't hug the shape's own edge/stroke
+  // Same reasoning F-047 already established for marquee hit-testing: Element.getBBox(),
+  // not this module's own computeBboxes (which only ever covers shape:"rect" and bare
+  // points), so this works uniformly for a circle/polygon/polyline too. Styled inline,
+  // matching the marquee-rect's own established look exactly (same fill/stroke/dash) so a
+  // viewer reads it as the same "this is a selection outline" language, not a new one.
+  function renderSelectionBoxes(svgEl, prog, positions) {
+    const ids = selectedIds.size ? selectedIds : (selectedId ? [selectedId] : []);
+    for (const id of ids) {
+      const shapeEl = svgEl.querySelector(`[data-id="${CSS.escape(id)}"]`);
+      if (!shapeEl) continue;
+      let box;
+      try { box = shapeEl.getBBox(); } catch (err) { continue; } // detached/zero-size — skip
+      svgEl.insertAdjacentHTML("beforeend",
+        `<rect class="selection-box" x="${box.x - SELECTION_BOX_PADDING}" y="${box.y - SELECTION_BOX_PADDING}" ` +
+        `width="${box.width + SELECTION_BOX_PADDING * 2}" height="${box.height + SELECTION_BOX_PADDING * 2}" ` +
+        `fill="rgba(124,58,237,0.08)" stroke="#7c3aed" stroke-width="1.5" stroke-dasharray="4 3" pointer-events="none" />`);
+    }
+  }
+
   function renderResizeHandles(svgEl, prog, positions) {
-    if (!selectedId) return;
+    if (!selectedId || selectedIds.size > 1) return;
     if (isGestureActive() && !resizeDrag) return; // hidden mid-drag/pinch/relate, shown mid-resize itself
     const node = prog.nodesById[selectedId];
     const abs = node && positions[selectedId];

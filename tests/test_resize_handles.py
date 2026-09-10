@@ -4,7 +4,7 @@ viewer via mouse or touch."""
 
 import re
 
-from helpers import dispatch_pointer, drag, element_center, load_plan, source_text
+from helpers import alt_click, dispatch_pointer, drag, element_center, load_plan, source_text
 
 PLAN = """
 element room {
@@ -87,6 +87,25 @@ def test_handles_appear_only_for_a_selected_rect_or_circle(app_page):
     select(app_page, "lamp")
     assert resize_handle_count(app_page) == 1
     assert app_page.evaluate("document.querySelector('.resize-handle').dataset.corner") == "radius"
+
+
+def test_no_handles_once_a_second_element_joins_the_selection(app_page):
+    """D-136: handles only ever mark the single primary element -- resize itself stays
+    single-element only (F-029/D-124) -- so showing them during a multi-selection used to
+    misleadingly suggest just that one element was selected. They must disappear the
+    moment a second element joins, and come back once the selection collapses to one."""
+    load_plan(app_page, PLAN)
+    select(app_page, "sofa")
+    assert resize_handle_count(app_page) == 4
+
+    lx, ly = element_center(app_page, "lamp")
+    alt_click(app_page, lx, ly)
+    assert resize_handle_count(app_page) == 0
+
+    # Alt+click sofa again: back down to just lamp selected -- handles return.
+    sx, sy = element_center(app_page, "sofa")
+    alt_click(app_page, sx, sy)
+    assert resize_handle_count(app_page) == 1
 
     select(app_page, "wall")  # polyline -- explicitly out of scope, no handles at all
     assert resize_handle_count(app_page) == 0

@@ -390,6 +390,22 @@ def test_group_drag_with_a_shared_corner_reference_does_not_corrupt_the_source(a
     assert position_of(after, "corner_2") != before
 
 
+def test_selection_boxes_mark_every_selected_element_not_just_the_primary(app_page):
+    """D-136: reported directly -- with several elements selected, the resize handles
+    (which only ever mark the single primary element) read as more visually obvious than
+    the actual multi-selection, misleadingly suggesting just one element was selected. A
+    dashed .selection-box now renders around every selected element's own bbox instead."""
+    load_plan(app_page, PLAN)
+    assert app_page.locator(".selection-box").count() == 0
+
+    select_group(app_page, "sofa")
+    assert app_page.locator(".selection-box").count() == 1
+
+    select_group(app_page, "lamp")
+    assert app_page.locator(".selection-box").count() == 2
+    assert app_page.locator(".resize-handle").count() == 0  # multi-select: no handles
+
+
 def test_plain_empty_canvas_drag_still_pans(app_page):
     """Regression guard: the new Alt+drag branch in handlePointerDown's empty-canvas case
     must not disturb the existing (non-Alt) pan gesture it sits right next to."""
