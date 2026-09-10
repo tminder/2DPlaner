@@ -392,13 +392,13 @@ def test_group_drag_with_a_shared_corner_reference_does_not_corrupt_the_source(a
 
 
 def test_every_selected_element_gets_the_visible_selected_filter_not_just_the_primary(app_page):
-    """D-136/D-137: with several elements selected, the resize handles (which only ever
-    mark the single primary element) used to read as more visually obvious than the actual
-    multi-selection, misleadingly suggesting just one element was selected. Every member of
-    the selection carries the same visible .selected filter now (D-137's stacked
-    drop-shadow, shape-accurate for rect/circle/polygon/polyline alike since a filter
-    follows the real rendered shape, not a bounding box), and handles stay hidden once a
-    second element joins."""
+    """D-136/D-137/D-138: with several elements selected, the resize handles (which only
+    ever mark the single primary element) used to read as more visually obvious than the
+    actual multi-selection, misleadingly suggesting just one element was selected. Every
+    member of the selection carries the same visible .selected filter now (a drop-shadow,
+    shape-accurate for rect/circle/polygon/polyline alike since a filter follows the real
+    rendered shape, not a bounding box), and handles stay hidden once a second element
+    joins."""
     load_plan(app_page, PLAN)
     select_group(app_page, "sofa")
     assert selected_filter(app_page, "sofa") != "none"

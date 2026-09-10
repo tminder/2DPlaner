@@ -19,7 +19,10 @@
       #plan-root.dragging svg { cursor: grabbing; }
       #plan-root svg [data-id] { cursor: grab; }
       #plan-root svg [data-id]:active { cursor: grabbing; }
-      #plan-root:not(.dragging) svg .obj:hover { filter: drop-shadow(0 0 2px rgba(51,119,255,0.55)); }
+      /* D-138: bumped from 2px/0.55 -- reported as too subtle, alongside the ask that hover
+         and selected share the same glow treatment (this rule and .selected below now
+         differ only in color, both single soft drop-shadows at the same blur/alpha). */
+      #plan-root:not(.dragging) svg .obj:hover { filter: drop-shadow(0 0 4px rgba(51,119,255,0.85)); }
       /* Core's label hover-reveal rule is a plain rendering feature with no idea a drag can
          be in progress; this overrides it with higher specificity while #plan-root carries
          "dragging", rather than making core aware of interactivity state. */
@@ -30,24 +33,21 @@
          are the same interaction (hovering either one highlights the pair together) and read
          as unrelated features while they didn't match; same color/size as hover now, so a
          connected partner reads as "also part of what's being hovered," not a separate thing. */
-      svg .obj.connected-highlight { filter: drop-shadow(0 0 2px rgba(51,119,255,0.55)); }
-      /* D-137: D-136's own dashed bbox outline (a <rect class="selection-box">) is gone
-         again -- reported directly as looking wrong on anything that isn't a rectangle,
-         since a box drawn around a circle or an angled polyline visibly doesn't hug the
-         actual shape. Back to a filter effect (automatically shape-accurate for every
-         kind, rect/circle/polygon/polyline alike, no per-shape-kind geometry needed), but
-         not the original soft centered glow either -- reported as reading as too subtle,
-         easy to miss, and asked for something more visible, less glow, "maybe a shadow."
-         Two stacked drop-shadows, deliberately un-blurred rather than soft: a 1px solid
-         rim right at the shape's own edge for a crisp, unmissable outline, plus a second
-         one offset 2px down-right with zero blur -- a hard-edged cast shadow (an actual
-         offset silhouette, not a diffuse halo), which also stays legible on small
-         elements where a blurred glow thins out to nearly nothing. */
-      svg .obj.selected { filter: drop-shadow(0 0 1px rgba(124,58,237,1)) drop-shadow(2px 2px 0px rgba(88,28,135,0.85)); }
+      svg .obj.connected-highlight { filter: drop-shadow(0 0 4px rgba(51,119,255,0.85)); }
+      /* D-138: D-137's hard-edged shadow (before that, D-136's bbox outline; before that,
+         D-134's original soft-but-too-subtle glow) is gone again -- reported directly: stay
+         with a glow after all, but more visible, and make hover and selected look like the
+         same *kind* of effect (they'd drifted apart -- hover a plain soft glow, selected a
+         two-layer hard offset shadow -- reading as two unrelated treatments). Same shape as
+         :hover above now, just purple instead of blue: a single, symmetric, un-offset
+         drop-shadow, same boosted 4px/0.85 strength. Automatically shape-accurate for every
+         kind (rect/circle/polygon/polyline) the same way every filter-based version here
+         has been -- no per-shape-kind geometry needed. */
+      svg .obj.selected { filter: drop-shadow(0 0 4px rgba(124,58,237,0.85)); }
       /* F-047: a live preview during an in-progress marquee drag -- same purple hue as
          .selected above (it's a preview of exactly that state), lower alpha so a genuinely
          selected element and a merely-about-to-be-selected one stay visually distinct. */
-      svg .obj.marquee-candidate { filter: drop-shadow(0 0 2px rgba(124,58,237,0.3)); }
+      svg .obj.marquee-candidate { filter: drop-shadow(0 0 4px rgba(124,58,237,0.4)); }
       /* F-016: matches .selected's own purple accent above, so a handle reads as part of
          the same selection affordance rather than a separate, unrelated control. */
       svg .resize-handle { fill: #fff; stroke: #7c3aed; stroke-width: 1.5px; cursor: pointer; }
