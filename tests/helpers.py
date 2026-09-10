@@ -202,6 +202,16 @@ def selected_ids_classlist(page):
     )
 
 
+def selected_filter(page, node_id):
+    """D-137: the computed `filter` of a given element -- "none" unless it's carrying the
+    .selected (or another filter-driven) class, used to confirm the visible selection
+    styling actually applies, not just the .selected class name itself."""
+    return page.evaluate(
+        """(id) => getComputedStyle(document.querySelector(`[data-id="${id}"]`)).filter""",
+        node_id,
+    )
+
+
 def dispatch_pointer(page, event_type, pointer_id, x, y, pointer_type="touch"):
     """F-036: Playwright has no multi-touch gesture API, so pinch/long-press are driven by
     dispatching raw synthetic PointerEvents directly -- pointerdown on whatever's really at

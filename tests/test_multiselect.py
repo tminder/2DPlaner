@@ -15,6 +15,7 @@ from helpers import (
     empty_canvas_point,
     load_plan,
     open_context_menu,
+    selected_filter,
     selected_ids_classlist,
     source_text,
     view_box,
@@ -390,19 +391,21 @@ def test_group_drag_with_a_shared_corner_reference_does_not_corrupt_the_source(a
     assert position_of(after, "corner_2") != before
 
 
-def test_selection_boxes_mark_every_selected_element_not_just_the_primary(app_page):
-    """D-136: reported directly -- with several elements selected, the resize handles
-    (which only ever mark the single primary element) read as more visually obvious than
-    the actual multi-selection, misleadingly suggesting just one element was selected. A
-    dashed .selection-box now renders around every selected element's own bbox instead."""
+def test_every_selected_element_gets_the_visible_selected_filter_not_just_the_primary(app_page):
+    """D-136/D-137: with several elements selected, the resize handles (which only ever
+    mark the single primary element) used to read as more visually obvious than the actual
+    multi-selection, misleadingly suggesting just one element was selected. Every member of
+    the selection carries the same visible .selected filter now (D-137's stacked
+    drop-shadow, shape-accurate for rect/circle/polygon/polyline alike since a filter
+    follows the real rendered shape, not a bounding box), and handles stay hidden once a
+    second element joins."""
     load_plan(app_page, PLAN)
-    assert app_page.locator(".selection-box").count() == 0
-
     select_group(app_page, "sofa")
-    assert app_page.locator(".selection-box").count() == 1
+    assert selected_filter(app_page, "sofa") != "none"
 
     select_group(app_page, "lamp")
-    assert app_page.locator(".selection-box").count() == 2
+    assert selected_filter(app_page, "sofa") != "none"
+    assert selected_filter(app_page, "lamp") != "none"
     assert app_page.locator(".resize-handle").count() == 0  # multi-select: no handles
 
 
