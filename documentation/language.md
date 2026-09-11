@@ -136,6 +136,17 @@ moment earlier by Alt+click or by an earlier marquee. An Alt+drag that never act
 behaves like a plain click on empty canvas (deselects) rather than a zero-size marquee.
 Plain (non-Alt) drag on empty canvas is unchanged — it still pans.
 
+**Per-vertex dragging for `polygon`/`polyline` (D-139):** selecting one shows a small handle
+at every one of its own `points`, the same visual language as a rect's 4 corner handles or a
+circle's radius handle — dragging one moves just that vertex, reshaping the polygon rather
+than scaling it. A literal `[x, y]` point edits directly; a point that references a sibling
+corner element (the wall/corner pattern the shipped "Studio Apartment" example uses
+throughout) instead moves that referenced element's own position — exactly as if it had been
+dragged directly by its own anchor dot, so every other shape sharing that same corner moves
+with it too. Blocked, with a message, if moving a polygon's own vertex would make it
+self-intersect (respects `allowSelfIntersectingPolygons`, same as every other polygon edit);
+meaningless for an open `polyline`, so never checked there.
+
 Higher-level concepts like a wall-with-a-door are not language keywords; they're composed
 from Elements and Connections by the plan's author, or provided as a reusable composition
 by a module (see Modules below).
@@ -576,7 +587,9 @@ deliberately coupled to the one setting rather than a second flag so the visible
 the snap increment can never show two different values. A rect resize handle's own
 dragged corner snaps to a grid intersection directly; a circle's radius handle snaps the
 resulting radius to a clean multiple of `size` instead (the cursor's raw position on the
-circle's edge has no reason to land on an intersection at all). Containment/collision
+circle's edge has no reason to land on an intersection at all); a polygon/polyline's own
+per-vertex handle (D-139) snaps the dragged point to a grid intersection, same as a rect
+corner. Containment/collision
 clamping still runs after snapping and can shrink the result further, same as it already
 overrides an unsnapped drag; a connected group still moves by one shared, already-snapped
 delta rather than each member re-snapping independently, preserving the rigid-group

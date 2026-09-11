@@ -1,10 +1,11 @@
 """F-016: visible, draggable resize handles for the selected rect/circle -- the corner/
 radius-drag equivalent of D-109's Shift+arrow keyboard resize, reachable directly in the
-viewer via mouse or touch."""
+viewer via mouse or touch. D-139 extends the same idea to polygon/polyline: one handle per
+vertex, dragging one reshapes the point instead of scaling the whole shape."""
 
 import re
 
-from helpers import alt_click, dispatch_pointer, drag, element_center, load_plan, source_text
+from helpers import alt_click, dispatch_pointer, drag, drag_message, element_center, load_plan, source_text
 
 PLAN = """
 element room {
@@ -30,6 +31,18 @@ element room {
     points: [[0.2m, 2.9m], [1.5m, 2.9m]]
     style: { stroke: "#333", strokeWidth: 0.05m }
   }
+  element rug {
+    shape: "polygon"
+    points: [[2.5m, 2.4m], [3.7m, 2.35m], [3.8m, 2.9m], [2.6m, 2.95m]]
+    style: { fill: "#e8b4bc", stroke: "#a06070", strokeWidth: 0.02m }
+  }
+  element corner_a { position: [2m, 0.2m] }
+  element corner_b { position: [3.5m, 0.15m] }
+  element fence {
+    shape: "polyline"
+    points: [corner_a, corner_b]
+    style: { stroke: "#654", strokeWidth: 0.04m }
+  }
 }
 """
 
@@ -47,7 +60,6 @@ element room {
 }
 """
 
-
 def select(page, node_id):
     cx, cy = element_center(page, node_id)
     page.mouse.click(cx, cy)
@@ -61,6 +73,31 @@ def resize_handle_count(page):
 def handle_center(page, node_id, corner):
     box = page.locator(f'.resize-handle[data-node-id="{node_id}"][data-corner="{corner}"]').bounding_box()
     return box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+
+
+def vertex_handle_center(page, node_id, point_index):
+    box = page.locator(
+        f'.resize-handle[data-node-id="{node_id}"][data-corner="vertex"][data-point-index="{point_index}"]'
+    ).bounding_box()
+    return box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+
+
+def points_of(text, node_id):
+    """D-139: every literal [x, y] pair in `node_id`'s own `points` list, in order -- a
+    corner-reference entry (a bare identifier, not a bracketed pair) is skipped, since it
+    has no literal coordinates of its own to parse here."""
+    m = re.search(rf"element {node_id} \{{.*?points: \[(.*?)\]\n", text, re.S)
+    assert m, f"{node_id!r} has no points list in:\n{text}"
+    return [
+        (float(x), float(y))
+        for x, y in re.findall(r"\[(-?[\d.]+)m,\s*(-?[\d.]+)m\]", m.group(1))
+    ]
+
+
+def node_position(text, node_id):
+    m = re.search(rf"element {node_id} \{{.*?position: \[(-?[\d.]+)m, (-?[\d.]+)m\]", text, re.S)
+    assert m, f"{node_id!r} has no position in:\n{text}"
+    return float(m.group(1)), float(m.group(2))
 
 
 def sofa_size(text):
@@ -107,8 +144,8 @@ def test_no_handles_once_a_second_element_joins_the_selection(app_page):
     alt_click(app_page, sx, sy)
     assert resize_handle_count(app_page) == 1
 
-    select(app_page, "wall")  # polyline -- explicitly out of scope, no handles at all
-    assert resize_handle_count(app_page) == 0
+    select(app_page, "wall")  # polyline: D-139 gives it one vertex handle per point
+    assert resize_handle_count(app_page) == 2
 
 
 def test_a_styleless_rect_gets_no_handles_either(app_page):
@@ -206,3 +243,97 @@ def test_ordinary_body_drag_of_the_shape_still_works(app_page):
     text = source_text(app_page)
     assert text != before
     assert "size: [1m, 0.6m]" in text  # a body drag never touches size
+
+
+def test_polygon_and_polyline_get_one_vertex_handle_per_point(app_page):
+    load_plan(app_page, PLAN)
+    select(app_page, "rug")
+    assert resize_handle_count(app_page) == 4
+    corners = set(app_page.evaluate(
+        "Array.from(document.querySelectorAll('.resize-handle')).map(h => h.dataset.corner)"
+    ))
+    assert corners == {"vertex"}
+    indices = sorted(int(i) for i in app_page.evaluate(
+        "Array.from(document.querySelectorAll('.resize-handle')).map(h => h.dataset.pointIndex)"
+    ))
+    assert indices == [0, 1, 2, 3]
+
+    select(app_page, "wall")
+    assert resize_handle_count(app_page) == 2
+
+
+def test_dragging_a_polygon_vertex_edits_only_that_point(app_page):
+    load_plan(app_page, PLAN)
+    select(app_page, "rug")
+    before = points_of(source_text(app_page), "rug")
+
+    hx, hy = vertex_handle_center(app_page, "rug", 1)
+    drag(app_page, hx, hy, hx + 20, hy + 10)
+
+    after = points_of(source_text(app_page), "rug")
+    assert after[0] == before[0]
+    assert after[2] == before[2]
+    assert after[3] == before[3]
+    assert after[1] != before[1]
+    assert after[1][0] > before[1][0] and after[1][1] > before[1][1]
+
+
+def test_dragging_a_corner_ref_vertex_moves_the_referenced_node(app_page):
+    """D-139: a corner-reference point (the wall/corner pattern F-031/D-032 already
+    established, used throughout the shipped `apartment` example) has no literal
+    coordinates of its own inside `fence` -- dragging its handle is really just an ordinary
+    drag of the referenced sibling node (corner_a), exactly as if its own small anchor dot
+    had been dragged directly. `fence`'s own source text never changes."""
+    load_plan(app_page, PLAN)
+    select(app_page, "fence")
+    assert resize_handle_count(app_page) == 2
+
+    before_text = source_text(app_page)
+    before_a = node_position(before_text, "corner_a")
+
+    hx, hy = vertex_handle_center(app_page, "fence", 0)
+    drag(app_page, hx, hy, hx + 15, hy + 8)
+
+    after_text = source_text(app_page)
+    after_a = node_position(after_text, "corner_a")
+    assert after_a != before_a
+    assert "points: [corner_a, corner_b]" in after_text  # fence's own text is untouched
+
+
+def test_self_intersecting_polygon_vertex_drag_is_rejected(app_page):
+    # rug traces p0(top-left) -> p1(top-right) -> p2(bottom-right) -> p3(bottom-left).
+    # Dragging p0 well past the p1-p2 edge (extrapolating beyond both, not just touching
+    # one) makes the p3-p0 edge genuinely cross p1-p2, not just coincide with a vertex --
+    # segmentsIntersect needs a real crossing, not a degenerate touch, to fire.
+    load_plan(app_page, PLAN)
+    select(app_page, "rug")
+    before = points_of(source_text(app_page), "rug")
+
+    hx, hy = vertex_handle_center(app_page, "rug", 0)
+    p1x, p1y = vertex_handle_center(app_page, "rug", 1)
+    p2x, p2y = vertex_handle_center(app_page, "rug", 2)
+    tx, ty = p2x + (p2x - p1x), p2y + (p2y - p1y)
+    # steps=1: one atomic jump straight to the invalid target, no valid intermediate
+    # positions along the way that could get applied before the final, rejected one.
+    drag(app_page, hx, hy, tx, ty, steps=1)
+
+    assert "self-intersecting" in drag_message(app_page)
+    assert points_of(source_text(app_page), "rug") == before  # rejected -- nothing changed
+
+
+def test_polyline_vertex_drag_is_never_blocked_by_self_intersection(app_page):
+    # Self-intersection is meaningless for an open polyline -- the check is scoped to
+    # shape:"polygon" only, matching wouldSelfIntersect's own existing convention.
+    load_plan(app_page, PLAN)
+    select(app_page, "wall")
+    before = points_of(source_text(app_page), "wall")
+
+    hx, hy = vertex_handle_center(app_page, "wall", 1)
+    drag(app_page, hx, hy, hx - 100, hy + 50)
+
+    assert "self-intersecting" not in drag_message(app_page)
+    after = points_of(source_text(app_page), "wall")
+    assert after[0] == before[0]
+    assert after[1] != before[1]
+
+

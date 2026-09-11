@@ -218,6 +218,13 @@
   // is reparsed fresh on every move rather than the live evolving source — see
   // applyResizeDrag for why.
   let resizeDrag = null;
+  // D-139: dragging one of the per-vertex handles shown on a selected polygon/polyline for
+  // a literal [x,y] point (a corner-reference point has no state of its own here -- its own
+  // handle just starts an ordinary `drag` on the referenced sibling node instead, see
+  // handlePointerDown). startAbs is that point's own absolute position at gesture start,
+  // used the same way resizeDrag's own startAbs is; baseText reparsed fresh every move, same
+  // reasoning as resizeDrag/drag — see applyVertexDrag.
+  let vertexDrag = null;
   // Ctrl/Cmd+drag on an element (replacing the old +/- icons): fromId never moves for the
   // gesture's duration, candidateId tracks whichever other element is currently under the
   // cursor (null when there's no valid target there) so it can get a live highlight.
@@ -266,7 +273,7 @@
   // order" fragility this entry warns about. A future fourth gesture, or a third guard,
   // now has one place to update instead of a third copy to remember.
   function isGestureActive() {
-    return !!(drag || canvasDrag || relateDrag || pinch || resizeDrag || marqueeDrag);
+    return !!(drag || canvasDrag || relateDrag || pinch || resizeDrag || marqueeDrag || vertexDrag);
   }
 
   // ---------- Snap geometry ----------
@@ -2395,6 +2402,7 @@
         longPressTimer = null;
         if (drag) { core.sourceEl.value = drag.baseText; drag = null; core.rerender({ preserveViewBox: true }); }
         if (resizeDrag) { core.sourceEl.value = resizeDrag.baseText; resizeDrag = null; core.rerender({ preserveViewBox: true }); }
+        if (vertexDrag) { core.sourceEl.value = vertexDrag.baseText; vertexDrag = null; core.rerender({ preserveViewBox: true }); }
         if (marqueeDrag) {
           marqueeDrag.rectEl?.remove();
           for (const id of marqueeDrag.candidateIds) core.rootEl.querySelector(`[data-id="${CSS.escape(id)}"]`)?.classList.remove("marquee-candidate");
@@ -2425,6 +2433,31 @@
           } else {
             resizeDrag = { id: nodeId, kind: "radius", startAbs: abs, baseText: core.sourceEl.value };
             core.rootEl.classList.add("dragging");
+          }
+        } else if (corner === "vertex") {
+          // D-139: a polygon/polyline's own per-vertex handle. A corner-reference point
+          // (pt.cornerRef) has no state of its own here at all — it's really just the id of
+          // a sibling bare-point node that's already independently draggable today by
+          // clicking its own small anchor dot directly, so this starts the exact same
+          // ordinary `drag` that click already would (same self-intersection/connected-node/
+          // grid-snap handling, no new code). Only a literal [x,y] point needs the new
+          // vertexDrag gesture below.
+          const pointIndex = Number(handle.dataset.pointIndex);
+          const pt = node.props.points?.[pointIndex];
+          if (pt && typeof pt === "function" && pt.cornerRef) {
+            const cornerNode = program.nodesById[pt.cornerRef];
+            const cornerAbs = lastPositions[pt.cornerRef];
+            if (cornerNode && cornerAbs && cornerNode.props.position) {
+              drag = { id: cornerNode.id, groupIds: [], baseText: core.sourceEl.value,
+                clientX: e.clientX, clientY: e.clientY, moved: false, singleOnly: e.shiftKey, startAbs: cornerAbs };
+              core.rootEl.classList.add("dragging");
+            }
+          } else if (Array.isArray(pt) && core.isEditable(pt[0]) && core.isEditable(pt[1])) {
+            vertexDrag = { id: nodeId, pointIndex, baseText: core.sourceEl.value,
+              startAbs: core.resolvePointAbs(pt, abs, lastPositions) };
+            core.rootEl.classList.add("dragging");
+          } else {
+            core.dragmsgEl.textContent = `'${nodeId}': this point is an expression, can't drag it directly — edit it in the editor`;
           }
         } else {
           const [w0, h0] = node.props.size;
@@ -2649,7 +2682,7 @@
   // multi-selection instead, one entry per member.
   function renderResizeHandles(svgEl, prog, positions) {
     if (!selectedId || selectedIds.size > 1) return;
-    if (isGestureActive() && !resizeDrag) return; // hidden mid-drag/pinch/relate, shown mid-resize itself
+    if (isGestureActive() && !resizeDrag && !vertexDrag) return; // hidden mid-drag/pinch/relate, shown mid-resize/mid-vertex-drag
     const node = prog.nodesById[selectedId];
     const abs = node && positions[selectedId];
     if (!node || !abs) return;
@@ -2683,6 +2716,19 @@
       svgEl.insertAdjacentHTML("beforeend",
         `<circle class="resize-handle" data-node-id="${selectedId}" data-corner="radius" ` +
         `cx="${(cx + r) * core.M}" cy="${cy * core.M}" r="${HANDLE_HALF}" />`);
+    } else if ((node.props.shape === "polygon" || node.props.shape === "polyline") && node.props.points && hasStyle) {
+      // D-139: one handle per vertex, corner-references included — a mixed shape (some
+      // literal points, some corner-refs, the exact pattern the shipped `apartment` example
+      // uses throughout) gets one consistent row of handles, not some vertices handled and
+      // others silently not. What a given handle actually *does* when dragged differs (see
+      // handlePointerDown's own "vertex" case) but its rendering here is uniform.
+      node.props.points.forEach((pt, i) => {
+        let p;
+        try { p = core.resolvePointAbs(pt, abs, positions); } catch (e) { return; } // unresolved corner ref — skip
+        svgEl.insertAdjacentHTML("beforeend",
+          `<circle class="resize-handle" data-node-id="${selectedId}" data-corner="vertex" data-point-index="${i}" ` +
+          `cx="${p[0] * core.M}" cy="${p[1] * core.M}" r="${HANDLE_HALF}" />`);
+      });
     }
   }
 
@@ -2963,12 +3009,54 @@
     core.rerender({ preserveViewBox: true });
   }
 
+  // D-139: dragging a polygon/polyline's own per-vertex handle for a literal [x,y] point —
+  // same reparse-baseText-fresh-every-call reasoning as applyResizeDrag right above. Only
+  // ever edits that one point's own x/y span; every other point in the shape is untouched.
+  function applyVertexDrag(clientX, clientY) {
+    const cursor = clientToPlanPoint(clientX, clientY);
+    if (!cursor) return;
+    let base;
+    try { base = core.parseExpanded(vertexDrag.baseText); } catch (e) { return; }
+    const node = base.nodesById[vertexDrag.id];
+    const pt = node?.props.points?.[vertexDrag.pointIndex];
+    if (!node || !Array.isArray(pt)) return;
+    const [x0, y0] = pt;
+    if (!core.isEditable(x0) || !core.isEditable(y0)) return;
+
+    const dx = cursor[0] - vertexDrag.startAbs[0], dy = cursor[1] - vertexDrag.startAbs[1];
+    const [snapDx, snapDy] = snappedDragDelta(vertexDrag.startAbs, dx, dy);
+    const newX = x0.value + snapDx, newY = y0.value + snapDy;
+
+    // Realism, mirroring wouldSelfIntersect's own reasoning: meaningless for an open
+    // polyline, so scoped to shape:"polygon" only, matching that function's own convention.
+    if (node.props.shape === "polygon" && !base.settings.allowSelfIntersectingPolygons) {
+      const positions = {};
+      core.computePositions(base.root, null, [0, 0], positions);
+      const ownAbs = positions[node.id];
+      const testPoints = node.props.points.map((p, i) => i === vertexDrag.pointIndex
+        ? [ownAbs[0] + newX, ownAbs[1] + newY]
+        : core.resolvePointAbs(p, ownAbs, positions));
+      if (core.polygonSelfIntersects(testPoints)) {
+        core.dragmsgEl.textContent = `${node.id}: this would make the polygon self-intersecting. Set allowSelfIntersectingPolygons: true to allow this.`;
+        return;
+      }
+    }
+
+    const edits = [
+      { start: x0.start, end: x0.end, text: core.formatNumber(newX, x0.unit) },
+      { start: y0.start, end: y0.end, text: core.formatNumber(newY, y0.unit) },
+    ];
+    core.sourceEl.value = applyEditsDescending(vertexDrag.baseText, edits);
+    core.rerender({ preserveViewBox: true });
+  }
+
   function handlePointerMove(e) {
     if (e.pointerType === "touch" && activeTouches.has(e.pointerId)) {
       activeTouches.set(e.pointerId, { x: e.clientX, y: e.clientY });
     }
     if (pinch) { handlePinchMove(); return; }
     if (resizeDrag) { applyResizeDrag(e.clientX, e.clientY); return; }
+    if (vertexDrag) { applyVertexDrag(e.clientX, e.clientY); return; }
     if (canvasDrag) {
       const svg = core.rootEl.querySelector("svg");
       if (!svg) return;
@@ -3081,6 +3169,11 @@
     }
     if (resizeDrag) {
       resizeDrag = null;
+      core.commitUndoStep();
+      return;
+    }
+    if (vertexDrag) {
+      vertexDrag = null;
       core.commitUndoStep();
       return;
     }
@@ -3299,5 +3392,6 @@
     clearTimeout(longPressTimer);
     longPressTimer = null;
     resizeDrag = null;
+    vertexDrag = null;
   });
 })();

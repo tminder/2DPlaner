@@ -25,6 +25,11 @@ element room {
     position: [3m, 2m]
     style: { fill: "#fc6" }
   }
+  element rug {
+    shape: "polygon"
+    points: [[0.3m, 2m], [1.5m, 1.9m], [1.6m, 2.8m], [0.4m, 2.9m]]
+    style: { fill: "#e8b4bc", stroke: "#a06070", strokeWidth: 0.02m }
+  }
 }
 """
 
@@ -78,6 +83,18 @@ def sofa_size(text):
 def lamp_radius(text):
     m = re.search(r"element lamp.*?radius: ([\d.]+)m", text, re.S)
     return float(m.group(1))
+
+
+def rug_points(text):
+    m = re.search(r"element rug \{.*?points: \[(.*?)\]\n", text, re.S)
+    return [(float(x), float(y)) for x, y in re.findall(r"\[(-?[\d.]+)m,\s*(-?[\d.]+)m\]", m.group(1))]
+
+
+def vertex_handle_center(page, node_id, point_index):
+    box = page.locator(
+        f'.resize-handle[data-node-id="{node_id}"][data-corner="vertex"][data-point-index="{point_index}"]'
+    ).bounding_box()
+    return box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
 
 
 def is_multiple_of(value, step, eps=EPS):
@@ -159,3 +176,20 @@ def test_keyboard_nudge_and_resize_are_unaffected_by_grid(app_page):
     before_px, before_py = sofa_position(before)
     assert abs(px - (before_px + 0.1)) < 1e-6  # default keyboardStep, not grid.size (0.5)
     assert abs(py - before_py) < 1e-6
+
+
+def test_polygon_vertex_handle_snaps_to_a_grid_intersection(app_page):
+    # D-139: a polygon/polyline vertex handle snaps the dragged point itself to a grid
+    # intersection, the same convention the rect corner handle already uses above (not a
+    # derived value like the radius handle's own multiple-of-size snap).
+    load_plan(app_page, GRID_PLAN)
+    select(app_page, "rug")
+    before = rug_points(source_text(app_page))
+    hx, hy = vertex_handle_center(app_page, "rug", 0)
+    drag(app_page, hx, hy, hx + 53, hy + 31)  # another "ugly" delta
+
+    after = rug_points(source_text(app_page))
+    assert after[1:] == before[1:]  # every other vertex untouched
+    px, py = after[0]
+    assert is_multiple_of(px, STEP), f"x={px} not a multiple of {STEP}"
+    assert is_multiple_of(py, STEP), f"y={py} not a multiple of {STEP}"
