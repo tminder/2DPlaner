@@ -119,7 +119,8 @@ for entry in "${TARGETS[@]}"; do
   if [ -z "$changed_files" ]; then
     # The target's own path had no changes even though HEAD moved -- advance its marker so
     # a later, unrelated change doesn't get diffed against a stale, now-irrelevant SHA.
-    set_state "$name" "$HEAD_SHA"
+    # --dry-run must still touch nothing at all, this fast-forward included.
+    if ! $DRY_RUN; then set_state "$name" "$HEAD_SHA"; fi
     continue
   fi
 
