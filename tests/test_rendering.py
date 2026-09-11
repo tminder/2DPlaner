@@ -5,7 +5,13 @@ a fallback, polygon/polyline didn't).
 
 S-017: an unresolvable style preset used to just console.warn and silently render with no
 style at all -- now throws and surfaces in the visible #error banner, matching every other
-bad-input case on this same render path (an unknown points reference, an unknown module)."""
+bad-input case on this same render path (an unknown points reference, an unknown module).
+
+S-037: an expression inside a literal points [x, y] pair (unlike position/size, which
+support expressions) used to resolve through numOf unchanged (still a function, not a
+number), and combining that with the shape's own anchor point silently produced NaN --
+which then poisoned the *whole plan's* fit-to-view computation, corrupting the entire
+render with no visible error at all. Now throws and surfaces in the #error banner too."""
 
 from helpers import load_plan
 
@@ -60,3 +66,45 @@ element room {
     )
     error = app_page.evaluate("document.getElementById('error').textContent")
     assert 'style: "ghost" isn\'t defined in settings.styles' in error
+
+
+def test_expression_valued_points_pair_throws_and_shows_the_error_banner(app_page):
+    load_plan(
+        app_page,
+        """
+element room {
+  shape: "rect"
+  size: [4m, 3m]
+  position: [0m, 0m]
+
+  element wobbly {
+    shape: "polyline"
+    points: [[parent.size.x - 3m, 1m], [2m, 2m]]
+    style: { stroke: "#333", strokeWidth: 0.05m }
+  }
+}
+""",
+    )
+    error = app_page.evaluate("document.getElementById('error').textContent")
+    assert "expressions aren't supported inside a literal points pair" in error
+    # A genuinely valid plan right after must render clean -- confirms the bad plan's own
+    # failure doesn't leave any stale/poisoned state (e.g. a NaN viewBox) behind.
+    load_plan(
+        app_page,
+        """
+element room {
+  shape: "rect"
+  size: [4m, 3m]
+  position: [0m, 0m]
+
+  element ok {
+    shape: "polyline"
+    points: [[1m, 1m], [2m, 2m]]
+    style: { stroke: "#333", strokeWidth: 0.05m }
+  }
+}
+""",
+    )
+    assert app_page.evaluate("document.getElementById('error').textContent") == ""
+    vb = app_page.evaluate("document.querySelector('#plan-root svg').getAttribute('viewBox')")
+    assert "NaN" not in vb

@@ -1469,7 +1469,22 @@ function computeCornerUsers(node, cornerUsers) {
 }
 
 function resolvePointAbs(pt, ownAbs, positions) {
-  if (Array.isArray(pt)) return [ownAbs[0] + numOf(pt[0]), ownAbs[1] + numOf(pt[1])];
+  if (Array.isArray(pt)) {
+    const x = numOf(pt[0]), y = numOf(pt[1]);
+    // S-037: unlike position/size, a points entry's own literal [x, y] pair doesn't run
+    // through the expression system -- numOf leaves an unresolved expression (a function)
+    // untouched rather than evaluating it, and combining that with ownAbs below used to
+    // silently produce NaN instead of throwing. That NaN then poisoned the *whole plan's*
+    // fit-to-view computation (every polygon/polyline point feeds the same Math.min/max
+    // reduction), corrupting the entire render with no visible error at all -- just cryptic
+    // browser-level "Expected number" console errors on the resulting <svg> attributes.
+    // Caught here, once, at the source: a clear, thrown message surfaces in the visible
+    // #error banner instead, matching every other bad-input case on this render path.
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      throw new Error("a points entry's [x, y] pair must be plain numbers -- expressions aren't supported inside a literal points pair (position/size support them, points doesn't yet)");
+    }
+    return [ownAbs[0] + x, ownAbs[1] + y];
+  }
   if (typeof pt === "function" && pt.cornerRef) {
     const p = positions[pt.cornerRef];
     if (!p) throw new Error(`points reference to unknown element '${pt.cornerRef}'`);

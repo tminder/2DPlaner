@@ -44,10 +44,6 @@ Called on every proposed move during an active drag, over the entire plan every 
 
 `isEditable` (`"start" in v`) and `numOf` (`"value" in v`) rely on ad hoc shape checks rather than any explicit tag or class. Any future value object that happens to carry a `start` or `value` property would silently be misidentified as a literal token.
 
-## S-037 An expression inside a literal `points` pair silently produces `NaN`, corrupting the whole plan's render
-
-Found live while testing D-139 (per-vertex dragging), not something that feature caused. `position` and `size` both correctly support expressions (`numOf` reads through an editable `{value}` object or a plain number), but a `points` entry's own literal `[x, y]` pair apparently never had this exercised — `numOf` on an unresolved expression *function* just returns the function itself unchanged (it only special-cases a `{value: number}` object), and the resulting `ownAbs[0] + <function>` in `resolvePointAbs` produces `NaN` via JS's own numeric coercion, not a thrown error. That `NaN` then propagates into the whole-plan fit-to-view computation (`render()`'s own `Math.min(minX, px)` reduction over every polygon/polyline point) since nothing there validates the result either, corrupting the entire SVG's `viewBox`/`width` — not just the one offending shape. No `#error` banner appears; the only visible symptom is a blank/broken viewer and a handful of cryptic `<svg> attribute width: Expected length, "NaN"` console errors, with no indication of which element or line caused it. Unaddressed — out of scope for D-139, which only reads/writes already-valid literal points.
-
 ## Secondary modules
 
 ## S-023 `annotations-module.js` re-derives geometry core already computed, with no enforced link

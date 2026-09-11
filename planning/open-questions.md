@@ -56,7 +56,7 @@ A plan's settings are otherwise purely textual — turning on e.g. `edgeLengths`
 
 ## F-016 Scale for a corner-reference-built polygon/polyline
 
-Duplicate is built ([D-074](decisions.md#d-074-f-016-duplicate--scale-kept-as-its-own-follow-up-not-bundled-in)); `rect`/`circle` now has two real resize mechanisms — Shift+arrow keys ([D-109](decisions.md#d-109-f-043-keyboard-driven-movenudge-and-resize-for-the-selected-element)) and visible, draggable resize handles ([D-116](decisions.md#d-116-f-016-visible-draggable-resize-handles-for-the-selected-rectcircle)). Still fully undesigned: a corner-reference-built polygon/polyline has no resize mechanism at all — scaling one would mean moving every referenced corner outward from a pivot, a materially different mechanism than either of the two `rect`/`circle` approaches, deliberately kept out of scope both times.
+Duplicate is built ([D-074](decisions.md#d-074-f-016-duplicate--scale-kept-as-its-own-follow-up-not-bundled-in)); `rect`/`circle` now has two real resize mechanisms — Shift+arrow keys ([D-109](decisions.md#d-109-f-043-keyboard-driven-movenudge-and-resize-for-the-selected-element)) and visible, draggable resize handles ([D-116](decisions.md#d-116-f-016-visible-draggable-resize-handles-for-the-selected-rectcircle)). D-139 has since given a polygon/polyline per-vertex reshaping (drag one corner, edit just that point) — a genuinely different capability from *scale*, which this entry is actually about: moving every referenced corner outward from one shared pivot, proportionally, in one gesture. Still fully undesigned.
 
 ## F-024 No rotation, and domain coverage hasn't been audited against what a real floor plan needs
 
@@ -77,10 +77,6 @@ Distinguishing two things: sharing just the rendered plan (F-005's own static-sn
 ## F-039 The grid should be able to sit in front of the plan, semi-transparent, not just behind it
 
 `grid-module.js` always inserts its pattern as the SVG's first children, painting behind every shape unconditionally. The ask: a plan should be able to choose a grid that sits *in front*, at reduced opacity — useful as an alignment overlay once a plan is dense enough that a background grid gets fully hidden. Not designed: the settings shape (a `layer: "front"|"back"` sibling to `size`/`type`), the default opacity, whether "front" means literally last in the SVG or needs to stay behind interactivity's own overlay icons, and re-confirming `pointer-events: none` once a front-layer grid sits visually above shapes (a regression there would be far more noticeable than for a background grid).
-
-## F-041 Alternatives to the drop-shadow "glow" for selection and hover
-
-Selection and hover both use a colored `drop-shadow` filter, differing only by hue — established early, reused since. (Connection-highlight used to be a third, distinctly-colored member of this family; it's since been unified to match plain hover's own color, [decisions.md D-101](decisions.md#d-101-a-connected-elements-hover-highlight-is-the-same-color-as-plain-hover), narrowing what "alternatives" would need to cover.) Not designed: what the alternatives actually are (a stroke/outline treatment, a background tint, a corner-handle indicator), or whether selection and hover should even keep sharing one visual family now that selection has a behavior (raising to the front) hover doesn't.
 
 ## F-042 Style modules and settings toggleable from the menu, beyond the one flag already covered
 
