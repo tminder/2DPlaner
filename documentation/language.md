@@ -147,6 +147,20 @@ with it too. Blocked, with a message, if moving a polygon's own vertex would mak
 self-intersect (respects `allowSelfIntersectingPolygons`, same as every other polygon edit);
 meaningless for an open `polyline`, so never checked there.
 
+**Proportional scale for `polygon`/`polyline` (D-143):** a selected shape also shows 4
+square handles at its own bounding-box corners (offset just outside the shape itself so
+they never sit exactly on top of a per-vertex handle, D-139's own, when a vertex happens to
+coincide with a bbox corner) — dragging one scales every point by the same factor from the
+diagonally-opposite corner, the same "fixed anchor, drag the other corner" gesture a rect's
+own resize handles already use. Offered only when every corner-reference point the shape
+uses is exclusive to it — a shape sharing so much as one corner with another element gets no
+scale handles at all, since moving that corner would silently distort whatever else
+references it too (an unresolved design question this version deliberately doesn't attempt
+to solve, rather than guess at). No self-intersection check here — unlike per-vertex
+dragging, a proportional scale from a fixed pivot can never turn an already-simple polygon
+into a self-intersecting one (a genuinely provable fact about linear transforms, not just
+untested).
+
 Higher-level concepts like a wall-with-a-door are not language keywords; they're composed
 from Elements and Connections by the plan's author, or provided as a reusable composition
 by a module (see Modules below).

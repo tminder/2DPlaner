@@ -1,7 +1,10 @@
 """F-016: visible, draggable resize handles for the selected rect/circle -- the corner/
 radius-drag equivalent of D-109's Shift+arrow keyboard resize, reachable directly in the
 viewer via mouse or touch. D-139 extends the same idea to polygon/polyline: one handle per
-vertex, dragging one reshapes the point instead of scaling the whole shape."""
+vertex, dragging one reshapes the point instead of scaling the whole shape. D-143 closes
+F-016's own other half: 4 bounding-box scale handles, proportional resize of every point
+from a shared pivot -- offered only when every corner-ref point the shape uses is exclusive
+to it, since a shared corner moving would silently distort whatever else references it."""
 
 import re
 
@@ -43,6 +46,47 @@ element room {
     points: [corner_a, corner_b]
     style: { stroke: "#654", strokeWidth: 0.04m }
   }
+  element shared_corner { position: [0.3m, 1.6m] }
+  element edge_1 {
+    shape: "polyline"
+    points: [shared_corner, [1.2m, 1.6m]]
+    style: { stroke: "#333", strokeWidth: 0.03m }
+  }
+  element edge_2 {
+    shape: "polygon"
+    points: [shared_corner, [1.2m, 1.6m], [1.2m, 2m], [0.3m, 2m]]
+    style: { fill: "#ccc" }
+  }
+}
+"""
+
+# rug/fence above are deliberately *not* axis-aligned rectangles (points scattered enough
+# to exercise general polygon geometry elsewhere) -- which means no single vertex sits
+# exactly at the shape's own bounding-box corner, making "which point is the pivot"
+# ambiguous to assert on directly. box/ref_box here are plain axis-aligned rectangles built
+# from literal points and from exclusive corner-refs respectively, so point index 0 is
+# unambiguously the tl pivot and index 2 is unambiguously the dragged br corner.
+SCALE_PLAN = """
+element room {
+  shape: "rect"
+  size: [4m, 3m]
+  position: [0m, 0m]
+  style: { fill: "#eee" }
+
+  element box {
+    shape: "polygon"
+    points: [[1m, 0.3m], [3m, 0.3m], [3m, 1m], [1m, 1m]]
+    style: { fill: "#e8b4bc" }
+  }
+  element c1 { position: [1m, 1.6m] }
+  element c2 { position: [3m, 1.6m] }
+  element c3 { position: [3m, 2.4m] }
+  element c4 { position: [1m, 2.4m] }
+  element ref_box {
+    shape: "polygon"
+    points: [c1, c2, c3, c4]
+    style: { fill: "#8ab" }
+  }
 }
 """
 
@@ -68,6 +112,14 @@ def select(page, node_id):
 
 def resize_handle_count(page):
     return page.locator(".resize-handle").count()
+
+
+def vertex_handle_count(page):
+    return page.locator('.resize-handle[data-corner="vertex"]').count()
+
+
+def scale_handle_count(page):
+    return page.locator('.resize-handle[data-corner^="scale-"]').count()
 
 
 def handle_center(page, node_id, corner):
@@ -246,15 +298,14 @@ def test_ordinary_body_drag_of_the_shape_still_works(app_page):
 
 
 def test_polygon_and_polyline_get_one_vertex_handle_per_point(app_page):
+    # D-143: rug (4 literal points, no corner-refs) is also eligible for scale, so it now
+    # shows 4 scale handles alongside these 4 vertex ones -- scoped to data-corner="vertex"
+    # throughout so this test stays about what D-139 itself actually added.
     load_plan(app_page, PLAN)
     select(app_page, "rug")
-    assert resize_handle_count(app_page) == 4
-    corners = set(app_page.evaluate(
-        "Array.from(document.querySelectorAll('.resize-handle')).map(h => h.dataset.corner)"
-    ))
-    assert corners == {"vertex"}
+    assert vertex_handle_count(app_page) == 4
     indices = sorted(int(i) for i in app_page.evaluate(
-        "Array.from(document.querySelectorAll('.resize-handle')).map(h => h.dataset.pointIndex)"
+        "Array.from(document.querySelectorAll('.resize-handle[data-corner=\"vertex\"]')).map(h => h.dataset.pointIndex)"
     ))
     assert indices == [0, 1, 2, 3]
 
@@ -286,7 +337,9 @@ def test_dragging_a_corner_ref_vertex_moves_the_referenced_node(app_page):
     had been dragged directly. `fence`'s own source text never changes."""
     load_plan(app_page, PLAN)
     select(app_page, "fence")
-    assert resize_handle_count(app_page) == 2
+    # D-143: corner_a/corner_b are exclusive to fence, so it's also scale-eligible -- 4
+    # scale handles alongside these 2 vertex ones.
+    assert vertex_handle_count(app_page) == 2
 
     before_text = source_text(app_page)
     before_a = node_position(before_text, "corner_a")
@@ -335,5 +388,81 @@ def test_polyline_vertex_drag_is_never_blocked_by_self_intersection(app_page):
     after = points_of(source_text(app_page), "wall")
     assert after[0] == before[0]
     assert after[1] != before[1]
+
+
+def test_scale_handles_appear_for_an_eligible_polygon(app_page):
+    # rug: 4 literal points, no corner-refs at all -- always eligible.
+    load_plan(app_page, PLAN)
+    select(app_page, "rug")
+    assert scale_handle_count(app_page) == 4
+    corners = set(app_page.evaluate(
+        "Array.from(document.querySelectorAll('.resize-handle[data-corner^=\"scale-\"]')).map(h => h.dataset.corner)"
+    ))
+    assert corners == {"scale-tl", "scale-tr", "scale-bl", "scale-br"}
+
+
+def test_scale_handles_appear_for_a_polygon_whose_corner_refs_are_exclusive_to_it(app_page):
+    # fence: corner_a/corner_b, referenced only by fence itself in this plan.
+    load_plan(app_page, PLAN)
+    select(app_page, "fence")
+    assert scale_handle_count(app_page) == 4
+
+
+def test_no_scale_handles_for_a_polygon_with_a_shared_corner(app_page):
+    # edge_2 shares shared_corner with edge_1 -- scaling it would silently distort edge_1
+    # too (D-074's own unresolved concern), so no scale handles at all, only its own 4
+    # vertex handles (one per point, D-139, unaffected).
+    load_plan(app_page, PLAN)
+    select(app_page, "edge_2")
+    assert scale_handle_count(app_page) == 0
+    assert vertex_handle_count(app_page) == 4
+
+
+def test_dragging_a_scale_handle_grows_every_point_proportionally_from_the_opposite_corner(app_page):
+    load_plan(app_page, SCALE_PLAN)
+    select(app_page, "box")
+    before = points_of(source_text(app_page), "box")
+
+    hbox = app_page.locator('.resize-handle[data-corner="scale-br"]').bounding_box()
+    hx, hy = hbox["x"] + hbox["width"] / 2, hbox["y"] + hbox["height"] / 2
+    drag(app_page, hx, hy, hx + 40, hy + 20)
+
+    after = points_of(source_text(app_page), "box")
+    assert after[0] == before[0]  # tl: the pivot, diagonally opposite "br" -- never moves
+    assert after[2] != before[2] and after[2][0] > before[2][0] and after[2][1] > before[2][1]  # br: grew
+    assert after[1] != before[1] and after[1][0] > before[1][0] and after[1][1] == before[1][1]  # tr: x only
+    assert after[3] != before[3] and after[3][0] == before[3][0] and after[3][1] > before[3][1]  # bl: y only
+
+
+def test_dragging_a_scale_handle_on_an_exclusive_corner_ref_shape_moves_the_corner_nodes(app_page):
+    # ref_box: points: [c1, c2, c3, c4] -- scaling it has no literal text of its own to
+    # edit; the referenced corners move instead, exactly like D-139's own single-corner
+    # delegation, just several at once.
+    load_plan(app_page, SCALE_PLAN)
+    select(app_page, "ref_box")
+    before_text = source_text(app_page)
+    before = {n: node_position(before_text, n) for n in ["c1", "c2", "c3", "c4"]}
+
+    hbox = app_page.locator('.resize-handle[data-corner="scale-br"]').bounding_box()
+    hx, hy = hbox["x"] + hbox["width"] / 2, hbox["y"] + hbox["height"] / 2
+    drag(app_page, hx, hy, hx + 30, hy + 15)
+
+    after_text = source_text(app_page)
+    after = {n: node_position(after_text, n) for n in ["c1", "c2", "c3", "c4"]}
+    assert after["c1"] == before["c1"]  # tl: the pivot -- untouched
+    assert after["c3"] != before["c3"]  # br: the dragged corner -- moved
+    assert "points: [c1, c2, c3, c4]" in after_text  # ref_box's own text is untouched
+
+
+def test_scale_handle_snaps_to_a_grid_intersection(app_page):
+    load_plan(app_page, "settings { grid: { size: 0.5 } }\n" + SCALE_PLAN)
+    select(app_page, "box")
+    hbox = app_page.locator('.resize-handle[data-corner="scale-br"]').bounding_box()
+    hx, hy = hbox["x"] + hbox["width"] / 2, hbox["y"] + hbox["height"] / 2
+    drag(app_page, hx, hy, hx + 53, hy + 31)
+
+    px, py = points_of(source_text(app_page), "box")[2]  # br
+    assert abs((px / 0.5) - round(px / 0.5)) < 0.01
+    assert abs((py / 0.5) - round(py / 0.5)) < 0.01
 
 

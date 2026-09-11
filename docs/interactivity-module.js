@@ -225,6 +225,13 @@
   // used the same way resizeDrag's own startAbs is; baseText reparsed fresh every move, same
   // reasoning as resizeDrag/drag — see applyVertexDrag.
   let vertexDrag = null;
+  // D-143: dragging one of a polygon/polyline's 4 bounding-box scale handles. pivotAbs is
+  // the diagonally-opposite bbox corner (fixed for the gesture, exactly like resizeDrag's
+  // own anchorAbs); originalCornerAbs is the dragged corner's own starting position, used
+  // to derive the live sx/sy scale factors; originalPoints snapshots every point's own
+  // absolute position (and, for a literal point, its own start/end/unit spans) so each
+  // move recomputes from the same fixed starting geometry, never accumulated.
+  let scaleDrag = null;
   // Ctrl/Cmd+drag on an element (replacing the old +/- icons): fromId never moves for the
   // gesture's duration, candidateId tracks whichever other element is currently under the
   // cursor (null when there's no valid target there) so it can get a live highlight.
@@ -273,7 +280,7 @@
   // order" fragility this entry warns about. A future fourth gesture, or a third guard,
   // now has one place to update instead of a third copy to remember.
   function isGestureActive() {
-    return !!(drag || canvasDrag || relateDrag || pinch || resizeDrag || marqueeDrag || vertexDrag);
+    return !!(drag || canvasDrag || relateDrag || pinch || resizeDrag || marqueeDrag || vertexDrag || scaleDrag);
   }
 
   // ---------- Snap geometry ----------
@@ -1079,6 +1086,14 @@
       if (typeof pt === "function" && pt.cornerRef && !ids.includes(pt.cornerRef)) ids.push(pt.cornerRef);
     }
     return ids;
+  }
+
+  // D-143: a polygon/polyline is eligible for whole-shape proportional scale only when
+  // every corner it references is exclusive to it — cornerUsers[cid] lists every shape
+  // referencing a given corner (core.computeCornerUsers), so length <= 1 means "nobody
+  // else." A literal-points-only shape (no corner refs at all) is always eligible.
+  function canScale(node, cornerUsers) {
+    return cornerRefIdsOf(node).every((cid) => (cornerUsers[cid]?.length ?? 0) <= 1);
   }
 
   // Moving every corner a shape references by the same delta is a rigid translation of the
@@ -2461,6 +2476,7 @@
         if (drag) { core.sourceEl.value = drag.baseText; drag = null; core.rerender({ preserveViewBox: true }); }
         if (resizeDrag) { core.sourceEl.value = resizeDrag.baseText; resizeDrag = null; core.rerender({ preserveViewBox: true }); }
         if (vertexDrag) { core.sourceEl.value = vertexDrag.baseText; vertexDrag = null; core.rerender({ preserveViewBox: true }); }
+        if (scaleDrag) { core.sourceEl.value = scaleDrag.baseText; scaleDrag = null; core.rerender({ preserveViewBox: true }); }
         if (marqueeDrag) {
           marqueeDrag.rectEl?.remove();
           for (const id of marqueeDrag.candidateIds) core.rootEl.querySelector(`[data-id="${CSS.escape(id)}"]`)?.classList.remove("marquee-candidate");
@@ -2517,6 +2533,23 @@
           } else {
             core.dragmsgEl.textContent = `'${nodeId}': this point is an expression, can't drag it directly — edit it in the editor`;
           }
+        } else if (corner.startsWith("scale-")) {
+          // D-143: proportional scale from the shape's own bounding-box corner, generalizing
+          // resizeDrag's own rect-corner algorithm from one point to N. Reparsed fresh every
+          // move (applyScaleDrag) — only the pivot and the dragged corner's own starting
+          // position need capturing here, the same "just the fixed gesture-start facts"
+          // reasoning resizeDrag/vertexDrag already establish.
+          let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+          for (const pt of node.props.points ?? []) {
+            let p;
+            try { p = core.resolvePointAbs(pt, abs, lastPositions); } catch (e) { continue; }
+            minX = Math.min(minX, p[0]); maxX = Math.max(maxX, p[0]);
+            minY = Math.min(minY, p[1]); maxY = Math.max(maxY, p[1]);
+          }
+          const cornerPos = { "scale-tl": [minX, minY], "scale-tr": [maxX, minY], "scale-bl": [minX, maxY], "scale-br": [maxX, maxY] };
+          const pivotPos = { "scale-tl": [maxX, maxY], "scale-tr": [minX, maxY], "scale-bl": [maxX, minY], "scale-br": [minX, minY] };
+          scaleDrag = { id: nodeId, corner, pivotAbs: pivotPos[corner], originalCornerAbs: cornerPos[corner], baseText: core.sourceEl.value };
+          core.rootEl.classList.add("dragging");
         } else {
           const [w0, h0] = node.props.size;
           const [x0, y0] = node.props.position ?? [];
@@ -2746,7 +2779,7 @@
   // multi-selection instead, one entry per member.
   function renderResizeHandles(svgEl, prog, positions) {
     if (!selectedId || selectedIds.size > 1) return;
-    if (isGestureActive() && !resizeDrag && !vertexDrag) return; // hidden mid-drag/pinch/relate, shown mid-resize/mid-vertex-drag
+    if (isGestureActive() && !resizeDrag && !vertexDrag && !scaleDrag) return; // hidden mid-drag/pinch/relate, shown mid-resize/mid-vertex/mid-scale-drag
     const node = prog.nodesById[selectedId];
     const abs = node && positions[selectedId];
     if (!node || !abs) return;
@@ -2793,13 +2826,48 @@
       // uses throughout) gets one consistent row of handles, not some vertices handled and
       // others silently not. What a given handle actually *does* when dragged differs (see
       // handlePointerDown's own "vertex" case) but its rendering here is uniform.
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       node.props.points.forEach((pt, i) => {
         let p;
         try { p = core.resolvePointAbs(pt, abs, positions); } catch (e) { return; } // unresolved corner ref — skip
+        minX = Math.min(minX, p[0]); maxX = Math.max(maxX, p[0]);
+        minY = Math.min(minY, p[1]); maxY = Math.max(maxY, p[1]);
         svgEl.insertAdjacentHTML("beforeend",
           `<circle class="resize-handle" data-node-id="${selectedId}" data-corner="vertex" data-point-index="${i}" ` +
           `cx="${p[0] * core.M}" cy="${p[1] * core.M}" r="${HANDLE_HALF}" />`);
       });
+
+      // D-143: proportional scale, from the shape's own bounding box — offered only when
+      // every corner-ref point this shape uses is exclusive to it (canScale). A shared
+      // corner moving would silently distort whatever else references it too — D-074's own
+      // unresolved concern, deliberately left unsolved rather than guessed at here; a shape
+      // with any shared corner just gets no scale handles at all, same as a degenerate
+      // (zero-width or zero-height) bounding box would produce a divide-by-zero below.
+      const cornerUsers = {};
+      core.computeCornerUsers(prog.root, cornerUsers);
+      if (maxX > minX && maxY > minY && canScale(node, cornerUsers)) {
+        // For a simple box-ish polygon (the common case — every point sits exactly at one
+        // of the bbox's own corners), a scale handle placed at the literal bbox corner
+        // would land right on top of D-139's own vertex handle there — same screen spot,
+        // different behavior, genuinely ambiguous to click. Offset outward along the
+        // corner's own diagonal (in *screen* placement only — the actual scale math in
+        // handlePointerDown/applyScaleDrag always uses the true, un-offset bbox corner) by
+        // just over one handle's own width, so the two stay visually and hit-test distinct
+        // wherever they'd otherwise coincide, and sit unobtrusively close when they don't.
+        // Found live: an existing D-139 test regressed on exactly this shape (a 4-point
+        // quad whose own corners are its bbox corners) before this fix.
+        const OFFSET = HANDLE_HALF * 6 / Math.SQRT2;
+        const scaleCorners = [
+          ["scale-tl", minX, minY, -OFFSET, -OFFSET], ["scale-tr", maxX, minY, OFFSET, -OFFSET],
+          ["scale-bl", minX, maxY, -OFFSET, OFFSET], ["scale-br", maxX, maxY, OFFSET, OFFSET],
+        ];
+        for (const [corner, x0, y0, dx, dy] of scaleCorners) {
+          const x = x0 * core.M + dx, y = y0 * core.M + dy;
+          svgEl.insertAdjacentHTML("beforeend",
+            `<rect class="resize-handle" data-node-id="${selectedId}" data-corner="${corner}" ` +
+            `x="${x - HANDLE_HALF}" y="${y - HANDLE_HALF}" width="${HANDLE_HALF * 2}" height="${HANDLE_HALF * 2}" />`);
+        }
+      }
     }
   }
 
@@ -3130,6 +3198,89 @@
     core.rerender({ preserveViewBox: true });
   }
 
+  // D-143: dragging one of a polygon/polyline's 4 bounding-box scale handles. Same
+  // reparse-baseText-fresh-every-call reasoning as applyResizeDrag/applyVertexDrag above —
+  // only pivotAbs/originalCornerAbs (the gesture's own fixed starting facts) are carried in
+  // scaleDrag itself; everything else (every point's own current position, cornerUsers)
+  // is re-derived fresh each move.
+  function applyScaleDrag(clientX, clientY) {
+    const cursor = clientToPlanPoint(clientX, clientY);
+    if (!cursor) return;
+    let base;
+    try { base = core.parseExpanded(scaleDrag.baseText); } catch (e) { return; }
+    const node = base.nodesById[scaleDrag.id];
+    if (!node || !node.props.points) return;
+
+    // Re-checked every move, not just at gesture start -- if the source changed underneath
+    // (a corner this shape uses became shared by something else), scaling further would
+    // reintroduce exactly the distortion-of-other-shapes problem canScale exists to avoid.
+    const cornerUsers = {};
+    core.computeCornerUsers(base.root, cornerUsers);
+    if (!canScale(node, cornerUsers)) return;
+
+    const positions = {};
+    core.computePositions(base.root, null, [0, 0], positions);
+    const ownAbs = positions[node.id];
+
+    const [snapX, snapY] = snappedGridPoint(cursor[0], cursor[1]);
+    const [pivotX, pivotY] = scaleDrag.pivotAbs;
+    const [origX, origY] = scaleDrag.originalCornerAbs;
+    const denomX = origX - pivotX, denomY = origY - pivotY;
+    if (!denomX || !denomY) return; // degenerate; render already guards a zero-width/height bbox
+    const sx = (snapX - pivotX) / denomX, sy = (snapY - pivotY) / denomY;
+    const scalePoint = (p) => [pivotX + (p[0] - pivotX) * sx, pivotY + (p[1] - pivotY) * sy];
+
+    // Every point must be genuinely editable before touching any of them -- a scale that
+    // silently left one point behind (an expression-valued literal, or a corner node whose
+    // own position is an expression) would look broken, not cleanly partially applied.
+    for (const pt of node.props.points) {
+      if (Array.isArray(pt)) {
+        if (!core.isEditable(pt[0]) || !core.isEditable(pt[1])) {
+          core.dragmsgEl.textContent = `${node.id}: one of its points is an expression, can't scale — edit it directly`;
+          return;
+        }
+      } else if (typeof pt === "function" && pt.cornerRef) {
+        const cornerNode = base.nodesById[pt.cornerRef];
+        const cpos = cornerNode?.props.position;
+        if (!cornerNode || !cpos || !core.isEditable(cpos[0]) || !core.isEditable(cpos[1])) {
+          core.dragmsgEl.textContent = `${node.id}: '${pt.cornerRef}' isn't a plain draggable point, can't scale`;
+          return;
+        }
+      }
+    }
+
+    // No self-intersection check here, deliberately — unlike D-139's own per-vertex drag
+    // (which can genuinely cross an edge), scaling every point by a fixed (sx, sy) from one
+    // shared pivot is an invertible linear map of the whole point set, and segment
+    // intersection is an affinely-invariant property: verified by proof (the sign tests
+    // segmentsIntersect/polygonSelfIntersects use flip in lockstep under any nonzero
+    // diagonal scale, never changing their outcome) and brute-force (20,000 random simple
+    // polygons scaled by random, including negative/mirroring, sx/sy: zero ever became
+    // self-intersecting). A shape that was already simple before this scale is provably
+    // still simple after it, so a check here could never actually reject anything.
+    const edits = [];
+    const touchedCorners = new Set();
+    for (const pt of node.props.points) {
+      if (Array.isArray(pt)) {
+        const [x0, y0] = pt;
+        const newAbs = scalePoint(core.resolvePointAbs(pt, ownAbs, positions));
+        edits.push({ start: x0.start, end: x0.end, text: core.formatNumber(newAbs[0] - ownAbs[0], x0.unit) });
+        edits.push({ start: y0.start, end: y0.end, text: core.formatNumber(newAbs[1] - ownAbs[1], y0.unit) });
+      } else if (typeof pt === "function" && pt.cornerRef && !touchedCorners.has(pt.cornerRef)) {
+        touchedCorners.add(pt.cornerRef);
+        const cornerNode = base.nodesById[pt.cornerRef];
+        const [cx0, cy0] = cornerNode.props.position;
+        const origAbs = positions[pt.cornerRef];
+        const newAbs = scalePoint(origAbs);
+        edits.push({ start: cx0.start, end: cx0.end, text: core.formatNumber(cx0.value + (newAbs[0] - origAbs[0]), cx0.unit) });
+        edits.push({ start: cy0.start, end: cy0.end, text: core.formatNumber(cy0.value + (newAbs[1] - origAbs[1]), cy0.unit) });
+      }
+    }
+
+    core.sourceEl.value = applyEditsDescending(scaleDrag.baseText, edits);
+    core.rerender({ preserveViewBox: true });
+  }
+
   function handlePointerMove(e) {
     if (e.pointerType === "touch" && activeTouches.has(e.pointerId)) {
       activeTouches.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -3137,6 +3288,7 @@
     if (pinch) { handlePinchMove(); return; }
     if (resizeDrag) { applyResizeDrag(e.clientX, e.clientY); return; }
     if (vertexDrag) { applyVertexDrag(e.clientX, e.clientY); return; }
+    if (scaleDrag) { applyScaleDrag(e.clientX, e.clientY); return; }
     if (canvasDrag) {
       const svg = core.rootEl.querySelector("svg");
       if (!svg) return;
@@ -3254,6 +3406,11 @@
     }
     if (vertexDrag) {
       vertexDrag = null;
+      core.commitUndoStep();
+      return;
+    }
+    if (scaleDrag) {
+      scaleDrag = null;
       core.commitUndoStep();
       return;
     }
@@ -3473,5 +3630,6 @@
     longPressTimer = null;
     resizeDrag = null;
     vertexDrag = null;
+    scaleDrag = null;
   });
 })();
