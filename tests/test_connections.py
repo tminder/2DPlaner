@@ -59,8 +59,8 @@ connection switch lamp
 def relate_menu_items(page):
     return page.evaluate(
         """() => Array.from(
-            document.querySelectorAll('#interactivity-context-menu li[data-i]')
-        ).map((li) => li.querySelector('.menu-label').textContent.trim())"""
+            document.querySelectorAll('#interactivity-context-menu button[data-i]')
+        ).map((btn) => btn.title)"""
     )
 
 
@@ -129,9 +129,9 @@ def test_already_connected_pair_disables_connect_offers_attach_outside(app_page)
     assert relate_menu_items(app_page) == ["Connect to lamp", "Attach outside lamp"]
     disabled = app_page.evaluate(
         """() => {
-            const items = Array.from(document.querySelectorAll('#interactivity-context-menu li[data-i]'));
-            const li = items.find((el) => el.querySelector('.menu-label').textContent.trim() === 'Connect to lamp');
-            return li.classList.contains('disabled');
+            const items = Array.from(document.querySelectorAll('#interactivity-context-menu button[data-i]'));
+            const btn = items.find((el) => el.title === 'Connect to lamp');
+            return btn.classList.contains('disabled');
         }"""
     )
     assert disabled is True
@@ -234,14 +234,15 @@ def test_hovering_one_end_of_a_chain_shows_the_whole_indirect_chain(app_page):
 def test_disconnect_submenu_lists_all_partners_and_removes_only_one(app_page):
     """D-144: Disconnect rows now live in the "Connections" submenu (alongside "Connect
     to..."), one flat "Disconnect from X" row per partner -- not a further-nested submenu
-    of bare partner names."""
+    of bare partner names. D-145: that submenu is a group button (radial-btn--group), not a
+    hover-flyout <li> header."""
     load_plan(app_page, THREE_WAY_CONNECTIONS)
     hx, hy = element_center(app_page, "hub")
     open_context_menu(app_page, hx, hy)
-    submenu_headers = app_page.eval_on_selector_all(
-        "#interactivity-context-menu li.has-submenu", "els => els.map(e => e.childNodes[0].textContent.trim())"
+    group_titles = app_page.eval_on_selector_all(
+        "#interactivity-context-menu button.radial-btn--group", "els => els.map(e => e.title)"
     )
-    assert "Connections" in submenu_headers
+    assert "Connections" in group_titles
     for name in ("a", "b", "c"):
         assert f"Disconnect from {name}" in menu_items(app_page)
     click_menu_item(app_page, "Disconnect from b")

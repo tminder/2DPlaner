@@ -55,34 +55,28 @@ def validation_violations(page):
 
 
 def menu_items(page):
-    """Labels of every clickable item currently shown in the right-click context menu
-    (its own .menu-label text only -- not the checkmark span), submenu items included by
-    their own real label (e.g. "Inside room"). A non-clickable group header like
-    "Placement" has no data-i and is deliberately excluded -- it isn't an action itself,
-    its children are. Every placement item is now always shown (checked/disabled convey
-    state instead of the item appearing/disappearing) -- use menu_item_state() to inspect
-    checked/disabled for a specific label."""
+    """Labels of every clickable button currently in the right-click context menu (its own
+    `title` tooltip text -- D-145's radial menu puts the label there, not in visible text),
+    nested-ring items included by their own real label (e.g. "Inside room"). A non-clickable
+    group button like "Placement" has no data-i and is deliberately excluded -- it isn't an
+    action itself, its children are. Every placement item is always shown (checked/disabled
+    convey state instead of the item appearing/disappearing) -- use menu_item_state() to
+    inspect checked/disabled for a specific label."""
     return page.evaluate(
         """() => Array.from(
-            document.querySelectorAll('#interactivity-context-menu li[data-i]')
-        ).map((li) => li.querySelector('.menu-label').textContent.trim())"""
+            document.querySelectorAll('#interactivity-context-menu button[data-i]')
+        ).map((btn) => btn.title)"""
     )
 
 
 def top_level_menu_labels(page):
-    """D-144: labels of only the menu's own top-level rows (direct <li> children of the
-    menu root) -- a leaf's own .menu-label text, or a group header's (e.g. "Connections")
-    plain label text with its nested <ul> stripped out first, since a group li's raw
-    textContent would otherwise include every nested item's label too. Used to check the
-    5-item top-level cap; menu_items() above deliberately includes nested items too, for
-    tests that just need to find/click a specific action wherever it lives."""
+    """D-144/D-145: labels of only the menu's own top-level rows -- direct <button>
+    children of the menu root (both plain leaf actions and group buttons), excluding
+    anything nested inside a .radial-ring. Used to check the 5-item top-level cap;
+    menu_items() above deliberately includes nested items too, for tests that just need to
+    find/click a specific action wherever it lives."""
     return page.evaluate(
-        """() => Array.from(document.querySelectorAll('#interactivity-context-menu > li')).map((li) => {
-            const clone = li.cloneNode(true);
-            clone.querySelector('.context-submenu')?.remove();
-            const label = clone.querySelector('.menu-label');
-            return (label ? label.textContent : clone.textContent).trim();
-        })"""
+        """() => Array.from(document.querySelectorAll('#interactivity-context-menu > button')).map((btn) => btn.title)"""
     )
 
 
@@ -90,12 +84,12 @@ def menu_item_state(page, label):
     """{'checked': bool, 'disabled': bool} for the item with this exact label."""
     return page.evaluate(
         """(label) => {
-            const items = Array.from(document.querySelectorAll('#interactivity-context-menu li[data-i]'));
-            const li = items.find((el) => el.querySelector('.menu-label').textContent.trim() === label);
-            if (!li) return null;
+            const items = Array.from(document.querySelectorAll('#interactivity-context-menu button[data-i]'));
+            const btn = items.find((el) => el.title === label);
+            if (!btn) return null;
             return {
-                checked: li.querySelector('.menu-check').textContent.trim() === '✓',
-                disabled: li.classList.contains('disabled'),
+                checked: btn.classList.contains('checked'),
+                disabled: btn.classList.contains('disabled'),
             };
         }""",
         label,
@@ -108,30 +102,29 @@ def open_context_menu(page, x, y):
 
 
 def click_menu_item(page, label):
-    """Finds the item with this exact label by its own data-i (never by array position,
-    which no longer lines up 1:1 with data-i once a non-clickable group header can also
-    appear among the <li> elements), hovers its own specific enclosing group open first if
-    it's nested inside one -- CSS :hover only responds to genuine pointer input, not a
-    dispatched event, so this uses Playwright's own .hover() the same way a real user would
-    open the flyout. Walks up to find *which* group (there can be more than one open at
-    once now, e.g. Placement and Disconnect together) rather than always hovering whichever
-    submenu happens to appear first in the menu."""
-    li_data_i, group_index = page.evaluate(
+    """Finds the button with this exact label (its own `title` attribute) among ALL leaf
+    buttons currently in the DOM -- D-145's radial menu always renders every ring, just
+    visually hidden (opacity/pointer-events) until its own group button is clicked, exactly
+    like D-144's always-in-DOM-but-CSS-hidden submenu <ul> before it. If the target lives
+    inside a not-yet-expanded ring, clicks that ring's own group button first (a real click,
+    not a hover -- unlike the old flyout, a radial group's children only ever bloom open via
+    a click, which also makes this work on touch where hover never did) to reveal it, then
+    clicks the target itself."""
+    data_i, group_index = page.evaluate(
         """(label) => {
-            const items = Array.from(document.querySelectorAll('#interactivity-context-menu li[data-i]'));
-            const match = items.find((el) => el.querySelector('.menu-label').textContent.trim() === label);
-            if (!match) return [null, -1];
-            const group = match.closest('li.has-submenu');
-            const groups = Array.from(document.querySelectorAll('#interactivity-context-menu li.has-submenu'));
-            return [match.dataset.i, group ? groups.indexOf(group) : -1];
+            const items = Array.from(document.querySelectorAll('#interactivity-context-menu button[data-i]'));
+            const match = items.find((el) => el.title === label);
+            if (!match) return [null, null];
+            const ring = match.closest('.radial-ring');
+            return [match.dataset.i, ring ? ring.dataset.groupIndex : null];
         }""",
         label,
     )
-    assert li_data_i is not None, f"menu item not found: {label!r}"
-    if group_index != -1:
-        page.locator("#interactivity-context-menu li.has-submenu").nth(group_index).hover()
+    assert data_i is not None, f"menu item not found: {label!r}"
+    if group_index is not None:
+        page.locator(f'#interactivity-context-menu button.radial-btn--group[data-group-index="{group_index}"]').click()
         page.wait_for_timeout(100)
-    page.locator(f'#interactivity-context-menu li[data-i="{li_data_i}"]').click()
+    page.locator(f'#interactivity-context-menu button[data-i="{data_i}"]').click()
     page.wait_for_timeout(200)
 
 

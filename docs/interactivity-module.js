@@ -82,32 +82,37 @@
       #interactivity-stack-badge .stack-line { display: flex; gap: 0.5em; opacity: 0.55; padding: 0.05rem 0; }
       #interactivity-stack-badge .stack-line.current { opacity: 1; }
       #interactivity-stack-badge .stack-marker { width: 0.9em; flex: none; }
-      .context-menu { position: fixed; z-index: 1002; margin: 0; padding: 4px 0; min-width: 170px;
-        list-style: none; background: #fff; border: 1px solid #ccc; border-radius: 6px;
-        box-shadow: 0 4px 14px rgba(0,0,0,0.18); font-family: system-ui, sans-serif; font-size: 13px; }
-      .context-menu[hidden] { display: none; }
-      /* Auto width (no max-width set anywhere) already grows the menu to fit its widest
-         label — this just stops a long one (e.g. an element with a long custom label
-         property) from wrapping onto a second line inside that width, which read as a
-         layout glitch rather than one continuous line of text. */
-      .context-menu li { padding: 6px 16px; cursor: pointer; white-space: nowrap; }
-      .context-menu li:hover { background: #eef2ff; }
-      .context-menu li.danger { color: #a11; }
-      .context-menu li.disabled { color: #aaa; cursor: default; }
-      .context-menu li.disabled:hover { background: none; }
-      .context-menu .menu-check { display: inline-block; width: 1.1em; }
-      /* A group header (e.g. "Placement") isn't itself clickable — no data-i, see
-         handleMenuClick — hovering it reveals the nested list as a flyout to the right,
-         the same convention a native app's own hierarchical menu uses. No viewport-edge
-         handling, matching the top-level menu itself (positioned directly at the click
-         point with no edge-clamping either). */
-      .context-menu li.has-submenu { position: relative; }
-      .context-menu li.has-submenu::after { content: "▸"; float: right; opacity: 0.5; margin-left: 12px; }
-      .context-menu .context-submenu { display: none; position: absolute; top: -5px; left: 100%;
-        margin: 0; padding: 4px 0; min-width: 170px; list-style: none; background: #fff;
-        border: 1px solid #ccc; border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,0.18);
-        font-family: system-ui, sans-serif; font-size: 13px; }
-      .context-menu li.has-submenu:hover > .context-submenu { display: block; }
+      /* D-145: round buttons arranged in a ring around the click point, replacing D-144's
+         list-style dropdown -- kept as a single fixed-position 0x0 anchor box at the click
+         point itself, with every button absolutely positioned off of it via its own inline
+         transform: translate(dx, dy) (see renderRadialMenu). */
+      .radial-menu { position: fixed; z-index: 1002; font-family: system-ui, sans-serif; }
+      .radial-menu[hidden] { display: none; }
+      .radial-btn { position: absolute; left: 0; top: 0; width: 42px; height: 42px;
+        margin: -21px 0 0 -21px; padding: 0; border-radius: 50%; border: 1px solid #ccc;
+        background: #fff; color: #333; cursor: pointer; display: flex; align-items: center;
+        justify-content: center; box-shadow: 0 4px 14px rgba(0,0,0,0.18); }
+      .radial-btn:not(.disabled):hover { background: #eef2ff; }
+      .radial-btn svg { width: 20px; height: 20px; }
+      .radial-btn.danger { color: #a11; }
+      .radial-btn.disabled { opacity: 0.4; cursor: default; }
+      /* Placement's own radio-style Inside/Snapped/Free -- no room for a checkmark glyph on
+         a 42px circle, so "currently active" is a tinted fill instead. */
+      .radial-btn.checked { background: #dbe7ff; border-color: #7c9fe0; }
+      /* A group button (e.g. "Placement") isn't itself an action -- clicking it toggles a
+         second ring of its own children blooming from this same button's own angle, instead
+         of a side flyout (D-144's own hover-based one never worked reliably on touch to
+         begin with). The dot marks "has more"; .expanded restyles the button once its own
+         ring is showing, so the anchor stays visually obvious while open. */
+      .radial-btn--group::after { content: ""; position: absolute; right: -1px; bottom: -1px;
+        width: 9px; height: 9px; border-radius: 50%; background: #7c9fe0; border: 1.5px solid #fff; }
+      .radial-btn--group.expanded { background: #eef2ff; border-color: #7c9fe0; }
+      /* Always rendered (never created on demand) so a test can locate a nested action
+         directly by its own button -- exactly like D-144's own always-in-DOM, CSS-hidden
+         submenu <ul>. No edge-of-viewport handling beyond the anchor's own clamped
+         placement (see showRadialMenu) -- a ring's own extent is accounted for there. */
+      .radial-ring { position: absolute; left: 0; top: 0; opacity: 0; pointer-events: none; }
+      .radial-ring.expanded { opacity: 1; pointer-events: auto; }
 
       #interactivity-scale-bar { position: absolute; right: 10px; bottom: 10px;
         display: flex; flex-direction: column; align-items: center; pointer-events: none;
@@ -153,9 +158,9 @@
   document.head.appendChild(styleEl);
   injectStyles(styleEl);
 
-  const contextMenuEl = document.createElement("ul");
+  const contextMenuEl = document.createElement("div");
   contextMenuEl.id = "interactivity-context-menu";
-  contextMenuEl.className = "context-menu";
+  contextMenuEl.className = "radial-menu";
   contextMenuEl.hidden = true;
   document.body.appendChild(contextMenuEl);
 
@@ -247,6 +252,16 @@
   // confirmation the drag gesture's own drop already does; anything else just cancels.
   let connectPick = null; // { fromId }
   let contextMenuItems = [];
+  // D-145: which group's own ring (by index, matching renderRadialMenu's own numbering
+  // order) is currently blooming open, if any -- reset on every fresh menu open, toggled by
+  // handleMenuClick's own group-button branch, read back by renderRadialMenu to decide which
+  // ring gets the .expanded class on a re-render triggered by that same toggle.
+  let expandedGroup = null;
+  // The exact renderItems tree the menu is currently showing -- re-rendered as-is (just with
+  // a different expandedGroup) on a group-button click, never rebuilt from scratch, so
+  // toggling a ring open never re-runs openContextMenu/openRelateMenu's own action-building
+  // logic a second time.
+  let lastRenderItems = [];
   // F-019/F-021: the point and last-chosen id of the last plain click (not a drag) that
   // landed on more than one stacked element — lets a *repeated* click at the same spot step
   // to the next thing underneath, rather than always re-grabbing whatever's on top. Set in
@@ -1627,7 +1642,7 @@
 
   // The Ctrl-drag gesture's own drop-point choice menu — a pair's actions, not one node's
   // own (unlike contextMenuItems/openContextMenu), so it's built by this separate function
-  // reusing the exact same contextMenuEl/contextMenuItems/renderMenuItems/handleMenuClick/
+  // reusing the exact same contextMenuEl/contextMenuItems/showRadialMenu/handleMenuClick/
   // closeContextMenu machinery rather than folded into openContextMenu itself.
   function openRelateMenu(fromId, toId, x, y) {
     contextMenuItems = [];
@@ -1641,6 +1656,7 @@
 
     renderItems.push({ i: push({
       label: `Connect to ${displayName(toNode)}`,
+      icon: "link",
       action: () => createConnection(fromId, toId),
       disabled: alreadyConnected,
     }) });
@@ -1648,14 +1664,12 @@
     if (!fromNode.props.shape && toNode.props.shape === "rect" && toNode.props.size) {
       renderItems.push({ i: push({
         label: `Attach outside ${displayName(toNode)}`,
+        icon: "external-link",
         action: () => attachOutside(fromId, toId, x, y),
       }) });
     }
 
-    contextMenuEl.innerHTML = renderMenuItems(renderItems);
-    contextMenuEl.style.left = `${x}px`;
-    contextMenuEl.style.top = `${y}px`;
-    contextMenuEl.hidden = false;
+    showRadialMenu(renderItems, x, y);
   }
 
   // D-144: right-click's own way to start the same "pick a target" flow relateDrag's own
@@ -2097,27 +2111,123 @@
     return node.props.label ?? node.id;
   }
 
+  // D-145: one hand-authored icon per distinct action, in the exact same style already used
+  // for the app's own ribbon-bar buttons (see docs/index.html's rename-btn/plan-new-btn) --
+  // a fixed viewBox/stroke wrapper (ICON_SVG_OPEN/CLOSE) around each icon's own path data,
+  // so a button's full label only has to live in its `title` tooltip, not crammed into a
+  // 42px circle.
+  const ICON_SVG_OPEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">';
+  const ICON_SVG_CLOSE = "</svg>";
+  const ICONS = {
+    copy: '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>',
+    trash: '<polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line>',
+    layers: '<polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline>',
+    "chevrons-up": '<polyline points="17 11 12 6 7 11"></polyline><polyline points="17 18 12 13 7 18"></polyline>',
+    "chevrons-down": '<polyline points="7 13 12 18 17 13"></polyline><polyline points="7 6 12 11 17 6"></polyline>',
+    move: '<polyline points="5 9 2 12 5 15"></polyline><polyline points="9 5 12 2 15 5"></polyline><polyline points="15 19 12 22 9 19"></polyline><polyline points="19 9 22 12 19 15"></polyline><line x1="2" y1="12" x2="22" y2="12"></line><line x1="12" y1="2" x2="12" y2="22"></line>',
+    "log-in": '<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line>',
+    magnet: '<path d="m6 15-4-4 6.75-6.77a7.79 7.79 0 0 1 11 11L13 22l-4-4 6.39-6.36a2.14 2.14 0 0 0-3-3L6 15"></path><path d="m5 8 4 4"></path><path d="m12 15 4 4"></path>',
+    unlock: '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 9.9-1"></path>',
+    link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>',
+    unlink: '<path d="m18.84 12.25 1.72-1.71a5.004 5.004 0 0 0-.12-7.07 5.006 5.006 0 0 0-6.95 0l-1.72 1.71"></path><path d="m5.17 11.75-1.71 1.71a5.004 5.004 0 0 0 .12 7.07 5.006 5.006 0 0 0 6.95 0l1.71-1.71"></path><line x1="8" y1="2" x2="8" y2="5"></line><line x1="2" y1="8" x2="5" y2="8"></line><line x1="16" y1="19" x2="16" y2="22"></line><line x1="19" y1="16" x2="22" y2="16"></line>',
+    "external-link": '<path d="M15 3h6v6"></path><path d="M10 14 21 3"></path><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>',
+  };
+
+  // First ring (top-level actions/groups) and second ring (a group's own children,
+  // "blooming" from that group's own button) -- radii tuned empirically live, same as
+  // D-143's own handle-offset tuning. RADIUS_2's inner edge sits comfortably clear of
+  // RADIUS_1's outer edge (118-21=97 vs 62+21=83) so the two rings never visually overlap.
+  const RADIAL_1 = 62;
+  const RADIAL_2 = 118;
+  const RADIAL_BTN_RADIUS = 21;
+
+  function polarOffset(radius, angleDeg) {
+    const rad = (angleDeg * Math.PI) / 180;
+    return [radius * Math.cos(rad), radius * Math.sin(rad)];
+  }
+
+  // N peers with no particular direction of their own -- spread evenly around a full circle,
+  // starting at the top and going clockwise (index 0 is always straight up).
+  function ringAngle(index, count) {
+    return count <= 1 ? -90 : -90 + (360 / count) * index;
+  }
+
+  // A group's own children are conceptually attached to the button that revealed them --
+  // fanned across a small arc *centered on that parent button's own angle* (capped, so a
+  // group with many connections doesn't sprawl a full half-circle) rather than spread around
+  // the whole circle like top-level peers are.
+  function fanAngle(index, count, parentAngleDeg) {
+    if (count <= 1) return parentAngleDeg;
+    const spread = Math.min(150, 42 * (count - 1));
+    return parentAngleDeg - spread / 2 + (spread / (count - 1)) * index;
+  }
+
+  function radialButtonHtml(item, dataAttr, extraClass, dx, dy) {
+    const classes = ["radial-btn", extraClass, item.danger ? "danger" : "", item.disabled ? "disabled" : "",
+      item.checked ? "checked" : ""].filter(Boolean).join(" ");
+    return `<button type="button" class="${classes}" ${dataAttr} title="${escapeHtml(item.label)}" ` +
+      `style="transform: translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px)">` +
+      `${ICON_SVG_OPEN}${ICONS[item.icon] ?? ""}${ICON_SVG_CLOSE}</button>`;
+  }
+
   // contextMenuItems stays the flat action registry handleMenuClick already indexes into
   // (data-i="N" -> contextMenuItems[N]) regardless of how deep a leaf is visually nested —
   // renderItems is a separate, small tree describing layout only. A leaf is { i }; a group
-  // (e.g. "Placement") is { label, group: [...] }, not itself clickable (no data-i), shown
-  // as a hover flyout matching native app menu convention.
-  function renderMenuItems(items) {
-    return items.map((entry) => {
+  // (e.g. "Placement") is { label, icon, group: [...] }, not itself an action (no data-i) —
+  // clicking it toggles expandedGroup instead (see handleMenuClick), blooming its own
+  // children as a second ring around this same click point rather than a hover flyout.
+  function renderRadialMenu(items) {
+    const count = items.length;
+    let groupIndex = -1;
+    let firstRingHtml = "";
+    let ringsHtml = "";
+    items.forEach((entry, idx) => {
+      const angleDeg = ringAngle(idx, count);
+      const [dx, dy] = polarOffset(RADIAL_1, angleDeg);
       if (entry.group) {
-        return `<li class="has-submenu">${escapeHtml(entry.label)}<ul class="context-submenu">${renderMenuItems(entry.group)}</ul></li>`;
+        groupIndex += 1;
+        const g = groupIndex;
+        const expanded = g === expandedGroup;
+        firstRingHtml += radialButtonHtml(
+          { label: entry.label, icon: entry.icon },
+          `data-group-index="${g}"`,
+          `radial-btn--group${expanded ? " expanded" : ""}`,
+          dx, dy,
+        );
+        const childCount = entry.group.length;
+        const childrenHtml = entry.group.map((childEntry, ci) => {
+          const [cdx, cdy] = polarOffset(RADIAL_2, fanAngle(ci, childCount, angleDeg));
+          return radialButtonHtml(contextMenuItems[childEntry.i], `data-i="${childEntry.i}"`, "", cdx, cdy);
+        }).join("");
+        ringsHtml += `<div class="radial-ring${expanded ? " expanded" : ""}" data-group-index="${g}">${childrenHtml}</div>`;
+      } else {
+        firstRingHtml += radialButtonHtml(contextMenuItems[entry.i], `data-i="${entry.i}"`, "", dx, dy);
       }
-      const item = contextMenuItems[entry.i];
-      const classes = [item.danger ? "danger" : "", item.disabled ? "disabled" : ""].filter(Boolean).join(" ");
-      // The checkmark slot is only reserved for items that are actually part of a
-      // checkable set (radio-style options like Placement's own Inside/Flush/Free) —
-      // `checked` is `undefined` for a plain action like Duplicate/Delete, so it renders
-      // with no check span at all rather than an always-empty one, keeping its label
-      // flush with a group header's own (also check-less) left edge instead of sitting
-      // visibly further right than it.
-      const check = item.checked !== undefined ? `<span class="menu-check">${item.checked ? "✓" : ""}</span>` : "";
-      return `<li data-i="${entry.i}"${classes ? ` class="${classes}"` : ""}>${check}<span class="menu-label">${escapeHtml(item.label)}</span></li>`;
-    }).join("");
+    });
+    return firstRingHtml + ringsHtml;
+  }
+
+  function clampMenuCoord(v, viewportSize, extent, margin) {
+    const lo = extent + margin, hi = viewportSize - extent - margin;
+    // Viewport too small to avoid all clipping either way -- center is the least-bad choice,
+    // rather than Math.min/Math.max silently inverting into a nonsensical value.
+    return lo > hi ? viewportSize / 2 : Math.min(Math.max(v, lo), hi);
+  }
+
+  // Shared by openContextMenu and openRelateMenu -- both just build a renderItems tree and
+  // hand it off here. Re-run (with the same items, just a new expandedGroup) by
+  // handleMenuClick's own group-toggle branch, never by re-opening the menu from scratch.
+  function showRadialMenu(items, x, y) {
+    expandedGroup = null;
+    lastRenderItems = items;
+    contextMenuEl.innerHTML = renderRadialMenu(items);
+    // Clamped against the *worst case* extent (assuming a group ends up expanded), not just
+    // the first ring's own -- so expanding a group later never needs the anchor itself to
+    // jump to stay on screen.
+    const extent = RADIAL_2 + RADIAL_BTN_RADIUS;
+    contextMenuEl.style.left = `${clampMenuCoord(x, window.innerWidth, extent, 8)}px`;
+    contextMenuEl.style.top = `${clampMenuCoord(y, window.innerHeight, extent, 8)}px`;
+    contextMenuEl.hidden = false;
   }
 
   function openContextMenu(nodeId, x, y) {
@@ -2131,11 +2241,11 @@
     // those have an obvious/requested group meaning.
     const groupTargets = selectedIds.size > 1 && selectedIds.has(nodeId) ? [...selectedIds] : null;
     if (groupTargets) {
-      renderItems.push({ i: push({ label: `Duplicate ${groupTargets.length} Elements`, action: () => duplicateElements(groupTargets) }) });
-      renderItems.push({ i: push({ label: `Delete ${groupTargets.length} Elements`, danger: true, action: () => deleteElements(groupTargets) }) });
+      renderItems.push({ i: push({ label: `Duplicate ${groupTargets.length} Elements`, icon: "copy", action: () => duplicateElements(groupTargets) }) });
+      renderItems.push({ i: push({ label: `Delete ${groupTargets.length} Elements`, icon: "trash", danger: true, action: () => deleteElements(groupTargets) }) });
     } else {
-      renderItems.push({ i: push({ label: "Duplicate", action: () => duplicateElement(nodeId) }) });
-      renderItems.push({ i: push({ label: "Delete Element", danger: true, action: () => deleteElement(nodeId) }) });
+      renderItems.push({ i: push({ label: "Duplicate", icon: "copy", action: () => duplicateElement(nodeId) }) });
+      renderItems.push({ i: push({ label: "Delete Element", icon: "trash", danger: true, action: () => deleteElement(nodeId) }) });
     }
 
     // D-144: Front/back offered whenever the element has any sibling at all — not gated on
@@ -2149,9 +2259,9 @@
     if (parent && parent.children.length > 1) {
       const idx = parent.children.indexOf(node);
       const orderItems = [];
-      if (idx < parent.children.length - 1) orderItems.push({ i: push({ label: "Bring to Front", action: () => reorderSibling(nodeId, true) }) });
-      if (idx > 0) orderItems.push({ i: push({ label: "Send to Back", action: () => reorderSibling(nodeId, false) }) });
-      renderItems.push({ label: "Order", group: orderItems });
+      if (idx < parent.children.length - 1) orderItems.push({ i: push({ label: "Bring to Front", icon: "chevrons-up", action: () => reorderSibling(nodeId, true) }) });
+      if (idx > 0) orderItems.push({ i: push({ label: "Send to Back", icon: "chevrons-down", action: () => reorderSibling(nodeId, false) }) });
+      renderItems.push({ label: "Order", icon: "layers", group: orderItems });
     }
     // F-035: setting placement/flush directly, instead of hand-typing the exact property
     // names into the source, grouped under one "Placement" submenu naming the actual
@@ -2175,7 +2285,7 @@
 
       const placementItems = [
         {
-          i: push({ label: `Inside ${displayName(parent)}`, action: () => setPlacementInside(nodeId), checked: ownInside, disabled: ownInside }),
+          i: push({ label: `Inside ${displayName(parent)}`, icon: "log-in", action: () => setPlacementInside(nodeId), checked: ownInside, disabled: ownInside }),
         },
         {
           // Reported directly as unclear: "Flush against X" leaned on "flush" as jargon
@@ -2183,6 +2293,7 @@
           // actual effect in plain terms instead of naming the underlying property.
           i: push({
             label: `Snapped to ${displayName(container ?? parent)}'s edge`,
+            icon: "magnet",
             action: () => toggleFlush(nodeId),
             checked: ownFlush,
             disabled: resolvedPlacement !== "inside",
@@ -2197,10 +2308,10 @@
           // row visually — an explicit `checked: false` (rather than leaving it `undefined`,
           // which would omit the checkmark slot entirely, see the top-level actions above)
           // keeps its label aligned with its two siblings.
-          i: push({ label: "No placement (moves freely)", action: () => clearPlacement(nodeId), checked: false, disabled: !hasOwnPlacementProps || ancestorConstrains }),
+          i: push({ label: "No placement (moves freely)", icon: "unlock", action: () => clearPlacement(nodeId), checked: false, disabled: !hasOwnPlacementProps || ancestorConstrains }),
         },
       ];
-      renderItems.push({ label: "Placement", group: placementItems });
+      renderItems.push({ label: "Placement", icon: "move", group: placementItems });
     }
 
     // D-144: "Connect to..." (right-click's own way to start the same pick-a-target flow
@@ -2215,25 +2326,24 @@
     // one row per existing connection, same displayName-per-partner shape Placement's own
     // flat rows already use.
     const connectionItems = [
-      { i: push({ label: "Connect to…", action: () => startConnectPick(nodeId) }) },
+      { i: push({ label: "Connect to…", icon: "link", action: () => startConnectPick(nodeId) }) },
     ];
     const ownConnections = program.connections.filter((c) => c.from === nodeId || c.to === nodeId);
     for (const c of ownConnections) {
       const partnerId = c.from === nodeId ? c.to : c.from;
       const partner = program.nodesById[partnerId];
-      connectionItems.push({ i: push({ label: `Disconnect from ${displayName(partner)}`, action: () => removeConnection(c.from, c.to) }) });
+      connectionItems.push({ i: push({ label: `Disconnect from ${displayName(partner)}`, icon: "unlink", action: () => removeConnection(c.from, c.to) }) });
     }
-    renderItems.push({ label: "Connections", group: connectionItems });
+    renderItems.push({ label: "Connections", icon: "link", group: connectionItems });
 
-    contextMenuEl.innerHTML = renderMenuItems(renderItems);
-    contextMenuEl.style.left = `${x}px`;
-    contextMenuEl.style.top = `${y}px`;
-    contextMenuEl.hidden = false;
+    showRadialMenu(renderItems, x, y);
   }
 
   function closeContextMenu() {
     contextMenuEl.hidden = true;
     contextMenuItems = [];
+    lastRenderItems = [];
+    expandedGroup = null;
   }
 
   // Selecting a stacked/covered element (D-077's click-cycling) puts it in the *logical*
@@ -2791,9 +2901,19 @@
   }
 
   function handleMenuClick(e) {
-    const li = e.target.closest("li[data-i]");
-    if (!li) return;
-    const item = contextMenuItems[Number(li.dataset.i)];
+    // D-145: a group button (e.g. "Placement") isn't an action itself -- it toggles its own
+    // ring open/closed and re-renders in place (same renderItems, just a new expandedGroup),
+    // rather than resolving through contextMenuItems like every data-i button below.
+    const groupBtn = e.target.closest("button.radial-btn--group");
+    if (groupBtn) {
+      const g = Number(groupBtn.dataset.groupIndex);
+      expandedGroup = expandedGroup === g ? null : g;
+      contextMenuEl.innerHTML = renderRadialMenu(lastRenderItems);
+      return;
+    }
+    const btn = e.target.closest("button[data-i]");
+    if (!btn) return;
+    const item = contextMenuItems[Number(btn.dataset.i)];
     if (item?.disabled) return;
     closeContextMenu();
     item?.action();
