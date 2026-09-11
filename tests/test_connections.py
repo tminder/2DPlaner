@@ -232,16 +232,19 @@ def test_hovering_one_end_of_a_chain_shows_the_whole_indirect_chain(app_page):
 
 
 def test_disconnect_submenu_lists_all_partners_and_removes_only_one(app_page):
+    """D-144: Disconnect rows now live in the "Connections" submenu (alongside "Connect
+    to..."), one flat "Disconnect from X" row per partner -- not a further-nested submenu
+    of bare partner names."""
     load_plan(app_page, THREE_WAY_CONNECTIONS)
     hx, hy = element_center(app_page, "hub")
     open_context_menu(app_page, hx, hy)
     submenu_headers = app_page.eval_on_selector_all(
         "#interactivity-context-menu li.has-submenu", "els => els.map(e => e.childNodes[0].textContent.trim())"
     )
-    assert "Disconnect" in submenu_headers
+    assert "Connections" in submenu_headers
     for name in ("a", "b", "c"):
-        assert name in menu_items(app_page)
-    click_menu_item(app_page, "b")
+        assert f"Disconnect from {name}" in menu_items(app_page)
+    click_menu_item(app_page, "Disconnect from b")
     text = source_text(app_page)
     assert "connection hub b" not in text
     assert "connection hub a" in text

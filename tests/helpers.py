@@ -69,6 +69,23 @@ def menu_items(page):
     )
 
 
+def top_level_menu_labels(page):
+    """D-144: labels of only the menu's own top-level rows (direct <li> children of the
+    menu root) -- a leaf's own .menu-label text, or a group header's (e.g. "Connections")
+    plain label text with its nested <ul> stripped out first, since a group li's raw
+    textContent would otherwise include every nested item's label too. Used to check the
+    5-item top-level cap; menu_items() above deliberately includes nested items too, for
+    tests that just need to find/click a specific action wherever it lives."""
+    return page.evaluate(
+        """() => Array.from(document.querySelectorAll('#interactivity-context-menu > li')).map((li) => {
+            const clone = li.cloneNode(true);
+            clone.querySelector('.context-submenu')?.remove();
+            const label = clone.querySelector('.menu-label');
+            return (label ? label.textContent : clone.textContent).trim();
+        })"""
+    )
+
+
 def menu_item_state(page, label):
     """{'checked': bool, 'disabled': bool} for the item with this exact label."""
     return page.evaluate(

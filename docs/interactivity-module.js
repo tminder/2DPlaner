@@ -19,6 +19,10 @@
       #plan-root.dragging svg { cursor: grabbing; }
       #plan-root svg [data-id] { cursor: grab; }
       #plan-root svg [data-id]:active { cursor: grabbing; }
+      /* D-144: right-click's own "Connect to…" pick-a-target mode — a crosshair over the
+         whole viewer, not just [data-id] shapes, since empty canvas is a valid (if inert)
+         click during picking too, same as Ctrl/Cmd-drag's own gesture. */
+      #plan-root.picking svg, #plan-root.picking svg [data-id] { cursor: crosshair; }
       /* D-138: bumped from 2px/0.55 -- reported as too subtle, alongside the ask that hover
          and selected share the same glow treatment (this rule and .selected below now
          differ only in color, both single soft drop-shadows at the same blur/alpha). */
@@ -236,6 +240,12 @@
   // gesture's duration, candidateId tracks whichever other element is currently under the
   // cursor (null when there's no valid target there) so it can get a live highlight.
   let relateDrag = null;
+  // D-144: the right-click "Connect to…" menu action's own way of picking a target —
+  // relateDrag's own candidate-highlight/validity logic, just triggered by hover-with-no-
+  // button-down (started from a menu click, not a mousedown) instead of hover-during-drag.
+  // The next click resolves it: a valid candidate opens the exact same openRelateMenu
+  // confirmation the drag gesture's own drop already does; anything else just cancels.
+  let connectPick = null; // { fromId }
   let contextMenuItems = [];
   // F-019/F-021: the point and last-chosen id of the last plain click (not a drag) that
   // landed on more than one stacked element — lets a *repeated* click at the same spot step
@@ -280,7 +290,7 @@
   // order" fragility this entry warns about. A future fourth gesture, or a third guard,
   // now has one place to update instead of a third copy to remember.
   function isGestureActive() {
-    return !!(drag || canvasDrag || relateDrag || pinch || resizeDrag || marqueeDrag || vertexDrag || scaleDrag);
+    return !!(drag || canvasDrag || relateDrag || pinch || resizeDrag || marqueeDrag || vertexDrag || scaleDrag || connectPick);
   }
 
   // ---------- Snap geometry ----------
@@ -1648,6 +1658,25 @@
     contextMenuEl.hidden = false;
   }
 
+  // D-144: right-click's own way to start the same "pick a target" flow relateDrag's own
+  // Ctrl/Cmd+drag already offers — closing the context menu already happens on any menu
+  // click (handleMenuClick), so this only needs to arm connectPick itself. The live
+  // candidate highlight (handlePointerMove) and the click that resolves it
+  // (handlePointerDown) are handled where every other gesture-ish state already is.
+  function startConnectPick(fromId) {
+    connectPick = { fromId };
+    core.rootEl.classList.add("picking");
+    core.dragmsgEl.textContent = `'${fromId}': click another element to connect it to — Escape to cancel.`;
+  }
+
+  function cancelConnectPick() {
+    if (!connectPick) return;
+    if (connectPick.candidateId) core.rootEl.querySelector(`[data-id="${CSS.escape(connectPick.candidateId)}"]`)?.classList.remove("relate-candidate");
+    connectPick = null;
+    core.rootEl.classList.remove("picking");
+    core.dragmsgEl.textContent = "";
+  }
+
   // ---------- Duplicate (F-016) ----------
   // Locates the identifier token immediately following the `element` keyword at a known
   // declaration start — node.start already points there (D-030), but only covers the
@@ -2109,17 +2138,20 @@
       renderItems.push({ i: push({ label: "Delete Element", danger: true, action: () => deleteElement(nodeId) }) });
     }
 
-    // Front/back items offered whenever the element has any sibling at all — not gated on
+    // D-144: Front/back offered whenever the element has any sibling at all — not gated on
     // detecting an actual overlap at this exact pixel (found not to be intuitive: an author
     // may want to set stacking order pre-emptively, or the one-point sample simply might not
     // land where two siblings currently overlap even though they do elsewhere). Each item
-    // still hides itself once it would be a no-op (already first/last).
+    // still hides itself once it would be a no-op (already first/last). Grouped under one
+    // "Order" submenu (was two flat top-level items) as part of the top-level cap below.
     const node = program.nodesById[nodeId];
     const parent = node?.parentId ? program.nodesById[node.parentId] : null;
     if (parent && parent.children.length > 1) {
       const idx = parent.children.indexOf(node);
-      if (idx < parent.children.length - 1) renderItems.push({ i: push({ label: "Bring to Front", action: () => reorderSibling(nodeId, true) }) });
-      if (idx > 0) renderItems.push({ i: push({ label: "Send to Back", action: () => reorderSibling(nodeId, false) }) });
+      const orderItems = [];
+      if (idx < parent.children.length - 1) orderItems.push({ i: push({ label: "Bring to Front", action: () => reorderSibling(nodeId, true) }) });
+      if (idx > 0) orderItems.push({ i: push({ label: "Send to Back", action: () => reorderSibling(nodeId, false) }) });
+      renderItems.push({ label: "Order", group: orderItems });
     }
     // F-035: setting placement/flush directly, instead of hand-typing the exact property
     // names into the source, grouped under one "Placement" submenu naming the actual
@@ -2171,23 +2203,27 @@
       renderItems.push({ label: "Placement", group: placementItems });
     }
 
-    // Removing a relationship moves here from the old ×icon (reported directly as "etwas
-    // umständlich") — mirrors Placement's own group-vs-flat-item shape: a single partner
-    // gets one direct action, more than one gets a submenu naming each by displayName.
+    // D-144: "Connect to..." (right-click's own way to start the same pick-a-target flow
+    // Ctrl/Cmd+drag's relateDrag already offers) and Disconnect share one "Connections"
+    // submenu — both are about the same underlying relationship, and folding them together
+    // is what keeps the top-level menu at 5 items instead of 6. "Connect to..." is always
+    // offered (unlike Disconnect, its own validity isn't known until a target is actually
+    // picked — same as the drag gesture today, which doesn't pre-filter valid targets
+    // either). Disconnect stays flat rows in this same submenu, not nested a level deeper
+    // (a `Connections -> Disconnect -> target` 3rd level would need `click_menu_item`'s own
+    // test helper reworked to walk a full ancestor chain instead of just the nearest one) —
+    // one row per existing connection, same displayName-per-partner shape Placement's own
+    // flat rows already use.
+    const connectionItems = [
+      { i: push({ label: "Connect to…", action: () => startConnectPick(nodeId) }) },
+    ];
     const ownConnections = program.connections.filter((c) => c.from === nodeId || c.to === nodeId);
-    if (ownConnections.length === 1) {
-      const c = ownConnections[0];
+    for (const c of ownConnections) {
       const partnerId = c.from === nodeId ? c.to : c.from;
       const partner = program.nodesById[partnerId];
-      renderItems.push({ i: push({ label: `Disconnect from ${displayName(partner)}`, action: () => removeConnection(c.from, c.to) }) });
-    } else if (ownConnections.length > 1) {
-      const disconnectItems = ownConnections.map((c) => {
-        const partnerId = c.from === nodeId ? c.to : c.from;
-        const partner = program.nodesById[partnerId];
-        return { i: push({ label: displayName(partner), action: () => removeConnection(c.from, c.to) }) };
-      });
-      renderItems.push({ label: "Disconnect", group: disconnectItems });
+      connectionItems.push({ i: push({ label: `Disconnect from ${displayName(partner)}`, action: () => removeConnection(c.from, c.to) }) });
     }
+    renderItems.push({ label: "Connections", group: connectionItems });
 
     contextMenuEl.innerHTML = renderMenuItems(renderItems);
     contextMenuEl.style.left = `${x}px`;
@@ -2465,6 +2501,16 @@
     if (isTextEditableFocus()) document.activeElement.blur();
     if (!program) return;
 
+    // D-144: a click while picking a "Connect to..." target is entirely reinterpreted --
+    // never falls through to ordinary shape-click/drag handling below, same as every
+    // other gesture-in-progress branch in this function. Resolved on pointerUP, not here
+    // (see handlePointerUp) -- mirroring relateDrag's own pointerup-resolution exactly:
+    // opening the menu already here, mid-pointerdown, would still be bubbling up to
+    // handleWindowPointerDown's own "click outside the menu closes it" listener on the
+    // very same event, immediately closing the menu it just opened (a real bug, found live
+    // by testing the full flow, not just reading the code).
+    if (connectPick) return;
+
     // F-036: a second finger landing always wins over whatever the first finger alone was
     // starting — cancels any pending single-pointer gesture cleanly and starts a pinch
     // instead, rather than letting the two fight over the same source text.
@@ -2703,6 +2749,13 @@
   }
 
   function handleContextMenu(e) {
+    // D-144: right-clicking anything while picking a "Connect to..." target just cancels
+    // the pick -- it never also opens a new context menu on that same right-click.
+    if (connectPick) {
+      e.preventDefault();
+      cancelConnectPick();
+      return;
+    }
     const el = e.target.closest("[data-id]");
     if (!el || !program) return;
     e.preventDefault();
@@ -2943,6 +2996,7 @@
 
   function handleKeyDown(e) {
     if (e.key === "Escape") {
+      if (connectPick) { cancelConnectPick(); return; }
       if (!contextMenuEl.hidden) { closeContextMenu(); return; }
       // F-029: with the menu already closed, Escape clears a multi-selection instead —
       // standard "deselect the group" convention, left off collapsing to the single
@@ -3289,6 +3343,21 @@
     if (resizeDrag) { applyResizeDrag(e.clientX, e.clientY); return; }
     if (vertexDrag) { applyVertexDrag(e.clientX, e.clientY); return; }
     if (scaleDrag) { applyScaleDrag(e.clientX, e.clientY); return; }
+    if (connectPick) {
+      // Same candidate-validity check relateDrag's own branch already uses, just
+      // triggered by hover-with-no-button-down instead of hover-during-drag.
+      const el = document.elementFromPoint(e.clientX, e.clientY)?.closest("[data-id]");
+      const hoveredId = el?.dataset.id;
+      const valid = hoveredId && hoveredId !== connectPick.fromId && program.nodesById[hoveredId]
+        && !isAncestorOf(hoveredId, connectPick.fromId, program) && !isAncestorOf(connectPick.fromId, hoveredId, program);
+      const newCandidateId = valid ? hoveredId : null;
+      if (newCandidateId !== connectPick.candidateId) {
+        if (connectPick.candidateId) core.rootEl.querySelector(`[data-id="${CSS.escape(connectPick.candidateId)}"]`)?.classList.remove("relate-candidate");
+        if (newCandidateId) core.rootEl.querySelector(`[data-id="${CSS.escape(newCandidateId)}"]`)?.classList.add("relate-candidate");
+        connectPick.candidateId = newCandidateId;
+      }
+      return;
+    }
     if (canvasDrag) {
       const svg = core.rootEl.querySelector("svg");
       if (!svg) return;
@@ -3412,6 +3481,23 @@
     if (scaleDrag) {
       scaleDrag = null;
       core.commitUndoStep();
+      return;
+    }
+    // D-144: resolved on pointerup, exactly like relateDrag's own gesture right below --
+    // opening openRelateMenu here (rather than in handlePointerDown, mid-pointerdown) is
+    // what keeps it clear of handleWindowPointerDown's own same-event "click outside the
+    // menu" closer. Unlike every gesture state above, connectPick isn't only ever armed by
+    // a left-button pointerdown (it's armed by a menu click) -- a right-click's own
+    // pointerup reaches here too and must NOT resolve the pick itself; a real bug found
+    // live: right-clicking mid-pick was opening the relate-confirmation menu right here,
+    // *before* the native contextmenu event even fired to cancel it. handleContextMenu's
+    // own connectPick-cancel handles the right-click case instead.
+    if (connectPick && e.button === 0) {
+      const { fromId, candidateId } = connectPick;
+      cancelConnectPick();
+      // Releasing over empty canvas, back on the source, or an invalid (ancestor/descendant)
+      // candidate just cancels -- no menu, no edit, matching relateDrag's own convention.
+      if (candidateId) openRelateMenu(fromId, candidateId, e.clientX, e.clientY);
       return;
     }
     if (relateDrag) {

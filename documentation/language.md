@@ -106,15 +106,19 @@ connection swivel_seat table { kind: "directional" }
 on it yet; it's syntax reserved for a future distinction, not a dead end expected to be
 removed.
 
-**Creating and removing a connection interactively:** hold Ctrl (Cmd on macOS) and drag one
-element onto another, anywhere on the canvas — the two don't need to be touching. Releasing
-over a valid target (not the source itself, and not a structural ancestor/descendant of it)
-opens a small menu: "Connect to `<target>`" writes a plain `connection` line; "Attach
-outside `<target>`" (offered only when the target is a `shape: "rect"`, and the dragged
-element is a bare point) additionally sets `placement: "outside"` on the source and snaps it
-to the nearest point on the target's boundary — see the Drag-and-drop section below for what
-`"outside"` then does on later drags. Right-clicking an element with one or more connections offers a
-"Disconnect" action (or a submenu, one per partner, if it has several) to remove one.
+**Creating and removing a connection interactively:** either hold Ctrl (Cmd on macOS) and
+drag one element onto another, or right-click an element and choose "Connect to…" (under its
+"Connections" submenu) and then click the other element — both ways of *picking* a target
+converge on the exact same confirmation step. Anywhere on the canvas works — the two don't
+need to be touching. A valid target (not the source itself, and not a structural
+ancestor/descendant of it) opens a small menu: "Connect to `<target>`" writes a plain
+`connection` line; "Attach outside `<target>`" (offered only when the target is a
+`shape: "rect"`, and the dragged element is a bare point) additionally sets
+`placement: "outside"` on the source and snaps it to the nearest point on the target's
+boundary — see the Drag-and-drop section below for what `"outside"` then does on later
+drags. Picking a target via the menu can be cancelled with Escape or by clicking empty
+canvas, same as releasing a Ctrl/Cmd-drag over nothing. The same "Connections" submenu lists
+a "Disconnect from `<partner>`" row per existing connection, to remove one.
 `settings { showConnections: true }` draws a thin dashed line between every connected pair's
 centers as a permanent, opt-in visibility aid (off by default, mirroring `grid`).
 
