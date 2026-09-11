@@ -1,0 +1,7 @@
+# D-142: a shebang-based script (#!/usr/bin/env bash) breaks if checked out with CRLF line
+# endings -- Windows' own git config (core.autocrlf=true, this repo's own default so far)
+# would otherwise silently convert it on checkout for any Windows contributor, corrupting
+# the shebang and any string comparison that reads a line from a file. Forced to LF
+# regardless of the checking-out machine's own autocrlf setting -- every other file kind in
+# this repo keeps its existing (untouched) behavior.
+*.sh text eol=lf

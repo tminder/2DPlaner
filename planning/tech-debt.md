@@ -72,10 +72,6 @@ The module's own comment states the composite's `position` isn't factored into i
 
 ## Project structure / process
 
-## S-032 Deploying has no CI/CD and no structural safeguard against a skipped step
-
-Six independently-deployed targets (`homepage/`, `docs/`, `site-docs/`, `profile/`, `homepage/blog/`, `storage-service-php/`) each require a manual `scp` after every relevant change, with correctness resting on a human (or an assisting session) remembering to run it and separately verifying byte-counts match. Nothing would catch a deploy step that got forgotten.
-
 ## S-033 Static assets are physically duplicated across many directories
 
 `favicon.ico`, `favicon.svg`, and `apple-touch-icon.png` each exist as separate physical copies across `docs/`, `homepage/`, every `homepage/blog/<post>/` directory, `homepage/impressum/`, `profile/`, and `site-docs/`. A future favicon change means updating (and re-deploying) every copy by hand; missing one silently leaves a stale icon on that one section indefinitely.
