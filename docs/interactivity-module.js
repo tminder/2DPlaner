@@ -281,14 +281,12 @@
   let contextMenuItems = [];
   // D-145: which group's own ring (by index, matching renderRadialMenu's own numbering
   // order) is currently blooming open, if any -- reset on every fresh menu open, toggled by
-  // handleMenuClick's own group-button branch, read back by renderRadialMenu to decide which
-  // ring gets the .expanded class on a re-render triggered by that same toggle.
+  // handleMenuClick's own group-button branch via setExpandedGroup, which only ever flips
+  // .expanded on the specific button/ring elements involved (D-146: never re-renders the
+  // menu's own innerHTML for a toggle -- that used to replace every button's DOM node,
+  // including the untouched first ring's own, silently replaying its opening animation on
+  // every single group click).
   let expandedGroup = null;
-  // The exact renderItems tree the menu is currently showing -- re-rendered as-is (just with
-  // a different expandedGroup) on a group-button click, never rebuilt from scratch, so
-  // toggling a ring open never re-runs openContextMenu/openRelateMenu's own action-building
-  // logic a second time.
-  let lastRenderItems = [];
   // F-019/F-021: the point and last-chosen id of the last plain click (not a drag) that
   // landed on more than one stacked element — lets a *repeated* click at the same spot step
   // to the next thing underneath, rather than always re-grabbing whatever's on top. Set in
@@ -2248,11 +2246,10 @@
   }
 
   // Shared by openContextMenu and openRelateMenu -- both just build a renderItems tree and
-  // hand it off here. Re-run (with the same items, just a new expandedGroup) by
-  // handleMenuClick's own group-toggle branch, never by re-opening the menu from scratch.
+  // hand it off here. A fresh full build, unlike a group-button toggle (setExpandedGroup),
+  // which never touches this again for the same menu open.
   function showRadialMenu(items, x, y) {
     expandedGroup = null;
-    lastRenderItems = items;
     contextMenuEl.innerHTML = renderRadialMenu(items);
     // Clamped against the *worst case* extent (assuming a group ends up expanded), not just
     // the first ring's own -- so expanding a group later never needs the anchor itself to
@@ -2375,7 +2372,6 @@
   function closeContextMenu() {
     contextMenuEl.hidden = true;
     contextMenuItems = [];
-    lastRenderItems = [];
     expandedGroup = null;
   }
 
@@ -2950,15 +2946,33 @@
     openContextMenu(targetId, e.clientX, e.clientY);
   }
 
+  // D-146: flips .expanded on only the one button+ring pair involved (closing whichever
+  // group was previously open, if any) -- never touches contextMenuEl's own innerHTML, so
+  // no button anywhere in the menu (first ring included) is ever recreated by a toggle.
+  // Replaced D-145's own "re-render the whole menu with a new expandedGroup" approach,
+  // which was simpler but had a real, reported side effect: since every button is a fresh
+  // DOM node after an innerHTML replace, the untouched first ring's own radial-pop opening
+  // animation silently replayed on every single group click, not just the true first open.
+  function setExpandedGroup(g) {
+    if (expandedGroup !== null) {
+      contextMenuEl.querySelector(`.radial-btn--group[data-group-index="${expandedGroup}"]`)?.classList.remove("expanded");
+      contextMenuEl.querySelector(`.radial-ring[data-group-index="${expandedGroup}"]`)?.classList.remove("expanded");
+    }
+    const next = expandedGroup === g ? null : g;
+    if (next !== null) {
+      contextMenuEl.querySelector(`.radial-btn--group[data-group-index="${next}"]`)?.classList.add("expanded");
+      contextMenuEl.querySelector(`.radial-ring[data-group-index="${next}"]`)?.classList.add("expanded");
+    }
+    expandedGroup = next;
+  }
+
   function handleMenuClick(e) {
     // D-145: a group button (e.g. "Placement") isn't an action itself -- it toggles its own
-    // ring open/closed and re-renders in place (same renderItems, just a new expandedGroup),
-    // rather than resolving through contextMenuItems like every data-i button below.
+    // ring open/closed instead of resolving through contextMenuItems like every data-i
+    // button below.
     const groupBtn = e.target.closest("button.radial-btn--group");
     if (groupBtn) {
-      const g = Number(groupBtn.dataset.groupIndex);
-      expandedGroup = expandedGroup === g ? null : g;
-      contextMenuEl.innerHTML = renderRadialMenu(lastRenderItems);
+      setExpandedGroup(Number(groupBtn.dataset.groupIndex));
       return;
     }
     const btn = e.target.closest("button[data-i]");
