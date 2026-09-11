@@ -110,8 +110,21 @@
     const { shape, style } = node.props;
     if (shape === "rect" && style) {
       const w = core.numOf(node.props.size[0]), h = core.numOf(node.props.size[1]);
-      const anchor = [ownAbs[0] + w / 2, ownAbs[1] + h / 2];
-      const corners = [[ownAbs[0], ownAbs[1]], [ownAbs[0] + w, ownAbs[1]], [ownAbs[0] + w, ownAbs[1] + h], [ownAbs[0], ownAbs[1] + h]];
+      const anchor = [ownAbs[0] + w / 2, ownAbs[1] + h / 2]; // rotation-invariant: it's the pivot itself
+      let corners = [[ownAbs[0], ownAbs[1]], [ownAbs[0] + w, ownAbs[1]], [ownAbs[0] + w, ownAbs[1] + h], [ownAbs[0], ownAbs[1] + h]];
+      // D-141: edgeLengthLines below is already a genuinely generic "edge between two
+      // points" abstraction (no axis-aligned assumption of its own) — rotating just these 4
+      // corner points around the rect's own center is the whole fix; everything downstream
+      // (label position, orientation) follows correctly for free.
+      const rotationDeg = core.numOf(node.props.rotation ?? 0);
+      if (rotationDeg) {
+        const rad = rotationDeg * Math.PI / 180;
+        const cos = Math.cos(rad), sin = Math.sin(rad);
+        corners = corners.map(([px, py]) => {
+          const dx = px - anchor[0], dy = py - anchor[1];
+          return [anchor[0] + dx * cos - dy * sin, anchor[1] + dx * sin + dy * cos];
+        });
+      }
       const edgeLines = edgeLengthsEnabled(node, settings) ? edgeLengthLines(corners, true, anchor) : [];
       return annotationMarkup(node, anchor, edgeLines);
     }

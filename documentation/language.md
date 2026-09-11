@@ -283,6 +283,17 @@ functions, no control flow (D-008).
   shows a visible affordance on hover, so it stays discoverable and draggable (D-016).
 - **Connections** may be rendered as a line between the two elements they link, but that's
   a rendering choice, not part of what a connection *means* (D-013).
+- **`rotation` (degrees, clockwise, D-141) — `rect` only**, a flat sibling of
+  `position`/`size`, default `0`. Meaningless for `circle` (rotationally symmetric);
+  `polygon`/`polyline` already encode arbitrary orientation directly through their own
+  points, no separate property needed. Resize handles, dimension/edge-length labels, and
+  collision detection against a rotated `rect` all follow its true rotated footprint, not
+  its unrotated bounding box. **Containment of a rotated `rect` (either the child or the
+  parent) is also exact**, routed through the same general polygon-boundary check a
+  polygon parent already used — but **`flush` and `placement: "outside"` against a rotated
+  `rect` are unsupported**: both need exact edge-projection math this version doesn't have,
+  so they warn and fall back to ordinary, unconstrained dragging instead of doing something
+  silently wrong.
 
 ## Labels and dimensions
 

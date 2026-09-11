@@ -1493,6 +1493,31 @@ function resolvePointAbs(pt, ownAbs, positions) {
   throw new Error("a points entry must be a [x,y] pair or a single sibling element id");
 }
 
+// D-141: the smallest axis-aligned box that fully contains a rect rotated `deg` degrees
+// (clockwise, matching SVG's own rotate() and the direction annotations-module.js's edge
+// labels already rotate in) around its own center. deg===0 short-circuits to the exact,
+// un-rotated box -- byte-identical to what every call site already computed before rotation
+// existed, so an unrotated rect (still the overwhelming common case) sees zero change.
+// Exposed on window.PlanCore so interactivity-module.js's own containment/collision/
+// validation code shares this one formula rather than adding a 4th independent
+// reimplementation of rect geometry (S-018/S-008 already flag 3 existing ones).
+// A rotated rect's *true* footprint is always inside this box, never outside it -- using
+// it for containment/collision is conservative by construction: it can over-restrict a
+// technically-fine rotated placement, but can never miss a real overlap/escape.
+function rotatedRectAABB(x, y, w, h, deg) {
+  if (!deg) return { left: x, top: y, right: x + w, bottom: y + h };
+  const cx = x + w / 2, cy = y + h / 2;
+  const rad = deg * Math.PI / 180;
+  const cos = Math.cos(rad), sin = Math.sin(rad);
+  const corners = [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];
+  const rotated = corners.map(([px, py]) => {
+    const dx = px - cx, dy = py - cy;
+    return [cx + dx * cos - dy * sin, cy + dx * sin + dy * cos];
+  });
+  const xs = rotated.map((p) => p[0]), ys = rotated.map((p) => p[1]);
+  return { left: Math.min(...xs), top: Math.min(...ys), right: Math.max(...xs), bottom: Math.max(...ys) };
+}
+
 // F-027: `style` may be the usual inline object, or a plain string naming a preset defined
 // in `settings { styles: { ... } }` — resolved here, once, right before use, rather than
 // through the general expression system (which already has a real bug for this exact case,
@@ -1535,8 +1560,14 @@ function renderShape(node, positions, cornerUsers, shapesOut, anchorsOut, bboxes
 
   if (shape === "rect" && hasStyle) {
     const w = numOf(node.props.size[0]), h = numOf(node.props.size[1]);
-    bboxes[node.id] = { left: ownAbs[0], top: ownAbs[1], right: ownAbs[0] + w, bottom: ownAbs[1] + h };
-    shapesOut.push(`<rect class="obj" ${idAttr} pointer-events="all" x="${ownAbs[0]*M}" y="${ownAbs[1]*M}" width="${w*M}" height="${h*M}"
+    // D-141: rotation is a flat sibling of position/size, rect-only, default 0 -- meaningless
+    // for a circle (rotationally symmetric) and already unnecessary for polygon/polyline
+    // (arbitrary orientation is already encoded directly in their own points).
+    const deg = numOf(node.props.rotation ?? 0);
+    bboxes[node.id] = rotatedRectAABB(ownAbs[0], ownAbs[1], w, h, deg);
+    const cx = (ownAbs[0] + w / 2) * M, cy = (ownAbs[1] + h / 2) * M;
+    const transformAttr = deg ? `transform="rotate(${deg} ${cx} ${cy})"` : "";
+    shapesOut.push(`<rect class="obj" ${idAttr} pointer-events="all" x="${ownAbs[0]*M}" y="${ownAbs[1]*M}" width="${w*M}" height="${h*M}" ${transformAttr}
       fill="${style.fill ?? "none"}" stroke="${style.stroke ?? "none"}" stroke-width="${numOf(style.strokeWidth ?? 0.02)*M}" />`);
   } else if ((shape === "polyline" || shape === "polygon") && hasStyle) {
     const absPts = node.props.points.map((pt) => resolvePointAbs(pt, ownAbs, positions));
@@ -2148,7 +2179,7 @@ window.PlanCore = {
   parse, parseExpanded, render, tokenize,
   numOf, isEditable, formatNumber,
   computePositions, computeCornerUsers, resolvePointAbs, connectedNodeIds, nodeDragEdits,
-  polygonSelfIntersects,
+  polygonSelfIntersects, rotatedRectAABB,
   rootEl, sourceEl, dragmsgEl, modlogEl,
   M,
   rerender,

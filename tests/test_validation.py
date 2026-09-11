@@ -97,13 +97,13 @@ element room {
   shape: "rect"
   size: [3m, 2m]
   position: [0m, 0m]
-  rotation: 45
+  wobble: 45
   style: { fill: "#eee" }
 }
 """,
     )
     violations = validation_violations(app_page)
-    assert any("rotation" in v for v in violations), violations
+    assert any("wobble" in v for v in violations), violations
 
 
 def test_flush_without_inside_is_reported(app_page):

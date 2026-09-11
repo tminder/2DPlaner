@@ -308,7 +308,11 @@
     const abs = positions[node.id];
     if (node.props.shape === "rect" && node.props.size) {
       const w = core.numOf(node.props.size[0]), h = core.numOf(node.props.size[1]);
-      bboxes[node.id] = { left: abs[0], top: abs[1], right: abs[0] + w, bottom: abs[1] + h };
+      // D-141: connect-snap/relate-drag only need a "close enough to touch" box, not exact
+      // geometry — core's own conservative AABB (superset of the true rotated footprint) is
+      // a fine, simple fit here, unlike collision/containment below which use the exact
+      // rotated corners instead (solidGeometryFor/childRectCornersAt).
+      bboxes[node.id] = core.rotatedRectAABB(abs[0], abs[1], w, h, core.numOf(node.props.rotation ?? 0));
     } else if (node.props.position && !node.props.shape) {
       bboxes[node.id] = { left: abs[0], top: abs[1], right: abs[0], bottom: abs[1] };
     }
@@ -390,6 +394,15 @@
     return [[r.left, r.top], [r.right, r.top], [r.right, r.bottom], [r.left, r.bottom]];
   }
 
+  // D-141: a rotated rect's own true 4 corners (rotatePoint is defined further down this
+  // same file — hoisted, like every other function here, so the forward reference is fine).
+  // Used wherever a rotated rect needs to participate in the *exact* polygon-vs-polygon
+  // collision/containment machinery below, rather than reduced to a conservative bbox.
+  function rotatedRectCorners(x, y, w, h, deg) {
+    const cx = x + w / 2, cy = y + h / 2;
+    return [[x, y], [x + w, y], [x + w, y + h], [x, y + h]].map(([px, py]) => rotatePoint(px, py, cx, cy, deg));
+  }
+
   // No edge of A crosses an edge of B, and neither polygon starts inside the other =>
   // genuinely separate (or only touching, which isn't a crossing). Works for non-convex
   // polygons too, matching this language's own polygons (D-018's shared-corner deformation
@@ -451,6 +464,12 @@
     if (!ownAbs) return null;
     if (node.props.shape === "rect" && node.props.size) {
       const w = core.numOf(node.props.size[0]), h = core.numOf(node.props.size[1]);
+      const rotationDeg = core.numOf(node.props.rotation ?? 0);
+      // D-141: a rotated rect reports itself as a polygon (its own true rotated corners),
+      // not a rect box — shapesOverlap/pointInPolygon/etc. below already handle an arbitrary
+      // polygon exactly, so this alone gives correct (not merely conservative) collision and
+      // containment for a rotated rect, for free, with no changes needed to either.
+      if (rotationDeg) return { kind: "polygon", points: rotatedRectCorners(ownAbs[0], ownAbs[1], w, h, rotationDeg) };
       return { kind: "rect", left: ownAbs[0], top: ownAbs[1], right: ownAbs[0] + w, bottom: ownAbs[1] + h };
     }
     if (node.props.shape === "circle" && node.props.radius !== undefined) {
@@ -470,6 +489,8 @@
     if (node.props.shape === "rect" && node.props.position) {
       const [x, y] = positions[node.id];
       const w = core.numOf(node.props.size[0]), h = core.numOf(node.props.size[1]);
+      const rotationDeg = core.numOf(node.props.rotation ?? 0);
+      if (rotationDeg) return { kind: "polygon", points: rotatedRectCorners(x + dx, y + dy, w, h, rotationDeg) };
       return { kind: "rect", left: x + dx, top: y + dy, right: x + dx + w, bottom: y + dy + h };
     }
     if (node.props.shape === "circle" && node.props.position) {
@@ -614,6 +635,8 @@
   function childRectCornersAt(node, dx, dy, positions) {
     const [x, y] = positions[node.id];
     const w = core.numOf(node.props.size[0]), h = core.numOf(node.props.size[1]);
+    const rotationDeg = core.numOf(node.props.rotation ?? 0);
+    if (rotationDeg) return rotatedRectCorners(x + dx, y + dy, w, h, rotationDeg);
     return rectCorners({ left: x + dx, top: y + dy, right: x + dx + w, bottom: y + dy + h });
   }
 
@@ -784,7 +807,16 @@
       }
       return [dx, dy];
     }
-    if (container.props.shape === "rect" && container.props.size) {
+    // D-141: clampRectToStayInsideRect/clampFlushInsideRect are exact but genuinely
+    // axis-aligned-only (each axis clamps independently against the parent's own bounds) --
+    // can't handle a rotated child or parent. Diverted to the general polygon-boundary path
+    // below instead whenever either is rotated: parentBoundaryPolygon/childRectCornersAt
+    // already return real rotated corners there (same rotatedRectCorners/solidGeometryFor
+    // this file's collision code also now uses), so containment itself stays correct --
+    // only *flush*, which has no equivalent in that general path, has to be given up.
+    const containerRotated = !!core.numOf(container.props.rotation ?? 0);
+    const childRotated = !!core.numOf(node.props.rotation ?? 0);
+    if (container.props.shape === "rect" && container.props.size && !containerRotated && !childRotated) {
       const containerAbs = positions[container.id];
       const containerSize = [core.numOf(container.props.size[0]), core.numOf(container.props.size[1])];
       const childSize = [core.numOf(node.props.size[0]), core.numOf(node.props.size[1])];
@@ -795,7 +827,10 @@
       return [newDx, newDy];
     }
     if (flush) {
-      warnings.push(`${node.id}: flush only checked for a rect parent (D-032 scope), not enforced here`);
+      const reason = containerRotated || childRotated
+        ? "flush against a rotated rect isn't supported yet — kept inside, not pinned to an edge"
+        : "flush only checked for a rect parent (D-032 scope), not enforced here";
+      warnings.push(`${node.id}: ${reason}`);
     }
     const containerPoly = parentBoundaryPolygon(container, positions);
     if (!containerPoly) {
@@ -914,7 +949,7 @@
   const CORE_SHAPES = ["rect", "polygon", "polyline", "circle"];
   const SHARED_PROPS = ["position", "style", "placement", "childPlacement", "flush", "show", "allowCollisions", "label", "hidden"];
   const SHAPE_PROPS = {
-    rect: [...SHARED_PROPS, "size", "dimensions", "edgeLengths"],
+    rect: [...SHARED_PROPS, "size", "dimensions", "edgeLengths", "rotation"],
     circle: [...SHARED_PROPS, "radius", "dimensions"],
     polygon: [...SHARED_PROPS, "points", "edgeLengths"],
     polyline: [...SHARED_PROPS, "points", "edgeLengths"],
@@ -1137,6 +1172,19 @@
   // (no second flag) specifically so the snap increment can never drift from the visible
   // grid's own size, matching grid-module.js's own reading of the same setting. Hard
   // snap, always on while a grid is declared — no modifier-key exception.
+  // D-141: rotates a plan-space point around a pivot by `deg` (clockwise, matching core's
+  // own rotatedRectAABB / the rendered SVG rotate() transform) — used both to place resize
+  // handles at a rotated rect's own visual corners and, with a negated angle, to rotate the
+  // live cursor *back* into a rotated rect's own un-rotated local frame before the existing
+  // (rotation-unaware) resize/drag math runs.
+  function rotatePoint(px, py, cx, cy, deg) {
+    if (!deg) return [px, py];
+    const rad = deg * Math.PI / 180;
+    const cos = Math.cos(rad), sin = Math.sin(rad);
+    const dx = px - cx, dy = py - cy;
+    return [cx + dx * cos - dy * sin, cy + dx * sin + dy * cos];
+  }
+
   function gridSnapSize() {
     const grid = program?.settings?.grid;
     if (!grid) return null;
@@ -1284,15 +1332,25 @@
     const myBox = bboxes[node.id];
     if (!myBox || !isPointBox(myBox)) return null;
 
-    let rect = null;
+    let rect = null, rectNodeId = null;
     for (const otherId of core.connectedNodeIds(node.id, base.connections)) {
       const otherBox = bboxes[otherId];
-      if (otherBox && !isPointBox(otherBox)) { rect = otherBox; break; }
+      if (otherBox && !isPointBox(otherBox)) { rect = otherBox; rectNodeId = otherId; break; }
     }
     if (!rect) return null;
 
     const nearest = nearestRectEdge(myBox, rect);
     if (!nearest || nearest.dist > TOUCH_TOLERANCE) return null;
+
+    // D-141: `rect` here is computeBboxes' own conservative AABB — fine for the earlier
+    // "is anything nearby at all" check above, but sliding along it would visibly not track
+    // a rotated rect's true (rotated) edge. Unsupported for now, same "not met here, dragging
+    // normally instead" shape every other unmet placement expectation in this file uses.
+    const rectNode = base.nodesById[rectNodeId];
+    if (rectNode && core.numOf(rectNode.props.rotation ?? 0)) {
+      warnings.push(`${node.id}: sliding along a rotated rect isn't supported yet, dragging normally instead`);
+      return null;
+    }
 
     let newX = myBox.left, newY = myBox.top;
     if (nearest.edge === "left" || nearest.edge === "right") {
@@ -2470,9 +2528,15 @@
             const [ox, oy] = abs;
             const w = core.numOf(w0), h = core.numOf(h0);
             // Each handle's anchor is its own diagonally-opposite corner — fixed for the
-            // whole gesture, computed once here from the rect's state right now.
+            // whole gesture, computed once here from the rect's state right now. Anchors are
+            // always in the rect's own un-rotated local frame (exactly what position/size
+            // already store) -- rotation is a purely visual, render-time transform, so this
+            // math is unaffected by it. D-141: pivot/rotationDeg captured here so
+            // applyResizeDrag can rotate the live cursor *back* into this same local frame.
             const anchors = { tl: [ox + w, oy + h], tr: [ox, oy + h], bl: [ox + w, oy], br: [ox, oy] };
-            resizeDrag = { id: nodeId, kind: "corner", anchorAbs: anchors[corner], startAbs: [ox, oy], baseText: core.sourceEl.value };
+            const rotationDeg = core.numOf(node.props.rotation ?? 0);
+            resizeDrag = { id: nodeId, kind: "corner", anchorAbs: anchors[corner], startAbs: [ox, oy],
+              rotationDeg, pivot: [ox + w / 2, oy + h / 2], baseText: core.sourceEl.value };
             core.rootEl.classList.add("dragging");
           }
         }
@@ -2701,10 +2765,17 @@
       // these is separately guarded against too (handlePointerDown's own isEditable check),
       // but there's nothing coherent to even show without valid geometry in the first place.
       if (!Number.isFinite(w) || !Number.isFinite(h)) return;
+      // D-141: each corner rotated around the rect's own center before placing its handle —
+      // the handle itself stays a plain axis-aligned square (only its *position* rotates,
+      // not its own shape), matching the circle radius handle's own already-rotation-
+      // agnostic look.
+      const rotationDeg = core.numOf(node.props.rotation ?? 0);
+      const pivot = [ox + w / 2, oy + h / 2];
       const corners = [
         ["tl", ox, oy], ["tr", ox + w, oy], ["bl", ox, oy + h], ["br", ox + w, oy + h],
       ];
-      for (const [corner, x, y] of corners) {
+      for (const [corner, cx0, cy0] of corners) {
+        const [x, y] = rotatePoint(cx0, cy0, pivot[0], pivot[1], rotationDeg);
         svgEl.insertAdjacentHTML("beforeend",
           `<rect class="resize-handle" data-node-id="${selectedId}" data-corner="${corner}" ` +
           `x="${x * core.M - HANDLE_HALF}" y="${y * core.M - HANDLE_HALF}" width="${HANDLE_HALF * 2}" height="${HANDLE_HALF * 2}" />`);
@@ -2989,11 +3060,20 @@
       edits.push({ start: r0.start, end: r0.end, text: core.formatNumber(newR, r0.unit) });
     } else {
       const [ax, ay] = resizeDrag.anchorAbs;
+      // D-141: the raw cursor is in the outer, un-rotated plan frame — position/size (and
+      // anchorAbs above, derived from them) are always stored in the rect's own local frame,
+      // rotation being a purely visual render-time transform. Rotating the cursor by
+      // -rotationDeg around the same pivot captured at gesture start puts it back into that
+      // local frame before any of the existing (rotation-unaware) math below runs — for an
+      // unrotated rect (rotationDeg 0) rotatePoint short-circuits to the cursor unchanged.
+      const [localX, localY] = resizeDrag.rotationDeg
+        ? rotatePoint(cursor[0], cursor[1], resizeDrag.pivot[0], resizeDrag.pivot[1], -resizeDrag.rotationDeg)
+        : cursor;
       // F-031: snaps the cursor's own plan point to the nearest grid intersection first —
       // every dependent value below (position, width, height) is then derived from this
       // one already-snapped point, consistent by construction rather than re-snapped
       // independently.
-      const [snapX, snapY] = snappedGridPoint(cursor[0], cursor[1]);
+      const [snapX, snapY] = snappedGridPoint(localX, localY);
       const newAbsX = Math.min(ax, snapX), newAbsY = Math.min(ay, snapY);
       const newW = Math.max(RESIZE_MIN, Math.abs(snapX - ax));
       const newH = Math.max(RESIZE_MIN, Math.abs(snapY - ay));
