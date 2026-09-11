@@ -82,37 +82,64 @@
       #interactivity-stack-badge .stack-line { display: flex; gap: 0.5em; opacity: 0.55; padding: 0.05rem 0; }
       #interactivity-stack-badge .stack-line.current { opacity: 1; }
       #interactivity-stack-badge .stack-marker { width: 0.9em; flex: none; }
-      /* D-145: round buttons arranged in a ring around the click point, replacing D-144's
-         list-style dropdown -- kept as a single fixed-position 0x0 anchor box at the click
-         point itself, with every button absolutely positioned off of it via its own inline
-         transform: translate(dx, dy) (see renderRadialMenu). */
+      /* D-145/D-146: round buttons arranged in a ring around the click point, replacing
+         D-144's list-style dropdown -- kept as a single fixed-position 0x0 anchor box at the
+         click point itself, with every button absolutely positioned off of it via its own
+         inline --tx/--ty custom properties (see renderRadialMenu/radialButtonHtml). */
       .radial-menu { position: fixed; z-index: 1002; font-family: system-ui, sans-serif; }
       .radial-menu[hidden] { display: none; }
-      .radial-btn { position: absolute; left: 0; top: 0; width: 42px; height: 42px;
-        margin: -21px 0 0 -21px; padding: 0; border-radius: 50%; border: 1px solid #ccc;
+      /* D-146: bumped from 42px -- reported as too small a target. --tx/--ty (rather than
+         baking translate directly into the animated transform) let radial-pop below
+         animate scale+position together without needing a keyframe per button. */
+      .radial-btn { position: absolute; left: 0; top: 0; width: 50px; height: 50px;
+        margin: -25px 0 0 -25px; padding: 0; border-radius: 50%; border: 1px solid #ccc;
         background: #fff; color: #333; cursor: pointer; display: flex; align-items: center;
-        justify-content: center; box-shadow: 0 4px 14px rgba(0,0,0,0.18); }
+        justify-content: center; box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+        transform: translate(var(--tx), var(--ty));
+        animation: radial-pop 110ms ease-out backwards; }
+      @keyframes radial-pop {
+        from { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(0.4); }
+        to { opacity: 1; transform: translate(var(--tx), var(--ty)) scale(1); }
+      }
       .radial-btn:not(.disabled):hover { background: #eef2ff; }
-      .radial-btn svg { width: 20px; height: 20px; }
+      .radial-btn svg { width: 23px; height: 23px; }
       .radial-btn.danger { color: #a11; }
       .radial-btn.disabled { opacity: 0.4; cursor: default; }
       /* Placement's own radio-style Inside/Snapped/Free -- no room for a checkmark glyph on
-         a 42px circle, so "currently active" is a tinted fill instead. */
+         a round button, so "currently active" is a tinted fill instead. */
       .radial-btn.checked { background: #dbe7ff; border-color: #7c9fe0; }
+      /* D-146: the button's own full label, shown centered above it on hover/focus instead
+         of the browser's native title tooltip box (dropped in favor of aria-label,
+         which still names the button for assistive tech, just without that native popup) --
+         plain text with a soft light halo for legibility over whatever's underneath, not a
+         bordered/filled box. ::before (not ::after, already used by --group's own "has
+         more" dot below) so a group button can show both at once. */
+      .radial-btn::before { content: attr(aria-label); position: absolute; left: 50%;
+        bottom: calc(100% + 8px); transform: translateX(-50%); white-space: nowrap;
+        font-size: 11px; font-weight: 600; color: #333; pointer-events: none;
+        text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 1px 2px #fff; opacity: 0;
+        transition: opacity 100ms ease-out; }
+      .radial-btn:hover::before, .radial-btn:focus-visible::before { opacity: 1; }
       /* A group button (e.g. "Placement") isn't itself an action -- clicking it toggles a
          second ring of its own children blooming from this same button's own angle, instead
          of a side flyout (D-144's own hover-based one never worked reliably on touch to
          begin with). The dot marks "has more"; .expanded restyles the button once its own
          ring is showing, so the anchor stays visually obvious while open. */
       .radial-btn--group::after { content: ""; position: absolute; right: -1px; bottom: -1px;
-        width: 9px; height: 9px; border-radius: 50%; background: #7c9fe0; border: 1.5px solid #fff; }
+        width: 10px; height: 10px; border-radius: 50%; background: #7c9fe0; border: 1.5px solid #fff; }
       .radial-btn--group.expanded { background: #eef2ff; border-color: #7c9fe0; }
       /* Always rendered (never created on demand) so a test can locate a nested action
          directly by its own button -- exactly like D-144's own always-in-DOM, CSS-hidden
          submenu <ul>. No edge-of-viewport handling beyond the anchor's own clamped
-         placement (see showRadialMenu) -- a ring's own extent is accounted for there. */
-      .radial-ring { position: absolute; left: 0; top: 0; opacity: 0; pointer-events: none; }
-      .radial-ring.expanded { opacity: 1; pointer-events: auto; }
+         placement (see showRadialMenu) -- a ring's own extent is accounted for there.
+         D-146: scales in from its own group button's own angle (transform-origin 0 0, the
+         ring's own anchor point == the click point, same origin every button already
+         measures its own --tx/--ty from) rather than just fading, so a bloom reads as
+         *coming from* the button that was clicked. */
+      .radial-ring { position: absolute; left: 0; top: 0; opacity: 0; pointer-events: none;
+        transform: scale(0.6); transform-origin: 0 0;
+        transition: opacity 130ms ease-out, transform 130ms ease-out; }
+      .radial-ring.expanded { opacity: 1; pointer-events: auto; transform: scale(1); }
 
       #interactivity-scale-bar { position: absolute; right: 10px; bottom: 10px;
         display: flex; flex-direction: column; align-items: center; pointer-events: none;
@@ -2135,11 +2162,12 @@
 
   // First ring (top-level actions/groups) and second ring (a group's own children,
   // "blooming" from that group's own button) -- radii tuned empirically live, same as
-  // D-143's own handle-offset tuning. RADIUS_2's inner edge sits comfortably clear of
-  // RADIUS_1's outer edge (118-21=97 vs 62+21=83) so the two rings never visually overlap.
-  const RADIAL_1 = 62;
-  const RADIAL_2 = 118;
-  const RADIAL_BTN_RADIUS = 21;
+  // D-143's own handle-offset tuning. RADIAL_2's inner edge sits comfortably clear of
+  // RADIAL_1's outer edge (132-25=107 vs 70+25=95) so the two rings never visually overlap.
+  // D-146: bumped alongside the button size itself (was 62/118/21 for a 42px button).
+  const RADIAL_1 = 70;
+  const RADIAL_2 = 132;
+  const RADIAL_BTN_RADIUS = 25;
 
   function polarOffset(radius, angleDeg) {
     const rad = (angleDeg * Math.PI) / 180;
@@ -2162,11 +2190,16 @@
     return parentAngleDeg - spread / 2 + (spread / (count - 1)) * index;
   }
 
+  // D-146: `aria-label` (not `title`) carries the button's own full label -- still names it
+  // for assistive tech, but without the browser's own native tooltip box; the visual hover
+  // label is CSS-only (.radial-btn::before, `content: attr(aria-label)`), centered on the
+  // button itself. --tx/--ty (not a plain inline `transform`) are what the CSS's own
+  // radial-pop keyframes and base transform rule both read the position from.
   function radialButtonHtml(item, dataAttr, extraClass, dx, dy) {
     const classes = ["radial-btn", extraClass, item.danger ? "danger" : "", item.disabled ? "disabled" : "",
       item.checked ? "checked" : ""].filter(Boolean).join(" ");
-    return `<button type="button" class="${classes}" ${dataAttr} title="${escapeHtml(item.label)}" ` +
-      `style="transform: translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px)">` +
+    return `<button type="button" class="${classes}" ${dataAttr} aria-label="${escapeHtml(item.label)}" ` +
+      `style="--tx: ${dx.toFixed(1)}px; --ty: ${dy.toFixed(1)}px;">` +
       `${ICON_SVG_OPEN}${ICONS[item.icon] ?? ""}${ICON_SVG_CLOSE}</button>`;
   }
 
@@ -2837,23 +2870,30 @@
     drag = { id: node.id, groupIds, baseText: core.sourceEl.value, clientX: e.clientX, clientY: e.clientY, moved: false, singleOnly: e.shiftKey, startAbs: lastPositions[node.id] };
     core.rootEl.classList.add("dragging");
 
-    // F-036: touch's own equivalent of the right-click context menu — contextmenu via
+    // F-036/D-146: touch's own equivalent of the right-click context menu — contextmenu via
     // long-press only fires inconsistently across touch browsers. A hold past LONG_PRESS_MS
     // with no real movement (drag.moved reused as the cancellation signal, see
-    // handlePointerMove) cancels the pending drag and opens the menu instead. Scoped to
-    // a shape only, matching handleContextMenu's own existing scope — no canvas-level
-    // long-press menu.
+    // handlePointerMove) cancels the pending drag and dispatches a real "contextmenu" event
+    // on the held element instead of calling openContextMenu directly -- this now genuinely
+    // *is* a right-click (D-146's own request), not a hand-rolled subset of one: it goes
+    // through handleContextMenu's exact same logic (selection included), so a future change
+    // there never has to be separately re-applied here. Scoped to a shape only, matching
+    // handleContextMenu's own existing scope — no canvas-level long-press menu.
     if (e.pointerType === "touch") {
       const heldId = chosenId;
+      const cx = e.clientX, cy = e.clientY;
       longPressTimer = setTimeout(() => {
         longPressTimer = null;
         if (!drag || drag.moved || drag.id !== heldId) return; // moved away, released, or superseded by a pinch
         core.sourceEl.value = drag.baseText;
         drag = null;
         core.rootEl.classList.remove("dragging");
-        if (heldId !== selectedId) selectedId = heldId;
-        core.rerender({ preserveViewBox: true });
-        openContextMenu(heldId, e.clientX, e.clientY);
+        // Re-resolved fresh by id, not the `el` captured at pointerdown time -- a rerender
+        // in between (e.g. from something else entirely) would have replaced that DOM node,
+        // and dispatching on a detached element would never bubble up to handleContextMenu
+        // at all.
+        const heldEl = core.rootEl.querySelector(`[data-id="${CSS.escape(heldId)}"]`);
+        if (heldEl) heldEl.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: cx, clientY: cy }));
       }, LONG_PRESS_MS);
     }
   }
@@ -2877,7 +2917,17 @@
     // acting on the one actually intended. Prefers the current selection whenever it's
     // still genuinely part of the stack at this exact point — a stale selection from
     // somewhere else in the plan is never substituted in for an unrelated right-click.
-    const candidates = resolvedCandidatesAtPoint(e.clientX, e.clientY);
+    // D-146: a real bug, found live -- resolvedCandidatesAtPoint includes every element
+    // whose shape covers this point, and a plain nested child's own *parent* almost always
+    // does too (its shape typically underlies the child's), so "stacked" was true for
+    // nearly every ordinary click, not just genuine sibling overlap -- silently skipping
+    // the auto-select branch below for almost any right-click. Filtered to exclude the
+    // topmost hit's own ancestors: an ancestor coincidentally underlying this point was
+    // never what "stacked, needs disambiguating" meant here (that's what D-077's own
+    // click-cycling is for on the left-click side); a genuine overlapping *sibling* still
+    // counts, unaffected.
+    const candidates = resolvedCandidatesAtPoint(e.clientX, e.clientY)
+      .filter((id) => id === el.dataset.id || !isAncestorOf(id, el.dataset.id, program));
     const stacked = candidates.length > 1;
     const targetId = stacked && selectedId && candidates.includes(selectedId)
       ? selectedId : el.dataset.id;

@@ -60,7 +60,7 @@ def relate_menu_items(page):
     return page.evaluate(
         """() => Array.from(
             document.querySelectorAll('#interactivity-context-menu button[data-i]')
-        ).map((btn) => btn.title)"""
+        ).map((btn) => btn.getAttribute('aria-label'))"""
     )
 
 
@@ -130,7 +130,7 @@ def test_already_connected_pair_disables_connect_offers_attach_outside(app_page)
     disabled = app_page.evaluate(
         """() => {
             const items = Array.from(document.querySelectorAll('#interactivity-context-menu button[data-i]'));
-            const btn = items.find((el) => el.title === 'Connect to lamp');
+            const btn = items.find((el) => el.getAttribute('aria-label') === 'Connect to lamp');
             return btn.classList.contains('disabled');
         }"""
     )
@@ -240,7 +240,7 @@ def test_disconnect_submenu_lists_all_partners_and_removes_only_one(app_page):
     hx, hy = element_center(app_page, "hub")
     open_context_menu(app_page, hx, hy)
     group_titles = app_page.eval_on_selector_all(
-        "#interactivity-context-menu button.radial-btn--group", "els => els.map(e => e.title)"
+        "#interactivity-context-menu button.radial-btn--group", "els => els.map(e => e.getAttribute('aria-label'))"
     )
     assert "Connections" in group_titles
     for name in ("a", "b", "c"):

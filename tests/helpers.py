@@ -56,16 +56,17 @@ def validation_violations(page):
 
 def menu_items(page):
     """Labels of every clickable button currently in the right-click context menu (its own
-    `title` tooltip text -- D-145's radial menu puts the label there, not in visible text),
-    nested-ring items included by their own real label (e.g. "Inside room"). A non-clickable
-    group button like "Placement" has no data-i and is deliberately excluded -- it isn't an
-    action itself, its children are. Every placement item is always shown (checked/disabled
-    convey state instead of the item appearing/disappearing) -- use menu_item_state() to
-    inspect checked/disabled for a specific label."""
+    `aria-label` -- D-146 moved the label there from `title`, so hovering shows a plain
+    centered label instead of the browser's native tooltip box), nested-ring items included
+    by their own real label (e.g. "Inside room"). A non-clickable group button like
+    "Placement" has no data-i and is deliberately excluded -- it isn't an action itself, its
+    children are. Every placement item is always shown (checked/disabled convey state
+    instead of the item appearing/disappearing) -- use menu_item_state() to inspect
+    checked/disabled for a specific label."""
     return page.evaluate(
         """() => Array.from(
             document.querySelectorAll('#interactivity-context-menu button[data-i]')
-        ).map((btn) => btn.title)"""
+        ).map((btn) => btn.getAttribute('aria-label'))"""
     )
 
 
@@ -76,7 +77,7 @@ def top_level_menu_labels(page):
     menu_items() above deliberately includes nested items too, for tests that just need to
     find/click a specific action wherever it lives."""
     return page.evaluate(
-        """() => Array.from(document.querySelectorAll('#interactivity-context-menu > button')).map((btn) => btn.title)"""
+        """() => Array.from(document.querySelectorAll('#interactivity-context-menu > button')).map((btn) => btn.getAttribute('aria-label'))"""
     )
 
 
@@ -85,7 +86,7 @@ def menu_item_state(page, label):
     return page.evaluate(
         """(label) => {
             const items = Array.from(document.querySelectorAll('#interactivity-context-menu button[data-i]'));
-            const btn = items.find((el) => el.title === label);
+            const btn = items.find((el) => el.getAttribute('aria-label') === label);
             if (!btn) return null;
             return {
                 checked: btn.classList.contains('checked'),
@@ -102,18 +103,18 @@ def open_context_menu(page, x, y):
 
 
 def click_menu_item(page, label):
-    """Finds the button with this exact label (its own `title` attribute) among ALL leaf
-    buttons currently in the DOM -- D-145's radial menu always renders every ring, just
-    visually hidden (opacity/pointer-events) until its own group button is clicked, exactly
-    like D-144's always-in-DOM-but-CSS-hidden submenu <ul> before it. If the target lives
-    inside a not-yet-expanded ring, clicks that ring's own group button first (a real click,
-    not a hover -- unlike the old flyout, a radial group's children only ever bloom open via
-    a click, which also makes this work on touch where hover never did) to reveal it, then
+    """Finds the button with this exact label (its own `aria-label`) among ALL leaf buttons
+    currently in the DOM -- D-145's radial menu always renders every ring, just visually
+    hidden (opacity/pointer-events) until its own group button is clicked, exactly like
+    D-144's always-in-DOM-but-CSS-hidden submenu <ul> before it. If the target lives inside a
+    not-yet-expanded ring, clicks that ring's own group button first (a real click, not a
+    hover -- unlike the old flyout, a radial group's children only ever bloom open via a
+    click, which also makes this work on touch where hover never did) to reveal it, then
     clicks the target itself."""
     data_i, group_index = page.evaluate(
         """(label) => {
             const items = Array.from(document.querySelectorAll('#interactivity-context-menu button[data-i]'));
-            const match = items.find((el) => el.title === label);
+            const match = items.find((el) => el.getAttribute('aria-label') === label);
             if (!match) return [null, null];
             const ring = match.closest('.radial-ring');
             return [match.dataset.i, ring ? ring.dataset.groupIndex : null];
