@@ -325,32 +325,56 @@
     .modal input,
     .submenu li.submenu-field input { font-size: 16px; }
 
-    .mobile-tabs { display: flex; gap: 0.4rem; padding: 0.5rem 0.5rem 0; background: #fff; border-bottom: 1px solid #ddd; }
+    /* D-155: matches .menu-tab-btn's own established "connects to whatever's behind it
+       when active" pattern (--paper inactive, --paper-raised active) instead of the
+       hardcoded greys this never got updated to use — both the code editor and the SVG
+       viewer sit on --paper-raised underneath, so every tab now targets the same real
+       background instead of an unrelated flat grey. Also more compact (smaller padding/
+       font) — reported directly as too large for a row that's purely navigational. */
+    .mobile-tabs { display: flex; gap: 0.3rem; padding: 0.4rem 0.5rem 0;
+      background: var(--paper-raised); border-bottom: 1px solid var(--line); }
     .tab-btn {
-      flex: 1 1 0; padding: 0.5rem; border: 1px solid #ccc; border-radius: 6px 6px 0 0;
-      border-bottom: none; background: #f0f0f0; font: inherit; font-size: 0.82rem; cursor: pointer;
+      flex: 1 1 0; padding: 0.35rem 0.4rem; border: 1px solid var(--line); border-radius: 6px 6px 0 0;
+      border-bottom-color: transparent; background: var(--paper); color: var(--ink-soft);
+      font: inherit; font-size: 0.78rem; cursor: pointer;
     }
-    .tab-btn.active { background: #fff; font-weight: 600; }
+    .tab-btn.active { background: var(--paper-raised); color: var(--ink); font-weight: 600; border-color: var(--line); }
 
-    main { padding: 0.5rem; }
+    /* D-155: reported directly -- the viewer (and now the Layers panel) should fill the
+       whole available area rather than sitting inset by main's own desktop-inherited
+       padding. Moved onto the Code tab specifically instead (which still benefits from a
+       small margin around the editor) rather than dropped everywhere -- main itself no
+       longer reserves any space unconditionally. */
+    main { padding: 0; }
     .layout { flex-direction: column; }
+    .layout[data-mobile-tab="code"] { padding: 0.5rem; }
     /* Only the active tab's pane is shown at all, so it gets the whole remaining height —
        no percentage split needed the way the earlier two-pane-stacked version needed one.
        The resizer has nothing to do here — F-040 is a desktop-only concept, panes never
        sit side by side below this breakpoint. */
-    textarea, .viewer-pane, #code-highlight-wrap { flex: 1 1 auto; min-height: 0; width: 100%; height: auto; }
+    textarea, .viewer-pane, #code-highlight-wrap, #hierarchy-panel { flex: 1 1 auto; min-height: 0; width: 100%; height: auto; }
     .pane-resizer { display: none; }
-    /* A third column has nowhere to go once the layout is already stacked into two
-       full-width tabs — same desktop-only reasoning as the resizer above. */
-    .layout.hierarchy-open #hierarchy-panel { display: none; }
-    .layout[data-mobile-tab="code"] .viewer-pane { display: none; }
-    /* Hides the bare textarea when code-highlight-module.js hasn't loaded, and its
+    /* D-155: Layers is now its own mobile tab (below) instead of unreachable -- the
+       header's own ribbon toggle button would only ever flip a desktop-only sidebar class
+       that mobile no longer looks at for visibility, so it's hidden here rather than left
+       as a dead control. */
+    #hierarchy-toggle-btn { display: none; }
+    /* Exactly one of the three panes is shown per data-mobile-tab value -- hides the other
+       two's markup entirely.
+       Hides the bare textarea when code-highlight-module.js hasn't loaded, and its
        wrapper (#code-highlight-wrap, D-042) when it has — the module moves the real
        textarea inside that wrapper at runtime, so hiding just the textarea itself would
        still leave the wrapper's own colored backdrop <pre> sibling, and the flex space
        it occupies, on screen. */
+    .layout[data-mobile-tab="code"] .viewer-pane,
+    .layout[data-mobile-tab="code"] #hierarchy-panel { display: none; }
     .layout[data-mobile-tab="viewer"] textarea,
-    .layout[data-mobile-tab="viewer"] #code-highlight-wrap { display: none; }
+    .layout[data-mobile-tab="viewer"] #code-highlight-wrap,
+    .layout[data-mobile-tab="viewer"] #hierarchy-panel { display: none; }
+    .layout[data-mobile-tab="layers"] textarea,
+    .layout[data-mobile-tab="layers"] #code-highlight-wrap,
+    .layout[data-mobile-tab="layers"] .viewer-pane { display: none; }
+    .layout[data-mobile-tab="layers"] #hierarchy-panel { display: flex; flex-direction: column; }
   }
 
   .cookie-notice {
@@ -511,6 +535,7 @@
 <div class="mobile-tabs">
   <button class="tab-btn" id="tab-code" data-tab="code">Code</button>
   <button class="tab-btn active" id="tab-viewer" data-tab="viewer">Viewer</button>
+  <button class="tab-btn" id="tab-layers" data-tab="layers">Layers</button>
 </div>
 <main>
   <div class="layout" id="layout" data-mobile-tab="viewer">
@@ -2870,6 +2895,13 @@ hierarchyToggleBtn.addEventListener("click", () => {
   setHierarchyPanelOpen(!layoutEl.classList.contains("hierarchy-open"));
 });
 try { setHierarchyPanelOpen(localStorage.getItem(HIERARCHY_PANEL_OPEN_KEY) === "1"); } catch (e) { /* private mode/quota — defaults closed */ }
+
+// D-155: the mobile Layers tab (docs/index.html's own generic .tab-btn switcher above
+// already handles showing/hiding its pane) still needs to trigger hierarchy-module.js's own
+// on-demand load the first time it's opened -- the exact same trigger the desktop ribbon
+// toggle above already funnels through, reused here rather than duplicated.
+const tabLayersBtn = document.getElementById("tab-layers");
+if (tabLayersBtn) tabLayersBtn.addEventListener("click", () => setHierarchyPanelOpen(true));
 
 // ---------- D-132: the header's Edit/View tabs, plus the logo standing in for a File tab
 // (#header-logo, data-tab="file") -- #header-toolbar is a real, always-present second row
