@@ -144,8 +144,15 @@
   /* D-151: below the button, not to its side -- reported directly, and also the more
      mobile-friendly direction: a flyout growing sideways is far more likely to run off a
      narrow screen's own right edge than one growing down from a button already inside the
-     viewport. */
-  .submenu { display: none; position: absolute; top: 100%; left: 0; margin: 4px 0 0; padding: 4px 0;
+     viewport.
+     D-153: `fixed`, not `absolute` -- positioned via JS (see positionSubmenu below) rather
+     than pure CSS. Found live, right after adding D-153's own mobile horizontal-scroll fix
+     to .ribbon-group: an `absolute`-positioned flyout is clipped by *any* ancestor that
+     establishes its own overflow/scroll context, even one that isn't actually scrolled at
+     that moment -- silently hid every flyout (Export, Grid), not just the one in a row
+     that actually needed to scroll. `fixed` escapes that entirely; top/left are set
+     inline by JS on hover, these are just an inert fallback. */
+  .submenu { display: none; position: fixed; top: 0; left: 0; margin: 0; padding: 4px 0;
     min-width: 190px; list-style: none; background: #fff; border: 1px solid #ccc; border-radius: 6px;
     box-shadow: 0 4px 14px rgba(0,0,0,0.18); font-size: 13px; text-align: left; white-space: nowrap;
     z-index: 20; } /* without this, a later header sibling (e.g. Grid) paints over it -- there's
@@ -295,6 +302,17 @@
     header { gap: 0.15rem; }
     .header-row1 { padding: 0.4rem 0.5rem 0; gap: 0.4rem; }
     #header-toolbar { padding: 0.25rem 0.5rem; }
+    /* D-153: revised from D-151's own flex-wrap fix, per direct feedback -- a row with too
+       many buttons for the width now scrolls horizontally in place (one row, contained
+       within its own box) instead of wrapping onto a second row (two-dimensional, pushing
+       everything below it down further than a phone screen can usually spare). Scoped to
+       mobile only: desktop already has enough width that this practically never engages.
+       flex-shrink: 0 is load-bearing here, found live -- flex items shrink by default, so
+       without it the row never actually overflowed (nothing to scroll to) and instead
+       silently squeezed every button (the divider down to under 1px) to force-fit them all
+       in one line, the opposite of the ask. */
+    .ribbon-group { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .ribbon-btn, .ribbon-divider, .ribbon-status { flex-shrink: 0; }
     button, select { font-size: 0.78rem; padding: 0.32rem 0.55rem; }
     header .spacer { display: none; }
     /* D-151: reported directly -- iOS Safari zooms the whole page in on focus whenever a
@@ -306,15 +324,6 @@
     textarea,
     .modal input,
     .submenu li.submenu-field input { font-size: 16px; }
-    /* D-151: a flyout anchored to its button's own *left* edge (this file's own default,
-       fine with the desktop-width room to spare) can still run off a narrow screen's right
-       edge once that button itself sits well to the right -- found live, right after
-       switching the flyout to open below instead of beside. Anchoring to the button's own
-       *right* edge instead and growing leftward, mobile-only, keeps it within a narrow
-       viewport for the layouts this app's own header actually produces (a left-to-right
-       button row, pushed rightward by wrapping) -- not a universal fix for every possible
-       button position, just the one this app has. */
-    .submenu { left: auto; right: 0; }
 
     .mobile-tabs { display: flex; gap: 0.4rem; padding: 0.5rem 0.5rem 0; background: #fff; border-bottom: 1px solid #ddd; }
     .tab-btn {
@@ -2883,6 +2892,29 @@ for (const btn of menuTabBtns) {
   btn.addEventListener("click", () => setActiveMenuTab(btn.dataset.tab));
 }
 try { setActiveMenuTab(localStorage.getItem(MENU_TAB_KEY) || "file"); } catch (e) { setActiveMenuTab("file"); }
+
+// D-153: has-submenu flyouts (Export, Grid) are positioned in the viewport via JS
+// (`position: fixed`, see the .submenu rule above) instead of pure CSS (`absolute`,
+// relative to the button) -- found live, right after adding this same decision's mobile
+// horizontal-scroll fix to .ribbon-group: an `absolute`-positioned flyout is silently
+// clipped by *any* ancestor that establishes its own scroll/overflow context, even one
+// that isn't actually scrolled at that moment (so this hit the Grid flyout too, in a row
+// that never even needed to scroll). Recomputed on every hover rather than once, since the
+// same button can sit at a different point after the row itself has been scrolled.
+function positionSubmenu(wrapperEl) {
+  const submenu = wrapperEl.querySelector(".submenu");
+  if (!submenu) return;
+  const rect = wrapperEl.getBoundingClientRect();
+  const width = 190; // matches .submenu's own min-width -- avoids measuring it before "display: block" (on :hover) has actually taken effect
+  let left = rect.left;
+  if (left + width > window.innerWidth - 8) left = rect.right - width;
+  left = Math.max(8, left);
+  submenu.style.left = `${left}px`;
+  submenu.style.top = `${rect.bottom + 4}px`;
+}
+for (const el of document.querySelectorAll(".ribbon-btn.has-submenu")) {
+  el.addEventListener("mouseenter", () => positionSubmenu(el));
+}
 </script>
 </body>
 </html>
