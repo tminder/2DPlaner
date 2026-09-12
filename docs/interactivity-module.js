@@ -152,11 +152,6 @@
         border-right: 1.5px solid #333; border-bottom: 1.5px solid #333; }
       #interactivity-scale-bar .label { margin-top: 2px; background: rgba(255,255,255,0.85);
         padding: 0 4px; border-radius: 2px; }
-      #interactivity-fit-btn { position: absolute; right: 10px; top: 10px; z-index: 1;
-        font: inherit; font-size: 0.8rem; padding: 0.3rem 0.6rem; border: 1px solid #ccc;
-        border-radius: 5px; background: rgba(255,255,255,0.9); cursor: pointer; }
-      #interactivity-fit-btn:hover { background: #fff; }
-
       #interactivity-validation-panel { position: absolute; left: 10px; top: 10px; z-index: 1;
         max-width: min(280px, calc(100% - 20px)); max-height: calc(100% - 20px);
         overflow-y: auto; font-family: system-ui, sans-serif;
@@ -180,7 +175,6 @@
   document.getElementById("interactivity-context-menu")?.remove();
   document.getElementById("interactivity-module-style")?.remove();
   document.getElementById("interactivity-scale-bar")?.remove();
-  document.getElementById("interactivity-fit-btn")?.remove();
   document.getElementById("interactivity-validation-panel")?.remove();
   document.getElementById("interactivity-stack-badge")?.remove();
 
@@ -225,12 +219,11 @@
   const scaleBarBarEl = scaleBarEl.querySelector(".bar");
   const scaleBarLabelEl = scaleBarEl.querySelector(".label");
 
-  const fitBtnEl = document.createElement("button");
-  fitBtnEl.id = "interactivity-fit-btn";
-  fitBtnEl.type = "button";
-  fitBtnEl.textContent = "Fit";
-  fitBtnEl.title = "Reset zoom and pan";
-  core.rootEl.appendChild(fitBtnEl);
+  // D-156: moved into the header (View tab), reported directly -- #header-fit-btn is a
+  // stable slot core always provides (see its own comment in docs/index.html), unhidden
+  // here rather than created fresh the way this module's other floating UI still is.
+  const fitBtnEl = document.getElementById("header-fit-btn");
+  if (fitBtnEl) fitBtnEl.hidden = false;
 
   const validationPanelEl = document.createElement("div");
   validationPanelEl.id = "interactivity-validation-panel";
@@ -1266,14 +1259,26 @@
   // exception. D-149 decoupled this from the grid's own *visibility*: an explicit
   // `snap: false` turns discrete snapping off while a grid is still declared (and possibly
   // still visible) — omitting `snap` entirely preserves the original "on whenever a grid is
-  // declared" default exactly. The reverse (snap with no visible grid) is grid-module.js's
-  // own `layer: "none"`, not anything this function needs to know about — it only ever
-  // reads `size`/`snap`, never whether the grid actually renders.
-  function gridSnapSize() {
+  // declared" default exactly. The reverse (snap with no visible grid) was already possible
+  // via grid-module.js's own `layer: "none"` (grid still *declared*, just not rendered) —
+  // but that still required declaring a `grid` object at all, just to get snapping with
+  // nothing shown.
+  //
+  // D-156: reported directly -- the grid's own visibility and snapping should be
+  // switchable independently from two separate header buttons, not just via a hand-edited
+  // `layer: "none"`. A standalone `settings.snap: true` (own header button, independent of
+  // `grid` entirely) is now a *second*, independent way snapping turns on -- doesn't
+  // require a `grid` object to exist at all. The original grid-declared-implies-snap
+  // default above is untouched, so any plan already relying on `grid.snap: false` (F-031,
+  // tested by tests/test_grid_snap.py) keeps behaving exactly as it did before; the two
+  // enable-paths are simply OR'd together, each independently controllable from its own
+  // button.
+  function snapIncrement() {
     const grid = program?.settings?.grid;
-    if (!grid) return null;
-    if (grid.snap === false) return null;
-    const size = core.numOf(grid.size ?? 1);
+    const gridDrivenOn = !!grid && grid.snap !== false;
+    const standaloneOn = program?.settings?.snap === true;
+    if (!gridDrivenOn && !standaloneOn) return null;
+    const size = core.numOf(grid?.size ?? 1);
     return size > 0 ? size : null;
   }
 
@@ -1284,7 +1289,7 @@
   // means they can still shrink it further in a tight space — the same way they already
   // override plain dragging today, not a new exception.
   function snappedDragDelta(startAbs, dx, dy) {
-    const size = gridSnapSize();
+    const size = snapIncrement();
     if (!size || !startAbs) return [dx, dy];
     const targetX = startAbs[0] + dx, targetY = startAbs[1] + dy;
     const snappedX = Math.round(targetX / size) * size;
@@ -1297,7 +1302,7 @@
   // value (position, width, height) is then derived from this one already-snapped point,
   // not re-snapped independently.
   function snappedGridPoint(x, y) {
-    const size = gridSnapSize();
+    const size = snapIncrement();
     if (!size) return [x, y];
     return [Math.round(x / size) * size, Math.round(y / size) * size];
   }
@@ -2590,12 +2595,15 @@
     capturePaintOrderRank(svgEl);
 
     // core's rerender() just replaced #plan-root's *entire* innerHTML with the fresh SVG,
-    // which silently destroys these two overlay elements too, not just old shape markup —
+    // which silently destroys these overlay elements too, not just old shape markup —
     // they're plain children of the same container, appended once at module load, so they
     // need re-adding after every single render, not just the first. appendChild moves an
     // already-existing node rather than erroring, so this is safe to call unconditionally.
+    // D-156: fitBtnEl no longer belongs here -- it's #header-fit-btn now, a child of the
+    // header, not of core.rootEl -- appending it here would move it out of the header and
+    // into the viewer on the very next render (a real bug, caught live: the button visibly
+    // jumped from the header into the bottom-right corner of the viewer pane).
     core.rootEl.appendChild(scaleBarEl);
-    core.rootEl.appendChild(fitBtnEl);
     core.rootEl.appendChild(validationPanelEl);
     renderValidationPanel(checkPlanValidity(prog, positions));
 
@@ -2781,13 +2789,14 @@
   // what was added. ----------
   function handlePointerDown(e) {
     if (e.button !== 0) return; // right-click only opens the context menu
-    // The Fit button (and any future plain HTML control appended over the viewer, like
-    // the scale bar) is a child of core.rootEl too, so its own pointerdown bubbles up to
-    // this same listener — a real bug, not a hypothetical, found by actually clicking
-    // Fit after panning and seeing nothing happen: preventDefault() below suppressed the
-    // browser's own click-event synthesis for the button before handleFitClick ever got a
-    // chance to run. Bail out before touching it at all, so a plain button always gets to
-    // handle its own click natively, the same as it would anywhere else on the page.
+    // Any plain HTML control appended over the viewer as a child of core.rootEl (the scale
+    // bar; the Fit button used to live here too before D-156 moved it into the header) has
+    // its own pointerdown bubble up to this same listener — a real bug, not a hypothetical,
+    // found back when Fit still lived here by actually clicking it after panning and seeing
+    // nothing happen: preventDefault() below suppressed the browser's own click-event
+    // synthesis for the button before its own handler ever got a chance to run. Bail out
+    // before touching it at all, so a plain button always gets to handle its own click
+    // natively, the same as it would anywhere else on the page.
     if (e.target.closest("button")) return;
     // Without this, a mousedown-and-move over the SVG is indistinguishable from starting a
     // native text selection to the browser — every drag/pan gesture would leave a stray
@@ -3541,7 +3550,7 @@
       // sqrt(2)*size for a diagonal intersection, etc.), unlike a rect corner's own
       // straightforward x/y.
       const rawR = Math.hypot(cursor[0] - resizeDrag.startAbs[0], cursor[1] - resizeDrag.startAbs[1]);
-      const snapSize = gridSnapSize();
+      const snapSize = snapIncrement();
       const newR = Math.max(RESIZE_MIN, snapSize ? Math.round(rawR / snapSize) * snapSize : rawR);
       edits.push({ start: r0.start, end: r0.end, text: core.formatNumber(newR, r0.unit) });
     } else {
@@ -4079,7 +4088,7 @@
   core.rootEl.addEventListener("pointerover", handlePointerOver);
   core.rootEl.addEventListener("pointerout", handlePointerOut);
   core.rootEl.addEventListener("wheel", handleWheel, { passive: false });
-  fitBtnEl.addEventListener("click", handleFitClick);
+  fitBtnEl?.addEventListener("click", handleFitClick);
 
   // ---------- Teardown: undoes exactly what setup above did, so removing this module's
   // declaration from a plan actually turns interactivity off. ----------
@@ -4097,12 +4106,14 @@
     core.rootEl.removeEventListener("pointerover", handlePointerOver);
     core.rootEl.removeEventListener("pointerout", handlePointerOut);
     core.rootEl.removeEventListener("wheel", handleWheel);
-    fitBtnEl.removeEventListener("click", handleFitClick);
+    fitBtnEl?.removeEventListener("click", handleFitClick);
+    // D-156: hidden again, not removed -- #header-fit-btn is core's own persistent slot
+    // (docs/index.html), not this module's to delete.
+    if (fitBtnEl) fitBtnEl.hidden = true;
     core.rootEl.classList.remove("dragging");
     delete core.rootEl.dataset.selectedId;
     contextMenuEl.remove();
     scaleBarEl.remove();
-    fitBtnEl.remove();
     styleEl.remove();
     // S-010: every module-owned mutable variable, not just five of thirteen — the comment
     // above says "undoes exactly what setup did," so it should actually be true, even

@@ -130,3 +130,29 @@ def test_grid_flyout_type_before_grid_exists_creates_it_fresh(app_page):
     text = source_text(app_page)
     assert 'type: "lines"' in text
     assert app_page.locator(".plan-grid-bg").count() == 1
+
+
+def test_grid_flyout_off_button_turns_grid_off_and_reflects_active_state(app_page):
+    """D-156: reported directly -- the only way to turn the grid off used to be the box's
+    own plain click, easy to miss while already hovering the flyout. Off/Squares/Lines now
+    read as one mutually-exclusive group, Off itself an explicit "make it so" rather than a
+    toggle (clicking it while already off must be a no-op, not turn the grid back on)."""
+    load_plan(app_page, BACK_GRID_PLAN)
+    app_page.click("#menu-tab-view")
+    app_page.hover("#grid-toggle-btn")
+    app_page.wait_for_timeout(150)
+    assert not app_page.locator("#grid-off-btn").evaluate("el => el.classList.contains('active')")
+
+    app_page.click("#grid-off-btn")
+    app_page.wait_for_timeout(150)
+    assert "grid" not in source_text(app_page)
+    assert app_page.locator(".plan-grid-bg").count() == 0
+
+    app_page.hover("#grid-toggle-btn")
+    app_page.wait_for_timeout(150)
+    assert app_page.locator("#grid-off-btn").evaluate("el => el.classList.contains('active')")
+
+    before = source_text(app_page)
+    app_page.click("#grid-off-btn")
+    app_page.wait_for_timeout(150)
+    assert source_text(app_page) == before

@@ -276,11 +276,12 @@
 
   /* Overlaid on top of the viewer instead of a reserved row below it — each line only
      takes visual space when it actually has something to say (the :empty rule), so an
-     idle viewer never loses height to a status bar with nothing in it. Capped width and a
-     right-hand margin keep it clear of the interactivity module's Fit button (top-right);
-     explicit z-index puts it above that button and the scale bar regardless. */
+     idle viewer never loses height to a status bar with nothing in it. D-156: no longer
+     needs a right-hand margin reserved for the Fit button, which moved into the header --
+     kept modest anyway so a long message can't crowd the whole viewer edge to edge.
+     Explicit z-index puts it above the scale bar regardless. */
   .status-overlay { position: absolute; left: 0.5rem; top: 0.5rem; z-index: 3;
-    max-width: min(520px, calc(100% - 4.5rem));
+    max-width: min(520px, calc(100% - 1rem));
     display: flex; flex-direction: column; gap: 0.35rem; pointer-events: none; }
   .status-overlay > div:empty { display: none; }
   #error { color: #fff; background: #c0392b; white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace;
@@ -497,9 +498,27 @@
          also toggling grid on/off, the same way a bubbled click from Export's own submenu
          items never touches Export's own (nonexistent) top-level action. -->
     <div class="menu-tab-panel ribbon-group" data-tab="view" role="tabpanel" hidden>
+      <!-- D-156: a stable, hidden-by-default slot core always provides, exactly like
+           #hierarchy-panel's own established shape -- interactivity-module.js finds it and
+           unhides it once loaded (it's always in AUTO_MODULES, so in practice immediately),
+           rather than the module appending its own floating button over the viewer the way
+           it used to. Reset zoom/pan is this module's own concept (viewState lives there
+           entirely, D-006), so core can't implement the click itself -- it only owns the
+           button's place in the header. -->
+      <button class="ribbon-btn" id="header-fit-btn" title="Reset zoom and pan" hidden>
+        <svg class="ribbon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3" /><path d="M21 8V5a2 2 0 0 0-2-2h-3" /><path d="M3 16v3a2 2 0 0 0 2 2h3" /><path d="M16 21h3a2 2 0 0 0 2-2v-3" /></svg><span class="ribbon-label">Fit</span>
+      </button>
       <div class="ribbon-btn has-submenu" id="grid-toggle-btn">
         <svg class="ribbon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M3 9h18" /><path d="M3 15h18" /><path d="M9 3v18" /><path d="M15 3v18" /></svg><span class="ribbon-label">Grid</span>
         <ul class="submenu">
+          <!-- D-156: reported directly -- the only way to turn the grid off was the box's
+               own plain click, easy to miss once you're already hovering the flyout to
+               change its type/size. Off/Squares/Lines now read as one mutually-exclusive
+               group (updateGridToggleUi below marks exactly one .active at a time), Off
+               calling setGridEnabled(false) rather than toggleGridSetting() -- an explicit
+               "make it so" rather than a toggle, so clicking it while already off is a
+               harmless no-op instead of turning the grid back on. -->
+          <li><button id="grid-off-btn" type="button">Off</button></li>
           <li><button id="grid-type-checker-btn" type="button">Squares</button></li>
           <li><button id="grid-type-lines-btn" type="button">Lines</button></li>
           <li class="submenu-field">
@@ -508,6 +527,18 @@
           </li>
         </ul>
       </div>
+      <!-- D-156: independent of the grid's own on/off state on purpose -- reported
+           directly, snapping and the grid's own visibility should be separately
+           switchable. Toggles a standalone `settings.snap` flag (see toggleSnapSetting/
+           snapIncrement in interactivity-module.js) rather than reusing `grid`'s own
+           pre-existing `snap` sub-key (F-031/D-149), which only ever suppresses snapping
+           while a grid is *also* declared -- it has no way to express "snapping on, no
+           grid declared at all," which is exactly the case this button exists for. Both
+           paths stay live: grid.snap: false (hand-edited) still works unchanged for
+           anyone already relying on it. -->
+      <button class="ribbon-btn" id="snap-toggle-btn" title="Snap dragged/resized elements to a grid increment, independent of whether a grid is shown">
+        <svg class="ribbon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15-4-4 6.75-6.77a7.79 7.79 0 0 1 11 11L13 22l-4-4 6.39-6.36a2.14 2.14 0 0 0-3-3L6 15" /><path d="m5 8 4 4" /><path d="m12 15 4 4" /></svg><span class="ribbon-label">Snap</span>
+      </button>
       <button class="ribbon-btn" id="connections-toggle-btn" title="Show a line between every connected pair of elements">
         <svg class="ribbon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17H7A5 5 0 0 1 7 7h2" /><path d="M15 7h2a5 5 0 1 1 0 10h-2" /><line x1="8" x2="16" y1="12" y2="12" /></svg><span class="ribbon-label">Connections</span>
       </button>
@@ -2257,6 +2288,7 @@ async function rerender(opts = {}) {
     errorEl.textContent = "";
     clearTimeout(errorHideTimer);
     updateGridToggleUi();
+    updateSnapToggleUi();
     updateShowConnectionsToggleUi();
     for (const cb of renderedCallbacks) cb(program, result);
     return result;
@@ -2395,6 +2427,17 @@ function toggleSettingsFlag(key, insertLiteral) {
 
 function toggleGridSetting() { toggleSettingsFlag("grid", "{ }"); }
 function toggleShowConnectionsSetting() { toggleSettingsFlag("showConnections", "true"); }
+// D-156: an explicit "make it so" for the grid submenu's own Off item -- unlike
+// toggleGridSetting above (a plain flip, right for the box's own click), Off must be a
+// no-op when the grid is already off rather than turning it back on.
+function setGridEnabled(enabled) {
+  const isOn = program?.settings?.grid !== undefined;
+  if (enabled === isOn) return;
+  toggleGridSetting();
+}
+// D-156: a standalone flag, independent of `grid`'s own existence -- see the header
+// button's own comment in the HTML above for why this isn't just reusing grid.snap.
+function toggleSnapSetting() { toggleSettingsFlag("snap", "true"); }
 
 // D-149: the header's Grid flyout own Squares/Lines/Size controls -- writes one named
 // sub-key inside `settings.grid` directly (creating `settings`/`grid` fresh if either
@@ -2437,11 +2480,15 @@ function updateGridToggleUi() {
   const btn = document.getElementById("grid-toggle-btn");
   if (!btn) return;
   const grid = program?.settings?.grid;
-  btn.classList.toggle("active", grid !== undefined);
+  const isOn = grid !== undefined;
+  btn.classList.toggle("active", isOn);
 
+  // D-156: Off/Squares/Lines read as one mutually-exclusive group now -- exactly one
+  // .active at a time, Off when there's no grid at all.
   const isLines = grid?.type === "lines";
-  document.getElementById("grid-type-checker-btn")?.classList.toggle("active", !isLines);
-  document.getElementById("grid-type-lines-btn")?.classList.toggle("active", isLines);
+  document.getElementById("grid-off-btn")?.classList.toggle("active", !isOn);
+  document.getElementById("grid-type-checker-btn")?.classList.toggle("active", isOn && !isLines);
+  document.getElementById("grid-type-lines-btn")?.classList.toggle("active", isOn && isLines);
   // Never clobbers what's currently focused -- a live re-render firing mid-edit (every
   // other keystroke in the code pane re-renders) must not fight the value someone is in
   // the middle of typing into this same field.
@@ -2455,6 +2502,14 @@ function updateShowConnectionsToggleUi() {
   const btn = document.getElementById("connections-toggle-btn");
   if (!btn) return;
   btn.classList.toggle("active", program?.settings?.showConnections === true);
+}
+
+// D-156: mirrors updateShowConnectionsToggleUi's own shape exactly -- a standalone flat
+// flag with no sub-state of its own to reflect.
+function updateSnapToggleUi() {
+  const btn = document.getElementById("snap-toggle-btn");
+  if (!btn) return;
+  btn.classList.toggle("active", program?.settings?.snap === true);
 }
 
 function newPlanFromExample(key) {
@@ -2622,12 +2677,14 @@ document.getElementById("grid-toggle-btn").addEventListener("click", (e) => {
   if (e.target.closest(".submenu")) return;
   toggleGridSetting();
 });
+document.getElementById("grid-off-btn").addEventListener("click", () => setGridEnabled(false));
 document.getElementById("grid-type-checker-btn").addEventListener("click", () => setGridType("checker"));
 document.getElementById("grid-type-lines-btn").addEventListener("click", () => setGridType("lines"));
 document.getElementById("grid-size-input").addEventListener("change", (e) => {
   const v = parseFloat(e.target.value);
   if (Number.isFinite(v) && v > 0) setGridSize(v);
 });
+document.getElementById("snap-toggle-btn").addEventListener("click", toggleSnapSetting);
 document.getElementById("connections-toggle-btn").addEventListener("click", toggleShowConnectionsSetting);
 
 document.getElementById("delete-btn").addEventListener("click", () => {
@@ -2686,8 +2743,10 @@ function exportFilename(ext) {
 // (interactivity-module, matched by their own data-action attribute) and interaction-state
 // classes (selected/connected-highlight/corner-preview) — an export is a picture of the
 // plan, not a screenshot of whatever happens to be selected or hovered in the editor right
-// now. The scale bar, Fit button, and F-022's validation panel need no such stripping at
-// all: they're plain HTML siblings of the <svg> inside #plan-root, never part of it.
+// now. The scale bar and F-022's validation panel need no such stripping at all: they're
+// plain HTML siblings of the <svg> inside #plan-root, never part of it. The Fit button
+// (D-156) doesn't even live inside #plan-root any more -- it's a header control now, not
+// reachable from a clone of the SVG at all.
 function cleanSvgClone() {
   const liveSvg = rootEl.querySelector("svg");
   if (!liveSvg) return null;

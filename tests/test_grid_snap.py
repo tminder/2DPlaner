@@ -42,6 +42,14 @@ NO_SNAP_GRID_PLAN = """
 settings { grid: { size: 0.5, snap: false } }
 """ + PLAN
 
+STANDALONE_SNAP_PLAN = """
+settings { snap: true }
+""" + PLAN
+
+GRID_SNAP_FALSE_PLUS_STANDALONE_PLAN = """
+settings { grid: { size: 0.5, snap: false }, snap: true }
+""" + PLAN
+
 TIGHT_CONTAINMENT_PLAN = """
 settings { grid: { size: 0.5 } }
 element room {
@@ -140,6 +148,51 @@ def test_explicit_snap_false_disables_snapping_even_with_a_grid_declared(app_pag
 
     px, py = sofa_position(source_text(app_page))
     assert not (is_multiple_of(px, STEP) and is_multiple_of(py, STEP))
+
+
+def test_standalone_snap_flag_enables_snapping_with_no_grid_declared(app_page):
+    """D-156: reported directly -- grid visibility and snapping should be independently
+    switchable from two separate header buttons, not just via a hand-edited `layer:
+    "none"` (which still required declaring a `grid` object at all). `settings.snap` is a
+    second, independent enable-path with no dependency on `grid` whatsoever."""
+    load_plan(app_page, STANDALONE_SNAP_PLAN)
+    assert app_page.locator(".plan-grid-bg").count() == 0  # no grid rendered at all
+    x, y = element_center(app_page, "sofa")
+    drag(app_page, x, y, x + 47, y + 23)
+
+    px, py = sofa_position(source_text(app_page))
+    assert is_multiple_of(px, 1.0)  # default increment: no grid.size to read, falls back to 1m
+    assert is_multiple_of(py, 1.0)
+
+
+def test_standalone_snap_flag_still_snaps_even_when_grid_declared_snap_false(app_page):
+    """The two enable-paths are OR'd, not mutually exclusive -- grid.snap: false only ever
+    suppressed the *grid-driven* default (test_explicit_snap_false_disables_snapping_even_
+    with_a_grid_declared above); it doesn't become a master override just because a second,
+    independent flag now also exists."""
+    load_plan(app_page, GRID_SNAP_FALSE_PLUS_STANDALONE_PLAN)
+    x, y = element_center(app_page, "sofa")
+    drag(app_page, x, y, x + 47, y + 23)
+
+    px, py = sofa_position(source_text(app_page))
+    assert is_multiple_of(px, STEP)
+    assert is_multiple_of(py, STEP)
+
+
+def test_snap_toggle_button_writes_and_reflects_standalone_flag(app_page):
+    load_plan(app_page, PLAN)
+    app_page.click("#menu-tab-view")
+    assert not app_page.locator("#snap-toggle-btn").evaluate("el => el.classList.contains('active')")
+
+    app_page.click("#snap-toggle-btn")
+    app_page.wait_for_timeout(150)
+    assert "snap: true" in source_text(app_page)
+    assert app_page.locator("#snap-toggle-btn").evaluate("el => el.classList.contains('active')")
+
+    app_page.click("#snap-toggle-btn")
+    app_page.wait_for_timeout(150)
+    assert "snap" not in source_text(app_page)
+    assert not app_page.locator("#snap-toggle-btn").evaluate("el => el.classList.contains('active')")
 
 
 def test_drag_snapping_still_respects_containment_clamp(app_page):
