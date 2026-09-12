@@ -62,6 +62,10 @@
          (green, matching the old connect icon's own color) so it doesn't read as plain hover
          or as the purple selection glow. */
       svg .obj.relate-candidate { filter: drop-shadow(0 0 3px rgba(42,138,62,0.85)); }
+      /* D-150 (F-012): Shift-held drag-driven reparenting's own live target highlight -- a
+         third distinct hue (amber/orange) alongside relate's green and selected/marquee's
+         purple, so it never reads as either of those instead. */
+      svg .obj.reparent-candidate { filter: drop-shadow(0 0 3px rgba(230,126,34,0.9)); }
       svg .obj.corner-preview { stroke: #e33 !important; filter: drop-shadow(0 0 2px #e33); }
       /* F-021's remaining half: discovering a hidden element exists at all, not just
          reaching it (D-077's click-cycling already covers reaching it). Dimming *every*
@@ -2025,11 +2029,27 @@
   }
 
   // Right after the node's own opening `element id {` line — where every shipped example
-  // already puts its first property.
+  // already puts its first property. Assumes a fresh line exists to land on (true for
+  // every multi-line-formatted element, which is every shipped example) -- falls back to
+  // node.end for a single-line one, which is fine for *this* function's own callers
+  // (inserting a fresh property on the node's own line is still textually valid there,
+  // just cosmetically appended rather than landing on its own new line).
   function afterHeaderLine(text, node) {
     let i = node.start;
     while (i < node.end && text[i] !== "\n") i++;
     return i < node.end ? i + 1 : i;
+  }
+
+  // D-150 (F-012): the position right after a node's own opening `{`, regardless of
+  // whether it's formatted multi-line or all on one line -- unlike afterHeaderLine above,
+  // this is used to insert a whole *child element* inside another node's braces (drag-
+  // driven reparenting's own new parent), where landing after node.end instead (as
+  // afterHeaderLine would for a single-line target, found live as a real bug: the moved
+  // block ended up as a sibling stuck after the target's own closing brace, not nested
+  // inside it) would corrupt the intended nesting outright, not just look a little
+  // untidy the way a misplaced property insert still would.
+  function afterOpenBrace(text, node) {
+    return text.indexOf("{", node.idEnd) + 1;
   }
 
   // Reuses the exact clamp math a drag already applies (dx=dy=0 against the *current*
@@ -2204,6 +2224,91 @@
       const parentSpan = toLineSpan(strippedText, freshParent.start, freshParent.end);
       const edits = [{ start: cut.start, end: cut.end, text: "" }, { start: parentSpan.end, end: parentSpan.end, text: movedText }];
       commitSourceEdit(applyEditsDescending(strippedText, edits), `'${nodeId}': placement cleared, moved out of '${parent.id}'.`);
+    });
+  }
+
+  // D-150 (F-012): the drag-driven counterpart to clearPlacement above -- same two-pass
+  // strip-then-reparse-then-splice mechanic, generalized to an arbitrary drop target
+  // (a Shift-held ordinary drag's own reparent-candidate, see handlePointerMove/Up) instead
+  // of always the grandparent. `placement`/`flush` are stripped unconditionally for the
+  // exact same reason clearPlacement already strips them: a changed container invalidates
+  // any placement relative to the *old* one, since `placement` always means "this node's
+  // own current immediate parent" (setPlacementInside's own established rule) -- silently
+  // keeping it would mean it now applies to a parent the user never asked for that.
+  function reparentElement(nodeId, newParentId) {
+    withParsedSource((text, base) => {
+      const node = base.nodesById[nodeId];
+      const newParent = base.nodesById[newParentId];
+      if (!node || !newParent || !node.parentId) return;
+      if (newParentId === node.parentId) return; // already there -- not a real reparent
+      if (nodeId === newParentId || isAncestorOf(nodeId, newParentId, base)) return; // no cycles
+
+      const propSpans = ["placement", "flush"].map((key) => findOwnPropertyLine(text, node, key)).filter(Boolean);
+
+      // Two passes, not one combined edit list -- see clearPlacement's own identical
+      // reasoning above: every offset below comes from a fresh reparse of the
+      // already-stripped text, never sharing a position with a just-deleted property line.
+      const strippedText = deleteSpans(text, propSpans);
+      let strippedBase;
+      try { strippedBase = core.parseExpanded(strippedText); } catch (e) { return; }
+      const freshNode = strippedBase.nodesById[nodeId];
+      const freshNewParent = strippedBase.nodesById[newParentId];
+      if (!freshNode || !freshNewParent) return;
+      // Re-checked against the fresh tree too -- belt and braces, matching this codebase's
+      // own established caution around structural edits (D-148's own identical instinct).
+      if (freshNode.id === freshNewParent.id || isAncestorOf(freshNode.id, freshNewParent.id, strippedBase)) return;
+
+      const [x0, y0] = freshNode.props.position ?? [null, null];
+      if ((x0 && !core.isEditable(x0)) || (y0 && !core.isEditable(y0))) {
+        commitSourceEdit(strippedText, `'${nodeId}': can't move it into '${newParentId}' automatically -- its position is an expression, can't be safely rewritten.`);
+        return;
+      }
+
+      const positions = {};
+      core.computePositions(strippedBase.root, null, [0, 0], positions);
+      const [nodeAbsX, nodeAbsY] = positions[freshNode.id];
+      const [npAbsX, npAbsY] = positions[freshNewParent.id];
+      const newX = nodeAbsX - npAbsX, newY = nodeAbsY - npAbsY;
+
+      const cut = toLineSpan(strippedText, freshNode.start, freshNode.end);
+      const positionEdits = freshNode.props.position
+        ? [
+            { start: x0.start, end: x0.end, text: core.formatNumber(newX, x0.unit) },
+            { start: y0.start, end: y0.end, text: core.formatNumber(newY, y0.unit) },
+          ]
+        : [{
+            start: afterHeaderLine(strippedText, freshNode), end: afterHeaderLine(strippedText, freshNode),
+            text: `${lineIndentAt(strippedText, freshNode.start)}  position: [${core.formatNumber(newX, "m")}, ${core.formatNumber(newY, "m")}]\n`,
+          }];
+      const localEdits = positionEdits.map((e) => ({ start: e.start - cut.start, end: e.end - cut.start, text: e.text }));
+      let movedText = applyEditsDescending(strippedText.slice(cut.start, cut.end), localEdits);
+
+      // Reindented to the *target's* own child depth -- unlike clearPlacement's always-
+      // one-level-shallower dedent (parent -> grandparent is always exactly one level), a
+      // drag can drop this anywhere: shallower, deeper, or a different branch entirely at
+      // the same depth. The node's own current indent prefix is swapped for the new
+      // parent's own child indent, line by line -- each line's *extra* indentation beyond
+      // that shared prefix (its own descendants, whatever it contains) carries through
+      // untouched, just re-based to the new starting depth.
+      const oldIndent = lineIndentAt(strippedText, freshNode.start);
+      const newIndent = lineIndentAt(strippedText, freshNewParent.start) + "  ";
+      movedText = movedText.split("\n")
+        .map((line) => (line.startsWith(oldIndent) ? newIndent + line.slice(oldIndent.length) : line))
+        .join("\n");
+
+      // Inserted right after the new parent's own opening brace -- becoming its *child*,
+      // unlike clearPlacement's own insertion point (right after the old parent's closing
+      // line, becoming its *sibling* instead) -- the two mechanics part ways exactly here,
+      // matching each one's own actual intent. afterOpenBrace, not afterHeaderLine -- the
+      // target can be formatted single-line, where afterHeaderLine's own "next newline, or
+      // node.end" fallback would land after the target's own closing brace instead of
+      // inside it.
+      const insertAt = afterOpenBrace(strippedText, freshNewParent);
+      // A leading newline of its own -- movedText already carries its own indentation
+      // (captured via toLineSpan on the way out) but nothing separating it from whatever
+      // character sits immediately after the target's own `{` (usually none at all).
+      const edits = [{ start: cut.start, end: cut.end, text: "" }, { start: insertAt, end: insertAt, text: `\n${movedText}` }];
+      commitSourceEdit(applyEditsDescending(strippedText, edits), `'${nodeId}': moved into '${newParentId}'.`);
     });
   }
 
@@ -2737,7 +2842,11 @@
       if (activeTouches.size === 2) {
         clearTimeout(longPressTimer);
         longPressTimer = null;
-        if (drag) { core.sourceEl.value = drag.baseText; drag = null; core.rerender({ preserveViewBox: true }); }
+        if (drag) {
+          drag.unregisterReparentHighlight?.();
+          if (drag.reparentCandidateId) core.rootEl.querySelector(`[data-id="${CSS.escape(drag.reparentCandidateId)}"]`)?.classList.remove("reparent-candidate");
+          core.sourceEl.value = drag.baseText; drag = null; core.rerender({ preserveViewBox: true });
+        }
         if (resizeDrag) { core.sourceEl.value = resizeDrag.baseText; resizeDrag = null; core.rerender({ preserveViewBox: true }); }
         if (vertexDrag) { core.sourceEl.value = vertexDrag.baseText; vertexDrag = null; core.rerender({ preserveViewBox: true }); }
         if (scaleDrag) { core.sourceEl.value = scaleDrag.baseText; scaleDrag = null; core.rerender({ preserveViewBox: true }); }
@@ -2942,7 +3051,21 @@
     // current multi-selection.
     const groupIds = selectedIds.size > 1 && selectedIds.has(node.id)
       ? [...selectedIds].filter((id) => id !== node.id) : [];
-    drag = { id: node.id, groupIds, baseText: core.sourceEl.value, clientX: e.clientX, clientY: e.clientY, moved: false, singleOnly: e.shiftKey, startAbs: lastPositions[node.id] };
+    drag = { id: node.id, groupIds, baseText: core.sourceEl.value, clientX: e.clientX, clientY: e.clientY, moved: false, singleOnly: e.shiftKey, startAbs: lastPositions[node.id], reparentCandidateId: null };
+    // D-150 (F-012): applyDrag's own core.rerender() is async (it awaits module loading
+    // before ever replacing rootEl's own innerHTML), so a plain classList.add() called
+    // synchronously right after applyDrag() lands on a DOM node that gets thrown away the
+    // moment that pending render actually completes -- a real bug, found live (the
+    // highlight computed correctly but was never visible). core.onRendered fires *after*
+    // rootEl.innerHTML is actually replaced, so applying the highlight there -- reading
+    // drag.reparentCandidateId fresh each time, not captured once -- is the one point
+    // guaranteed to survive. Registered once per gesture (not per frame), unregistered in
+    // handlePointerUp/the F-036 cancellation path below.
+    drag.unregisterReparentHighlight = core.onRendered(() => {
+      if (drag && drag.reparentCandidateId) {
+        core.rootEl.querySelector(`[data-id="${CSS.escape(drag.reparentCandidateId)}"]`)?.classList.add("reparent-candidate");
+      }
+    });
     core.rootEl.classList.add("dragging");
 
     // F-036/D-146: touch's own equivalent of the right-click context menu — contextmenu via
@@ -3717,6 +3840,34 @@
     let dy = (e.clientY - drag.clientY) / pxPerMeter;
     [dx, dy] = snappedDragDelta(drag.startAbs, dx, dy);
     applyDrag(drag, dx, dy);
+
+    // D-150 (F-012): Shift held during an ordinary drag additionally looks for a valid
+    // reparent target under the cursor -- the exact same candidate-validity shape
+    // relateDrag/connectPick already use (exists, isn't the dragged node itself, isn't an
+    // ancestor/descendant either way), plus excluding the node's own *current* parent
+    // (dropping back on your own parent isn't a new one). Deliberately gated on a held
+    // modifier, not automatic: an ordinary drag frequently ends up over some other nearby
+    // shape, and reparenting on every such coincidence would make simple repositioning
+    // unpredictable. Skipped entirely for a group drag (drag.groupIds.length) -- v1 scope.
+    // applyDrag above always refreshes core.dragmsgEl fully on its own every frame, so this
+    // only ever *adds* to it when there's a candidate to report, never clears it otherwise.
+    if (drag.moved && !drag.groupIds.length) {
+      const currentParentId = program?.nodesById[drag.id]?.parentId;
+      let newCandidateId = null;
+      if (e.shiftKey) {
+        const el = document.elementFromPoint(e.clientX, e.clientY)?.closest("[data-id]");
+        const hoveredId = el?.dataset.id;
+        const valid = hoveredId && hoveredId !== drag.id && hoveredId !== currentParentId && program.nodesById[hoveredId]
+          && !isAncestorOf(hoveredId, drag.id, program) && !isAncestorOf(drag.id, hoveredId, program);
+        newCandidateId = valid ? hoveredId : null;
+      }
+      // Only the *candidate id* is decided here, synchronously, every frame -- the actual
+      // highlight is applied from the drag-start-registered core.onRendered hook instead
+      // (see handlePointerDown), since applyDrag's own render above is async and hasn't
+      // necessarily replaced the DOM yet at this exact point.
+      drag.reparentCandidateId = newCandidateId;
+      if (newCandidateId) core.dragmsgEl.textContent += `\n'${drag.id}': release to move it into '${newCandidateId}'`;
+    }
   }
 
   function handlePointerUp(e) {
@@ -3806,22 +3957,39 @@
       return;
     }
     if (drag) {
-      selectedId = drag.id; // click or drag-and-release both select the element
+      const nodeId = drag.id;
+      selectedId = nodeId; // click or drag-and-release both select the element
       // F-029: an actual group-drag (moved, started from inside a multi-selection) keeps
       // the whole group selected; a plain click (never moved) always collapses to just the
       // one element clicked, whether or not it was already part of a group — no "sticky"
       // multi-select survives a plain click.
-      selectedIds = drag.moved && drag.groupIds.length ? new Set([drag.id, ...drag.groupIds]) : new Set([drag.id]);
+      selectedIds = drag.moved && drag.groupIds.length ? new Set([nodeId, ...drag.groupIds]) : new Set([nodeId]);
       // A plain click (never moved) remembers its own point + chosen id, so a repeated
       // click right there can step to the next thing underneath next time; an actual drag
       // invalidates it — dragging is a deliberate move, not "try again at this spot".
-      clickCycle = drag.moved ? null : { x: drag.clientX, y: drag.clientY, lastId: drag.id };
+      clickCycle = drag.moved ? null : { x: drag.clientX, y: drag.clientY, lastId: nodeId };
+      // D-150 (F-012): a live reparent candidate (Shift held over a valid different
+      // element, see handlePointerMove) is resolved here, before `drag` itself is cleared —
+      // this is the one place left that still knows what was live. Unregistering the
+      // highlight hook *before* the final rerender below means it never re-applies the
+      // class to a fresh post-drag render that has nothing to do with this gesture anymore.
+      const reparentTargetId = drag.reparentCandidateId;
+      drag.unregisterReparentHighlight?.();
+      if (reparentTargetId) core.rootEl.querySelector(`[data-id="${CSS.escape(reparentTargetId)}"]`)?.classList.remove("reparent-candidate");
       drag = null;
-      core.rerender({ preserveViewBox: true });
-      // Once per gesture, not once per pointermove frame (applyDrag runs on every one of
-      // those) — commitUndoStep is a no-op if the text didn't actually change, so a plain
-      // click-to-select (drag set, nothing moved) never clutters history either.
-      core.commitUndoStep();
+      if (reparentTargetId) {
+        // reparentElement runs its own commitSourceEdit (rerender + commitUndoStep) against
+        // the text applyDrag already updated with the final dragged position -- one single
+        // undo step for the whole Shift-drag-and-drop gesture, not two (move, then a
+        // separate reparent) the way calling core.commitUndoStep() here first would.
+        reparentElement(nodeId, reparentTargetId);
+      } else {
+        core.rerender({ preserveViewBox: true });
+        // Once per gesture, not once per pointermove frame (applyDrag runs on every one of
+        // those) — commitUndoStep is a no-op if the text didn't actually change, so a plain
+        // click-to-select (drag set, nothing moved) never clutters history either.
+        core.commitUndoStep();
+      }
     }
   }
 

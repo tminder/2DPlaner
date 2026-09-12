@@ -393,6 +393,19 @@ has to map cleanly to and from direct manipulation of the rendered view. Concret
 - How far connection conflict-resolution goes (simple chains vs. a real geometric
   constraint solver) is explicitly still open — see
   [planning/open-questions.md](../planning/open-questions.md) F-001.
+- **Dragging an element into a different parent (D-150), held with Shift through release:**
+  drops it as a child of whatever element it's released onto, out of its former parent's
+  `{ }` block, its position rewritten to keep it exactly where it visually ends up.
+  Deliberately gated on the held modifier rather than automatic — an ordinary drag often
+  ends up over some other nearby shape, and reparenting on every such coincidence would
+  make plain repositioning unpredictable. Releasing without Shift, back onto the element's
+  own current parent, onto empty canvas, or onto one of its own descendants (which would
+  create a cycle) all just move it normally — no reparent, matching a plain drag exactly.
+  Any `placement`/`flush` on the moved element is cleared, the same as the "No placement"
+  menu action's own D-148 precedent, since either would otherwise silently start applying
+  to a parent the element was never actually placed into. Scoped to a single element —
+  dragging part of an active multi-selection this way moves the whole group normally
+  without reparenting any of them.
 
 ### Containment
 

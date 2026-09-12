@@ -42,10 +42,6 @@ External modules run with no sandboxing, trusted by analogy to "a developer choo
 
 Nesting (D-013) is the only way to express a parent-child relationship — a node has exactly one parent. This buys real simplicity (no dangling parent references, drag-sync never validates a reference graph) at the cost that a node can't belong to two groupings at once (e.g. "inside the room" for coordinates *and* "part of the kitchen zone" as a non-spatial grouping). Whether this is ever actually needed for this language's target domains, or whether a purely cosmetic grouping already covers every real case, is open — not derived from hitting a concrete blocked case.
 
-## F-012 Drag-driven reparenting is untested
-
-Nothing has ever tested dragging a node out of one parent's block and into another's. Given F-011's single-parent model, this means moving the whole `element { ... }` text block *and* rewriting its position literal (coordinates are local to whichever parent contains it) — a bigger text splice than any edit built so far, plus a coordinate transform. Neither is known to be hard; both are unbuilt and unproven.
-
 ## F-013 Metric/imperial unit toggle
 
 Whether a plan (or the app) should support feet/inches display. The language is grounded in metric internally ([D-005](decisions.md#d-005-units)); the open question is specifically whether imperial would be a *display*-only conversion (values stay metric internally) or something the grammar needs to accept as authored input too. Requested, not designed.

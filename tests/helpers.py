@@ -159,6 +159,21 @@ def ctrl_drag(page, from_x, from_y, to_x, to_y, steps=6):
     page.wait_for_timeout(150)
 
 
+def shift_drag(page, from_x, from_y, to_x, to_y, steps=6):
+    """D-150 (F-012): Shift-held drag-driven reparenting -- holds Shift for the whole
+    gesture (mirroring ctrl_drag's own reasoning), released only after pointerup so the
+    browser's own click-event synthesis doesn't fire with the modifier already gone."""
+    page.keyboard.down("Shift")
+    page.mouse.move(from_x, from_y)
+    page.mouse.down()
+    page.wait_for_timeout(30)
+    page.mouse.move(to_x, to_y, steps=steps)
+    page.wait_for_timeout(30)
+    page.mouse.up()
+    page.keyboard.up("Shift")
+    page.wait_for_timeout(150)
+
+
 def alt_click(page, x, y):
     """F-029's multi-select toggle: holds Alt for the click itself, mirroring ctrl_drag's
     own reasoning -- released only after mouseup so the browser's own click-event
