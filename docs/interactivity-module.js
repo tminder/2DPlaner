@@ -225,6 +225,22 @@
   const fitBtnEl = document.getElementById("header-fit-btn");
   if (fitBtnEl) fitBtnEl.hidden = false;
 
+  // D-162: same "core provides a stable, hidden slot; this module unhides and wires it"
+  // shape as header-fit-btn just above -- see its own HTML comment in docs/index.html.
+  // One delegated listener on the flyout itself rather than one per <li> button: matches
+  // this module's own existing preference for delegation over many individual listeners
+  // (handleMenuClick, the radial context menu's own single click handler, does the same).
+  const newElementBtnEl = document.getElementById("new-element-btn");
+  if (newElementBtnEl) {
+    newElementBtnEl.hidden = false;
+    newElementBtnEl.querySelector(".submenu").addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-preset]");
+      if (!btn) return;
+      const preset = STANDARD_ELEMENTS.find((p) => p.idBase === btn.dataset.preset);
+      if (preset) insertStandardElement(preset);
+    });
+  }
+
   const validationPanelEl = document.createElement("div");
   validationPanelEl.id = "interactivity-validation-panel";
   validationPanelEl.hidden = true;
@@ -1881,6 +1897,76 @@
       if (connectionsText) newText = newText.trimEnd() + "\n" + connectionsText;
 
       commitSourceEdit(newText, `Duplicated '${nodeId}' as '${newId}'.`);
+    });
+  }
+
+  // D-162: "New Element" -- the app's own existing furniture presets (carried over
+  // unchanged from the bundled `apartment` example, docs/index.html's own EXAMPLES),
+  // reachable from a header flyout instead of hand-typing an `element { ... }` block.
+  // `utility`/`campervan`'s own presets are domain-specific to their own example, not
+  // "standard" in a general sense, so excluded here; door/wall are excluded too since
+  // they're polylines anchored to corner-refs that don't exist until a room's own corners
+  // are declared, so they can't be inserted as a self-contained element the way a plain
+  // rect/circle/polygon can. `rug`'s own points are pre-shifted so its bounding box starts
+  // near [0.3, 0.3] (same landing spot every other preset uses via its own `position`) --
+  // computed once by hand rather than at runtime, since it's a fixed literal either way.
+  //
+  // Deliberately a plain array, not backed by anything fancier: framed directly as a first
+  // step toward later module-extensibility (F-048/D-157's own already-recorded "a module
+  // can't add to the app" future direction) -- a future registration hook could just push
+  // another entry onto this same array without restructuring anything here.
+  const STANDARD_ELEMENTS = [
+    { idBase: "bed", label: "Bed", shape: "rect", size: [1.6, 2], style: { fill: "#cfe0f5", stroke: "#4a76a8", strokeWidth: 0.02 } },
+    { idBase: "desk", label: "Desk", shape: "rect", size: [1.2, 0.6], style: { fill: "#fbe3b0", stroke: "#a87a2b", strokeWidth: 0.02 } },
+    { idBase: "table", label: "Table", shape: "circle", radius: 0.35, style: { fill: "#bfe3f5", stroke: "#3a7a9a", strokeWidth: 0.03 } },
+    { idBase: "stove", label: "Stove", shape: "rect", size: [0.6, 0.6], style: { fill: "#d9534f", stroke: "#8a2f2a", strokeWidth: 0.02 } },
+    { idBase: "counter", label: "Counter", shape: "rect", size: [0.5, 1.2], style: { fill: "#e8c896", stroke: "#a9895c", strokeWidth: 0.02 } },
+    {
+      idBase: "rug", label: "Rug", shape: "polygon",
+      points: [[0.6, 0.4], [1.5, 0.3], [1.7, 1.2], [1.1, 1.7], [0.3, 1.3]],
+      style: { fill: "#e0d5c0", stroke: "#b0a080", strokeWidth: 0.02 },
+    },
+  ];
+
+  // Plain string templating, not an AST-based edit -- this is brand-new text, never
+  // touching an existing token the way every other source-editing helper in this file
+  // does. rect/circle get a `position` (the fixed [0.3, 0.3] landing spot every preset
+  // uses); polygon's own `points` already carry their own absolute-ish placement (see
+  // STANDARD_ELEMENTS's own comment), so it gets no separate position line at all.
+  function presetElementText(preset, id, indent) {
+    const inner = indent + "  ";
+    const lines = [`${indent}element ${id} {`, `${inner}shape: "${preset.shape}"`];
+    if (preset.shape === "rect") {
+      lines.push(`${inner}size: [${preset.size[0]}m, ${preset.size[1]}m]`, `${inner}position: [0.3m, 0.3m]`);
+    } else if (preset.shape === "circle") {
+      lines.push(`${inner}radius: ${preset.radius}m`, `${inner}position: [0.3m, 0.3m]`);
+    } else if (preset.shape === "polygon") {
+      lines.push(`${inner}points: [${preset.points.map(([x, y]) => `[${x}m, ${y}m]`).join(", ")}]`);
+    }
+    const s = preset.style;
+    lines.push(`${inner}style: { fill: "${s.fill}", stroke: "${s.stroke}", strokeWidth: ${s.strokeWidth} }`);
+    lines.push(`${inner}label: "${preset.label}"`);
+    lines.push(`${indent}}`);
+    return lines.join("\n");
+  }
+
+  // Inserted as the current selection's own first child if anything's selected, else the
+  // plan root's -- "add this into whatever I'm looking at" is the lowest-surprise default.
+  // No validation that the target is a sensible container: this language doesn't restrict
+  // nesting by shape today, matching reparentElement's own already-accepted looseness one
+  // level up. afterOpenBrace is the exact same "insert a child right after the target's
+  // own `{`" helper reparentElement (D-150) already uses -- reused as-is, no new helper.
+  function insertStandardElement(preset) {
+    withParsedSource((text, base) => {
+      const targetId = selectedId && base.nodesById[selectedId] ? selectedId : base.root.id;
+      const target = base.nodesById[targetId];
+      const usedIds = new Set(Object.keys(base.nodesById));
+      const id = uniqueId(preset.idBase, usedIds);
+      const indent = lineIndentAt(text, target.start) + "  ";
+      const elementText = presetElementText(preset, id, indent);
+      const insertAt = afterOpenBrace(text, target);
+      const newText = text.slice(0, insertAt) + `\n${elementText}` + text.slice(insertAt);
+      commitSourceEdit(newText, `'${id}': added to '${targetId}'.`);
     });
   }
 

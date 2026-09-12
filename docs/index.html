@@ -174,6 +174,12 @@
   .submenu li.submenu-field label { flex: none; color: var(--ink-soft); }
   .submenu li.submenu-field input { width: 56px; padding: 3px 5px; border: 1px solid var(--line);
     border-radius: 4px; font: inherit; font-size: 13px; }
+  /* D-162: the New Element flyout's own per-preset color swatch -- enough visual
+     recognition (the same fill/stroke that preset actually renders with) without building
+     a live SVG-preview mechanism for a picker this lightweight. Square by default, one
+     preset (Table) overrides to a circle inline via style="" to match its own shape. */
+  .submenu .preset-swatch { display: inline-block; width: 12px; height: 12px; margin-right: 8px;
+    vertical-align: -1px; border-radius: 2px; border: 1px solid; }
   /* The flyout's own icon+label still carry a real top-level action (unlike Export's,
      which has none) -- overrides has-submenu's own default cursor so that stays obvious. */
   #grid-toggle-btn { cursor: pointer; }
@@ -489,6 +495,26 @@
       <button class="ribbon-btn" id="redo-btn" title="Redo (Ctrl+Shift+Z)" aria-label="Redo">
         <svg class="ribbon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5" /><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13" /></svg><span class="ribbon-label">Redo</span>
       </button>
+      <!-- D-162: a stable, hidden-by-default slot core always provides, exactly like
+           #header-fit-btn's own established D-156 shape -- interactivity-module.js finds
+           it, unhides it, and wires each preset button's own click once loaded (it owns
+           the actual STANDARD_ELEMENTS data and the insertion logic; this box is only ever
+           its home in the header). No top-level click action of its own -- like Export's
+           own has-submenu box, this one is purely the flyout's anchor. Framed directly as a
+           first step toward later module-extensibility (F-048/D-157): not built now, but
+           picking from "the app's own standard elements" should eventually mean "whatever
+           the currently loaded modules contribute," not just this fixed list. -->
+      <div class="ribbon-btn has-submenu" id="new-element-btn" title="Add a new element from a standard preset" hidden>
+        <svg class="ribbon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M8 12h8" /><path d="M12 8v8" /></svg><span class="ribbon-label">New Element</span>
+        <ul class="submenu">
+          <li><button type="button" data-preset="bed"><span class="preset-swatch" style="background:#cfe0f5; border-color:#4a76a8;"></span>Bed</button></li>
+          <li><button type="button" data-preset="desk"><span class="preset-swatch" style="background:#fbe3b0; border-color:#a87a2b;"></span>Desk</button></li>
+          <li><button type="button" data-preset="table"><span class="preset-swatch" style="background:#bfe3f5; border-color:#3a7a9a; border-radius:50%;"></span>Table</button></li>
+          <li><button type="button" data-preset="stove"><span class="preset-swatch" style="background:#d9534f; border-color:#8a2f2a;"></span>Stove</button></li>
+          <li><button type="button" data-preset="counter"><span class="preset-swatch" style="background:#e8c896; border-color:#a9895c;"></span>Counter</button></li>
+          <li><button type="button" data-preset="rug"><span class="preset-swatch" style="background:#e0d5c0; border-color:#b0a080;"></span>Rug</button></li>
+        </ul>
+      </div>
     </div>
     <!-- F-042: the one setting with a genuine on/off state today (F-014's grid is either
          present or absent in `settings`) -- see toggleGridSetting()/updateGridToggleUi()
