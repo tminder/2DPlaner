@@ -4,7 +4,9 @@ viewer via mouse or touch. D-139 extends the same idea to polygon/polyline: one 
 vertex, dragging one reshapes the point instead of scaling the whole shape. D-143 closes
 F-016's own other half: 4 bounding-box scale handles, proportional resize of every point
 from a shared pivot -- offered only when every corner-ref point the shape uses is exclusive
-to it, since a shared corner moving would silently distort whatever else references it."""
+to it, since a shared corner moving would silently distort whatever else references it.
+D-165 narrows this one step further: a plain two-point line gets no scale handles at all,
+only its own 2 vertex ones (see the bottom of this file)."""
 
 import re
 
@@ -337,8 +339,9 @@ def test_dragging_a_corner_ref_vertex_moves_the_referenced_node(app_page):
     had been dragged directly. `fence`'s own source text never changes."""
     load_plan(app_page, PLAN)
     select(app_page, "fence")
-    # D-143: corner_a/corner_b are exclusive to fence, so it's also scale-eligible -- 4
-    # scale handles alongside these 2 vertex ones.
+    # D-165: fence is a two-point line -- no scale handles regardless of its corners being
+    # exclusive to it (see test_no_scale_handles_for_a_plain_two_point_line_via_corner_refs
+    # below); before D-165 this used to also get 4 scale handles alongside these 2.
     assert vertex_handle_count(app_page) == 2
 
     before_text = source_text(app_page)
@@ -401,11 +404,22 @@ def test_scale_handles_appear_for_an_eligible_polygon(app_page):
     assert corners == {"scale-tl", "scale-tr", "scale-bl", "scale-br"}
 
 
-def test_scale_handles_appear_for_a_polygon_whose_corner_refs_are_exclusive_to_it(app_page):
-    # fence: corner_a/corner_b, referenced only by fence itself in this plan.
+def test_scale_handles_appear_for_a_shape_whose_corner_refs_are_exclusive_to_it(app_page):
+    # ref_box (SCALE_PLAN): c1-c4, referenced only by ref_box itself -- exclusive corner-refs
+    # on a shape with more than two points are still scale-eligible (D-165 only narrows the
+    # exactly-two-points case, see test_no_scale_handles_for_a_plain_two_point_line below).
+    load_plan(app_page, SCALE_PLAN)
+    select(app_page, "ref_box")
+    assert scale_handle_count(app_page) == 4
+
+
+def test_no_scale_handles_for_a_plain_two_point_line_via_corner_refs(app_page):
+    # D-165: fence (corner_a/corner_b, exclusive to it -- previously scale-eligible on that
+    # basis alone) is still a two-point line underneath; the same exclusion applies whether
+    # the two points are literal or corner-refs.
     load_plan(app_page, PLAN)
     select(app_page, "fence")
-    assert scale_handle_count(app_page) == 4
+    assert scale_handle_count(app_page) == 0
 
 
 def test_no_scale_handles_for_a_polygon_with_a_shared_corner(app_page):
@@ -416,6 +430,46 @@ def test_no_scale_handles_for_a_polygon_with_a_shared_corner(app_page):
     select(app_page, "edge_2")
     assert scale_handle_count(app_page) == 0
     assert vertex_handle_count(app_page) == 4
+
+
+def test_no_scale_handles_for_a_plain_two_point_line(app_page):
+    """D-165: reported directly -- a plain two-point line's own 2 vertex handles (one per
+    endpoint) already give full control over it; a bbox "scale" on top of that is only ever
+    a more roundabout way of moving one endpoint. `wall` (this file's own PLAN fixture) is
+    perfectly horizontal, which already produced zero scale handles via the pre-existing
+    degenerate-bbox guard (maxY > minY) -- this uses a *diagonal* two-point line instead, so
+    it's the D-165 exclusion being exercised here, not that unrelated guard."""
+    load_plan(
+        app_page,
+        """
+element room {
+  shape: "rect"
+  size: [4m, 3m]
+  position: [0m, 0m]
+  style: { fill: "#eee" }
+
+  element diag {
+    shape: "polyline"
+    points: [[0.3m, 0.3m], [1.3m, 1.3m]]
+    style: { stroke: "#666", strokeWidth: 0.02m }
+  }
+  element zigzag {
+    shape: "polyline"
+    points: [[0.3m, 2m], [1m, 2.4m], [1.7m, 2m]]
+    style: { stroke: "#666", strokeWidth: 0.02m }
+  }
+}
+""",
+    )
+    select(app_page, "diag")
+    assert scale_handle_count(app_page) == 0
+    assert vertex_handle_count(app_page) == 2
+
+    # A three-point path keeps its own scale handles -- the exclusion is scoped to exactly
+    # two points, not "any polyline."
+    select(app_page, "zigzag")
+    assert scale_handle_count(app_page) == 4
+    assert vertex_handle_count(app_page) == 3
 
 
 def test_dragging_a_scale_handle_grows_every_point_proportionally_from_the_opposite_corner(app_page):

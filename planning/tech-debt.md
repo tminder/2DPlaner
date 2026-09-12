@@ -54,6 +54,10 @@ Called on every proposed move during an active drag, over the entire plan every 
 
 `annotationMarkupForNode`'s own comment admits it "mirrors core's own `renderShape` branching exactly," re-deriving rect corners and polygon/polyline absolute points from scratch since core doesn't expose per-node corner lists after rendering. Any future shape-branch change in `renderShape` can silently desync this copy — nothing links the two.
 
+## S-041 The code editor's syntax-highlight overlay sometimes desyncs from where typing actually lands
+
+Reported directly, not yet reproduced or root-caused: the highlighted/colored backdrop `code-highlight-module.js` (D-042) paints behind the real (transparent) textarea sometimes stops lining up with where the cursor actually is / where a keystroke actually inserts text. Since the whole mechanism depends on the backdrop's own text rendering staying pixel-identical to the real textarea's (same font/line-height/wrapping, scrolled in lockstep), a mismatch there — a scroll-sync miss, a wrapping difference after some specific edit, a stale backdrop not yet re-painted for the textarea's current content — would produce exactly this symptom. No repro steps yet.
+
 ## S-025 Auto-load policy is applied inconsistently across modules that share the same justification
 
 `grid-module.js` is auto-loaded specifically so `settings.grid` isn't silently inert for an author who didn't know to declare the module. `wall-with-door-module.js` is equally settings/property-driven (`compose: "wallWithDoor"`) but is *not* auto-loaded — an undeclared `compose` would presumably also silently do nothing, the exact gap the grid module's own auto-load exists to avoid.

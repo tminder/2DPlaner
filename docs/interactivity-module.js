@@ -3394,9 +3394,20 @@
       // unresolved concern, deliberately left unsolved rather than guessed at here; a shape
       // with any shared corner just gets no scale handles at all, same as a degenerate
       // (zero-width or zero-height) bounding box would produce a divide-by-zero below.
+      //
+      // D-165: reported directly -- a plain two-point line needs no separate scale corners
+      // at all. Its own two D-139 vertex handles above (one per endpoint) already give
+      // full, direct control over both ends; a "scale from a bbox corner" operation on top
+      // of that would only ever be a more roundabout way of doing exactly what dragging one
+      // endpoint already does, for a shape with no third point to make proportional scaling
+      // meaningfully different from that. Scoped to exactly two points on a polyline, not
+      // polygon/every polyline -- a multi-segment path (3+ points) keeps its own scale
+      // handles, where resizing the whole bbox while preserving its shape is a genuinely
+      // different, still-useful operation from moving one vertex at a time.
+      const isTwoPointLine = node.props.shape === "polyline" && node.props.points.length === 2;
       const cornerUsers = {};
       core.computeCornerUsers(prog.root, cornerUsers);
-      if (maxX > minX && maxY > minY && canScale(node, cornerUsers)) {
+      if (!isTwoPointLine && maxX > minX && maxY > minY && canScale(node, cornerUsers)) {
         // For a simple box-ish polygon (the common case — every point sits exactly at one
         // of the bbox's own corners), a scale handle placed at the literal bbox corner
         // would land right on top of D-139's own vertex handle there — same screen spot,
