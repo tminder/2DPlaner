@@ -1233,10 +1233,6 @@
     return false;
   }
 
-  // F-031: grid-snapped dragging/resizing — coupled to settings.grid's own presence
-  // (no second flag) specifically so the snap increment can never drift from the visible
-  // grid's own size, matching grid-module.js's own reading of the same setting. Hard
-  // snap, always on while a grid is declared — no modifier-key exception.
   // D-141: rotates a plan-space point around a pivot by `deg` (clockwise, matching core's
   // own rotatedRectAABB / the rendered SVG rotate() transform) — used both to place resize
   // handles at a rotated rect's own visual corners and, with a negated angle, to rotate the
@@ -1250,9 +1246,18 @@
     return [cx + dx * cos - dy * sin, cy + dx * sin + dy * cos];
   }
 
+  // F-031: grid-snapped dragging/resizing — reads `size` off `settings.grid` so the snap
+  // increment can never drift from the visible grid's own size. Hard snap, no modifier-key
+  // exception. D-149 decoupled this from the grid's own *visibility*: an explicit
+  // `snap: false` turns discrete snapping off while a grid is still declared (and possibly
+  // still visible) — omitting `snap` entirely preserves the original "on whenever a grid is
+  // declared" default exactly. The reverse (snap with no visible grid) is grid-module.js's
+  // own `layer: "none"`, not anything this function needs to know about — it only ever
+  // reads `size`/`snap`, never whether the grid actually renders.
   function gridSnapSize() {
     const grid = program?.settings?.grid;
     if (!grid) return null;
+    if (grid.snap === false) return null;
     const size = core.numOf(grid.size ?? 1);
     return size > 0 ? size : null;
   }

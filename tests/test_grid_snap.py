@@ -1,6 +1,7 @@
-"""F-031: grid-snapped dragging and resizing -- coupled to settings.grid's own presence
-(no second flag), hard snap always on while a grid is declared, covering both ordinary
-drag (position) and the D-116 resize handles."""
+"""F-031: grid-snapped dragging and resizing -- hard snap, no modifier-key exception,
+covering both ordinary drag (position) and the D-116 resize handles. On by default
+whenever a grid is declared (unchanged); D-149 added an explicit `snap: false` escape
+hatch to show a grid without forcing snapping, without touching that default."""
 
 import re
 
@@ -35,6 +36,10 @@ element room {
 
 GRID_PLAN = """
 settings { grid: { size: 0.5 } }
+""" + PLAN
+
+NO_SNAP_GRID_PLAN = """
+settings { grid: { size: 0.5, snap: false } }
 """ + PLAN
 
 TIGHT_CONTAINMENT_PLAN = """
@@ -121,6 +126,19 @@ def test_ordinary_drag_is_free_without_a_grid_declared(app_page):
     # The same "ugly" pixel delta as the snapped test above should NOT land on a clean
     # multiple of 0.5 -- confirms the coupling (no grid declared -> no snapping at all),
     # not just that some snapping happened to produce a round number by chance.
+    assert not (is_multiple_of(px, STEP) and is_multiple_of(py, STEP))
+
+
+def test_explicit_snap_false_disables_snapping_even_with_a_grid_declared(app_page):
+    """D-149: grid visibility and snap are decoupled -- an explicit `snap: false` turns
+    discrete snapping off while the grid itself is still declared (and still visible),
+    the reverse of test_ordinary_drag_is_free_without_a_grid_declared's own no-grid-at-all
+    case."""
+    load_plan(app_page, NO_SNAP_GRID_PLAN)
+    x, y = element_center(app_page, "sofa")
+    drag(app_page, x, y, x + 47, y + 23)  # the same "ugly" pixel delta as the snapped case
+
+    px, py = sofa_position(source_text(app_page))
     assert not (is_multiple_of(px, STEP) and is_multiple_of(py, STEP))
 
 

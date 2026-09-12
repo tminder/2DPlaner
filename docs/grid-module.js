@@ -42,6 +42,10 @@
 
     const grid = prog.settings && prog.settings.grid;
     if (!grid) return;
+    // F-039: `layer: "none"` is the other half of decoupling grid from snap (see
+    // interactivity-module.js's own gridSnapSize) -- a plan can declare `grid` purely for
+    // its `size` (to drive discrete snapping) with no visual pattern rendered at all.
+    if (grid.layer === "none") return;
 
     const size = core.numOf(grid.size ?? 1);
     const cell = size * core.M;
@@ -56,6 +60,14 @@
     const rectY = vb.y - 2 * vb.height;
     const rectW = 5 * vb.width;
     const rectH = 5 * vb.height;
+    // F-039: `layer: "front"` paints the grid over every shape instead of behind them all
+    // -- a plain author-set `opacity` (1 by default, unchanged) is expected alongside it,
+    // since a full-opacity front grid would otherwise completely hide the plan underneath;
+    // nothing here auto-reduces it just because "front" was chosen. `pointer-events: none`
+    // (unchanged either way) keeps a front grid from ever intercepting a click/drag meant
+    // for whatever's rendered beneath it.
+    const opacity = core.numOf(grid.opacity ?? 1);
+    const front = grid.layer === "front";
 
     const markup = `
       <defs>
@@ -63,9 +75,9 @@
           ${inner}
         </pattern>
       </defs>
-      <rect class="plan-grid-bg" x="${rectX}" y="${rectY}" width="${rectW}" height="${rectH}" fill="url(#plan-grid-pattern)" pointer-events="none" />
+      <rect class="plan-grid-bg" x="${rectX}" y="${rectY}" width="${rectW}" height="${rectH}" fill="url(#plan-grid-pattern)" opacity="${opacity}" pointer-events="none" />
     `;
-    svgEl.insertAdjacentHTML("afterbegin", markup);
+    svgEl.insertAdjacentHTML(front ? "beforeend" : "afterbegin", markup);
   }
   const unregisterOnRendered = core.onRendered(handleRendered);
 

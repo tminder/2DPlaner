@@ -146,6 +146,17 @@
   .submenu button { display: block; width: 100%; padding: 6px 16px; border: none; background: none;
     text-align: left; font: inherit; font-size: 13px; cursor: pointer; }
   .submenu button:hover { background: #eef2ff; }
+  /* D-149: Grid's own flyout -- Squares/Lines read as a pressed radio pair (same
+     .active convention .ribbon-btn.active already uses one level up), and the size field
+     is a plain labeled number input, the one non-button row this menu has needed so far. */
+  .submenu button.active { background: var(--amber-soft); color: var(--ink); font-weight: 600; }
+  .submenu li.submenu-field { display: flex; align-items: center; gap: 8px; padding: 6px 16px; }
+  .submenu li.submenu-field label { flex: none; color: var(--ink-soft); }
+  .submenu li.submenu-field input { width: 56px; padding: 3px 5px; border: 1px solid var(--line);
+    border-radius: 4px; font: inherit; font-size: 13px; }
+  /* The flyout's own icon+label still carry a real top-level action (unlike Export's,
+     which has none) -- overrides has-submenu's own default cursor so that stays obvious. */
+  #grid-toggle-btn { cursor: pointer; }
 
   /* D-105: a real popup instead of native prompt()s for sign-in/registration — same
      fields/copy/endpoints as profile/index.html's own card, ported here rather than
@@ -414,11 +425,24 @@
          below. Style presets and the always-injected AUTO_MODULES have no real off-state
          to expose this same way (F-042's own noted caveat), so they're deliberately not
          offered here. A pressed/highlighted background marks the active state (matching
-         Word's own Bold/Italic toggle-button convention), not a checkmark. -->
+         Word's own Bold/Italic toggle-button convention), not a checkmark.
+         D-149: also a has-submenu flyout (Export's own established pattern) for the grid's
+         own type/size, on top of the plain on/off click the whole box still carries --
+         setGridToggleClick below guards against a click landing inside the flyout itself
+         also toggling grid on/off, the same way a bubbled click from Export's own submenu
+         items never touches Export's own (nonexistent) top-level action. -->
     <div class="menu-tab-panel ribbon-group" data-tab="view" role="tabpanel" hidden>
-      <button class="ribbon-btn" id="grid-toggle-btn">
+      <div class="ribbon-btn has-submenu" id="grid-toggle-btn">
         <svg class="ribbon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M3 9h18" /><path d="M3 15h18" /><path d="M9 3v18" /><path d="M15 3v18" /></svg><span class="ribbon-label">Grid</span>
-      </button>
+        <ul class="submenu">
+          <li><button id="grid-type-checker-btn" type="button">Squares</button></li>
+          <li><button id="grid-type-lines-btn" type="button">Lines</button></li>
+          <li class="submenu-field">
+            <label for="grid-size-input">Size (m)</label>
+            <input type="number" id="grid-size-input" min="0.1" step="0.1">
+          </li>
+        </ul>
+      </div>
       <button class="ribbon-btn" id="connections-toggle-btn" title="Show a line between every connected pair of elements">
         <svg class="ribbon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17H7A5 5 0 0 1 7 7h2" /><path d="M15 7h2a5 5 0 1 1 0 10h-2" /><line x1="8" x2="16" y1="12" y2="12" /></svg><span class="ribbon-label">Connections</span>
       </button>
@@ -2204,17 +2228,43 @@ window.PlanCore = {
 // Re-tokenizing here and depth-counting real LBRACE/RBRACE tokens (not a hand-rolled
 // character scan, which a `}` inside some future string-valued setting could fool) finds
 // both spans precisely, reusing the exact tokenizer the real parser already trusts.
-function findSettingsSpan(text) {
-  const tokens = tokenize(text);
-  const settingsIdx = tokens.findIndex((t) => t.type === "SETTINGS");
-  if (settingsIdx === -1 || tokens[settingsIdx + 1]?.type !== "LBRACE") return null;
-  const openIdx = settingsIdx + 1;
+// Depth-counts from a known `{` token index to its matching `}` — the shared walk both
+// findSettingsSpan (from the top-level `settings` keyword) and findNestedObjectSpan (from
+// an arbitrary IDENT key one level in, e.g. `grid`) need, factored out so a nested object
+// value's own span is found the exact same trusted way as the top-level one (D-149).
+function findObjectSpanAt(tokens, openIdx) {
   let depth = 0;
   for (let i = openIdx; i < tokens.length; i++) {
     if (tokens[i].type === "LBRACE") depth++;
     else if (tokens[i].type === "RBRACE") {
       depth--;
       if (depth === 0) return { tokens, openIdx, closeIdx: i, start: tokens[openIdx].start, end: tokens[i].end };
+    }
+  }
+  return null;
+}
+
+function findSettingsSpan(text) {
+  const tokens = tokenize(text);
+  const settingsIdx = tokens.findIndex((t) => t.type === "SETTINGS");
+  if (settingsIdx === -1 || tokens[settingsIdx + 1]?.type !== "LBRACE") return null;
+  return findObjectSpanAt(tokens, settingsIdx + 1);
+}
+
+// D-149: locates a nested object-valued key's own `{...}` span (e.g. `grid` inside
+// `settings`) in the same token-index shape findSettingsSpan itself returns, so
+// findSettingsKeySpan below can be reused *unchanged* one level deeper — it only ever reads
+// `.tokens`/`.openIdx`/`.closeIdx` off whatever span object it's given, never assuming
+// that span is specifically the top-level `settings` block.
+function findNestedObjectSpan(parentSpan, key) {
+  const { tokens, openIdx, closeIdx } = parentSpan;
+  let depth = 0;
+  for (let i = openIdx; i <= closeIdx; i++) {
+    const t = tokens[i];
+    if (t.type === "LBRACE") depth++;
+    else if (t.type === "RBRACE") depth--;
+    else if (depth === 1 && t.type === "IDENT" && t.value === key && tokens[i + 1]?.type === "COLON" && tokens[i + 2]?.type === "LBRACE") {
+      return findObjectSpanAt(tokens, i + 2);
     }
   }
   return null;
@@ -2280,10 +2330,59 @@ function toggleSettingsFlag(key, insertLiteral) {
 function toggleGridSetting() { toggleSettingsFlag("grid", "{ }"); }
 function toggleShowConnectionsSetting() { toggleSettingsFlag("showConnections", "true"); }
 
+// D-149: the header's Grid flyout own Squares/Lines/Size controls -- writes one named
+// sub-key inside `settings.grid` directly (creating `settings`/`grid` fresh if either
+// doesn't exist yet, the same three-way fallback toggleSettingsFlag's own shape already
+// established one level up). Reuses findSettingsKeySpan unchanged against grid's own
+// span (via findNestedObjectSpan) exactly as it already reads/writes a flat top-level
+// setting -- a nested object is, to that function, just another span to search.
+function setGridSubKey(key, valueLiteral) {
+  const text = sourceEl.value;
+  const settingsSpan = findSettingsSpan(text);
+  const gridSpan = settingsSpan && findNestedObjectSpan(settingsSpan, "grid");
+
+  let newText;
+  if (gridSpan) {
+    const keySpan = findSettingsKeySpan(gridSpan, key);
+    if (keySpan) {
+      newText = text.slice(0, keySpan.start) + `${key}: ${valueLiteral}` + text.slice(keySpan.end);
+    } else {
+      const insertAt = gridSpan.start + 1;
+      newText = `${text.slice(0, insertAt)} ${key}: ${valueLiteral},${text.slice(insertAt)}`;
+    }
+  } else if (settingsSpan) {
+    // `grid` isn't declared yet -- add it fresh with just this one sub-key.
+    const insertAt = settingsSpan.start + 1;
+    newText = `${text.slice(0, insertAt)}\n  grid: { ${key}: ${valueLiteral} }${text.slice(insertAt)}`;
+  } else {
+    const moduleLines = /^(?:\s*module\s+"[^"]*"\s*\n)*/;
+    const insertAt = text.match(moduleLines)[0].length;
+    newText = `${text.slice(0, insertAt)}settings {\n  grid: { ${key}: ${valueLiteral} }\n}\n\n${text.slice(insertAt)}`;
+  }
+  sourceEl.value = newText;
+  rerender();
+  commitUndoStep();
+}
+
+function setGridType(type) { setGridSubKey("type", `"${type}"`); }
+function setGridSize(meters) { setGridSubKey("size", formatNumber(meters, "m")); }
+
 function updateGridToggleUi() {
   const btn = document.getElementById("grid-toggle-btn");
   if (!btn) return;
-  btn.classList.toggle("active", program?.settings?.grid !== undefined);
+  const grid = program?.settings?.grid;
+  btn.classList.toggle("active", grid !== undefined);
+
+  const isLines = grid?.type === "lines";
+  document.getElementById("grid-type-checker-btn")?.classList.toggle("active", !isLines);
+  document.getElementById("grid-type-lines-btn")?.classList.toggle("active", isLines);
+  // Never clobbers what's currently focused -- a live re-render firing mid-edit (every
+  // other keystroke in the code pane re-renders) must not fight the value someone is in
+  // the middle of typing into this same field.
+  const sizeInput = document.getElementById("grid-size-input");
+  if (sizeInput && document.activeElement !== sizeInput) {
+    sizeInput.value = numOf(grid?.size ?? 1);
+  }
 }
 
 function updateShowConnectionsToggleUi() {
@@ -2451,7 +2550,18 @@ document.getElementById("rename-btn").addEventListener("click", () => {
   updateActivePlanButton();
 });
 
-document.getElementById("grid-toggle-btn").addEventListener("click", toggleGridSetting);
+// D-149: the wrapper's own click still toggles grid on/off -- guarded so a click that
+// bubbled up from inside the flyout (Squares/Lines/the size input) doesn't also fire it.
+document.getElementById("grid-toggle-btn").addEventListener("click", (e) => {
+  if (e.target.closest(".submenu")) return;
+  toggleGridSetting();
+});
+document.getElementById("grid-type-checker-btn").addEventListener("click", () => setGridType("checker"));
+document.getElementById("grid-type-lines-btn").addEventListener("click", () => setGridType("lines"));
+document.getElementById("grid-size-input").addEventListener("change", (e) => {
+  const v = parseFloat(e.target.value);
+  if (Number.isFinite(v) && v > 0) setGridSize(v);
+});
 document.getElementById("connections-toggle-btn").addEventListener("click", toggleShowConnectionsSetting);
 
 document.getElementById("delete-btn").addEventListener("click", () => {
