@@ -3425,17 +3425,33 @@
   // pick the largest one whose on-screen length still fits comfortably, rather than
   // labelling an arbitrary, hard-to-read number of meters.
   const SCALE_BAR_STEPS_M = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
+  // F-013: a *parallel* nice-number table in feet, not a unit-converted copy of the metric
+  // one above -- converting metric's own nice steps into feet would label the bar "3.28 ft"
+  // instead of a round number. The smallest four steps are inch-fractions-of-a-foot (so the
+  // < 1ft branch below can still label them as whole inches), then a 1-2-3-5-10 progression
+  // in feet, extended to 20000 (rather than stopping at 5000 to mirror the metric table's
+  // own count) so its dynamic range isn't accidentally ~3x short of the metric side's.
+  const SCALE_BAR_STEPS_FT = [1 / 12, 2 / 12, 3 / 12, 6 / 12, 1, 2, 3, 5, 10, 20, 30, 50, 100, 200, 300, 500, 1000, 2000, 5000, 10000, 20000];
   const SCALE_BAR_MAX_PX = 140;
 
   function updateScaleBar() {
     const pxPerMeter = currentPxPerMeter();
     if (!pxPerMeter) return;
-    let meters = SCALE_BAR_STEPS_M[0];
-    for (const step of SCALE_BAR_STEPS_M) {
-      if (step * pxPerMeter <= SCALE_BAR_MAX_PX) meters = step; else break;
+    // F-013: imperial reads its own step table in feet (each converted to meters via
+    // core.FT_TO_M for the same px-fit comparison) and labels in feet/inches -- a compact
+    // single-unit label ("15 ft"/"6 in"), not core.formatMeasurement's combined "5' 6.3""
+    // annotation style, which is built for a different UI context (see its own comment).
+    const imperial = core.getDisplayUnit() === "imperial";
+    const steps = imperial ? SCALE_BAR_STEPS_FT : SCALE_BAR_STEPS_M;
+    const toMeters = imperial ? (ft) => ft * core.FT_TO_M : (m) => m;
+    let step = steps[0];
+    for (const s of steps) {
+      if (toMeters(s) * pxPerMeter <= SCALE_BAR_MAX_PX) step = s; else break;
     }
-    scaleBarBarEl.style.width = `${meters * pxPerMeter}px`;
-    scaleBarLabelEl.textContent = meters < 1 ? `${Math.round(meters * 100)} cm` : `${meters} m`;
+    scaleBarBarEl.style.width = `${toMeters(step) * pxPerMeter}px`;
+    scaleBarLabelEl.textContent = imperial
+      ? (step < 1 ? `${Math.round(step * 12)} in` : `${step} ft`)
+      : (step < 1 ? `${Math.round(step * 100)} cm` : `${step} m`);
   }
 
   // Shared by handleWheel and the pinch handler below so the two zoom mechanisms can't

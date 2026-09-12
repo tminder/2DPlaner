@@ -21,14 +21,18 @@
     return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" }[c]));
   }
 
+  // F-013: formatMeasurement, not formatNumber -- these three lines are the only genuinely
+  // human-facing display surfaces this module has (a human *reads* these, nothing here ever
+  // gets spliced back into the plan's own source text the way core's own drag/resize edits
+  // do), so they're the ones that should honor the viewer's own metric/imperial preference.
   function dimensionText(node) {
     if (node.props.shape === "rect") {
       const w = core.numOf(node.props.size[0]), h = core.numOf(node.props.size[1]);
-      return `${core.formatNumber(w, "m")} × ${core.formatNumber(h, "m")}`;
+      return `${core.formatMeasurement(w)} × ${core.formatMeasurement(h)}`;
     }
     if (node.props.shape === "circle") {
       const r = core.numOf(node.props.radius ?? 0);
-      return `⌀ ${core.formatNumber(r * 2, "m")}`;
+      return `⌀ ${core.formatMeasurement(r * 2)}`;
     }
     return null;
   }
@@ -70,7 +74,7 @@
       lines.push({
         pos: [mid[0] + nx * OFFSET, mid[1] + ny * OFFSET],
         angle: readableAngle,
-        text: core.formatNumber(len, "m"),
+        text: core.formatMeasurement(len),
       });
     }
     return lines;

@@ -42,10 +42,6 @@ External modules run with no sandboxing, trusted by analogy to "a developer choo
 
 Nesting (D-013) is the only way to express a parent-child relationship — a node has exactly one parent. This buys real simplicity (no dangling parent references, drag-sync never validates a reference graph) at the cost that a node can't belong to two groupings at once (e.g. "inside the room" for coordinates *and* "part of the kitchen zone" as a non-spatial grouping). Whether this is ever actually needed for this language's target domains, or whether a purely cosmetic grouping already covers every real case, is open — not derived from hitting a concrete blocked case.
 
-## F-013 Metric/imperial unit toggle
-
-Whether a plan (or the app) should support feet/inches display. The language is grounded in metric internally ([D-005](decisions.md#d-005-units)); the open question is specifically whether imperial would be a *display*-only conversion (values stay metric internally) or something the grammar needs to accept as authored input too. Requested, not designed.
-
 ## F-015 Settings editable from the viewer, beyond the one case already built
 
 A plan's settings are otherwise purely textual — turning on e.g. `edgeLengths` or `allowCollisions` means typing it. **One concrete case is now built:** the header menu's "Show grid" toggle reads/writes `settings.grid` directly ([decisions.md D-103](decisions.md#d-103-the-app-header-every-distinct-action-flat-and-always-visible-icon-led-export-grouped-as-its-one-deliberate-flyout--plus-a-settings-toggle-and-a-real-sign-in-popup)). Whether this generalizes to a real settings panel covering every setting, or stays a small set of individually-added toggles for the settings that are genuine on/off flags, is open.
