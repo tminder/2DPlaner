@@ -18,6 +18,18 @@ Recomputes bboxes; runs the full plan validation pass; resets/manages pan-zoom `
 
 `computePositions` and the load-time validation pass (`checkContainment`/`checkCollisions`) walk the *full* tree unconditionally — a `hidden: true` node (D-112) renders nothing, but its position is still resolved and it can still trigger a containment/collision violation naming an element that's currently invisible on screen. Deliberately deferred when `hidden` was built: fixing it means threading a "skip this subtree" check through several existing tree-walks for a case that's cosmetic today (a stray validation message), not a functional bug.
 
+## S-038 The same "valid reparent/relate candidate" check is hand-duplicated four times
+
+`hoveredId && hoveredId !== fromId && program.nodesById[hoveredId] && !isAncestorOf(hoveredId, fromId, program) && !isAncestorOf(fromId, hoveredId, program)` (exists, isn't the source itself, isn't an ancestor/descendant either way) is copy-typed identically in `relateDrag`'s own hover tracking, `connectPick`'s hover tracking, `connectPick`'s D-152 pointerup-resolution recompute, and D-150's drag-driven reparent candidate detection. Each copy was deliberately written to match the others exactly (D-152's own commit message says so directly) rather than sharing one function — a fifth gesture needing the same check is exactly the "wait for a second/third use, then share" signal S-036 already names for a different pair of helpers, except this one is now past that threshold already.
+
+## S-039 `clearPlacement` and `reparentElement` duplicate most of the same reparent-splice mechanic
+
+D-150's own decisions.md entry names this directly: `reparentElement` (the drag-driven reparent, arbitrary target) "generalizes `clearPlacement`'s own two-pass strip→reparse→splice mechanic" (D-148, the "No placement" menu action, always-the-grandparent target) — same propSpans-stripping, same fresh-reparse-before-splicing reasoning, same editable/missing/expression-position branching, same absolute-position-difference math, same cut-and-reinsert splice, only really differing in *where* the reindent lands and *which* span it inserts after. Never unified — `clearPlacement`'s own "grandparent" case is structurally just `reparentElement(nodeId, grandparentId)` with a fixed one-level dedent instead of `reparentElement`'s general reindent-to-target-depth, but the two functions still carry two independent copies of everything else.
+
+## S-040 `findOwnPropertyLine`'s line-anchored regex can't find a property on a single-line-formatted element
+
+Found live while building D-150: `findOwnPropertyLine` (used by `setPlacementInside`/`toggleFlush`/`clearPlacement`/`reparentElement` to locate `placement`/`flush`) matches `^([ \t]*)key\s*:.*$` with `/gm` — anchored to a physical *line* start. Every shipped example writes one property per line, but nothing in the grammar requires that; an element written entirely on one line (`element x { shape: "rect" ... placement: "inside" ... }`) has `placement:` sitting mid-line, never at a line start, so the regex silently finds nothing. Every caller above then silently no-ops on that property instead of erroring — `clearPlacement`/`reparentElement` still complete (the reparent/position-rewrite itself isn't affected), just leaving a stale `placement`/`flush` behind on a single-line element specifically. Not fixed in D-150 (out of scope for that pass, and shared by D-148 before it) — would need `findOwnPropertyLine` to locate a property by token position instead of a per-line regex.
+
 ## `docs/index.html` (core)
 
 ## S-016 Two independent recursive interpreters over the same AST must be kept in sync by hand
