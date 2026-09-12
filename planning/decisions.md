@@ -2094,3 +2094,15 @@ Requested directly, as the follow-up to `project-overview.md`'s own updated reco
 **Verified live before writing any test:** all 6 presets show with their own correctly-shaped/colored swatch; inserting with nothing selected lands inside the plan's own root as its first child; inserting with an element selected lands inside *that* element instead; inserting the same preset twice correctly produces `table` then `table2`; inserting all 6 in sequence produces no parse error.
 
 **Tests:** new `tests/test_new_element.py` (4 cases) — root-vs-selected insertion target, repeated-insert id uniqueness, and a smoke pass confirming every one of the 6 presets produces valid, parseable output. Full suite green (200/200).
+
+## D-163 Correction to D-162: "New Element" presets should be generic shapes, not furniture
+
+**Reported directly, immediately after D-162 shipped: the presets should be generic (Line, Rectangle, Polygon, ...), not domain furniture like Bed/Table.** A floor-plan-specific catalog doesn't belong in the app's own general-purpose chrome the way a blank starting shape does — the app's own header/menu is deliberately domain-agnostic everywhere else (Grid/Snap/Connections/Units are all generic viewer concepts, nothing floor-plan-specific), and D-162's furniture list broke that pattern.
+
+**`STANDARD_ELEMENTS` (`interactivity-module.js`) now holds the language's own four shape kinds** — Line (`polyline`), Rectangle, Circle, Polygon — each with neutral gray styling (`fill: "#e8e8e8"`, `stroke: "#666"`, no domain color to pick for a shape that isn't anything specific yet) and no `label` (a generic shape doesn't need one stating the obvious the way D-162's own furniture genuinely did — "Bed" named a thing, "Rectangle" would just repeat what's already visible). Polygon gets a simple unit-triangle point list, offset to land near `[0.3, 0.3]` the same way rect/circle's own `position` does; Line has no `fill` at all, matching every polyline already shipped in the bundled examples (`wall_a`/`door`).
+
+**`presetElementText` generalized to write only the style keys a preset actually declares**, rather than assuming fill/stroke/strokeWidth all exist unconditionally (true of every one of D-162's own furniture presets by coincidence, not true of Line here) — `Object.entries(preset.style)` instead of three hardcoded field reads.
+
+**Flyout swatches redrawn to match**: a plain gray square (Rectangle), a gray circle (Circle, `border-radius: 50%`), a thin gray bar (Line, `.preset-swatch--line`), and a small clip-path triangle (Polygon, `.preset-swatch--polygon`) — no more per-preset inline fill/stroke colors, since every generic shape now shares the same neutral palette.
+
+**Tests:** `tests/test_new_element.py` rewritten for the new preset ids (`line`/`rect`/`circle`/`polygon`) and assertions (no `label` on a generic shape; Line's own style has no `fill`). Full suite green (201/201).

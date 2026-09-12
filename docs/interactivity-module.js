@@ -1900,39 +1900,44 @@
     });
   }
 
-  // D-162: "New Element" -- the app's own existing furniture presets (carried over
-  // unchanged from the bundled `apartment` example, docs/index.html's own EXAMPLES),
-  // reachable from a header flyout instead of hand-typing an `element { ... }` block.
-  // `utility`/`campervan`'s own presets are domain-specific to their own example, not
-  // "standard" in a general sense, so excluded here; door/wall are excluded too since
-  // they're polylines anchored to corner-refs that don't exist until a room's own corners
-  // are declared, so they can't be inserted as a self-contained element the way a plain
-  // rect/circle/polygon can. `rug`'s own points are pre-shifted so its bounding box starts
-  // near [0.3, 0.3] (same landing spot every other preset uses via its own `position`) --
-  // computed once by hand rather than at runtime, since it's a fixed literal either way.
+  // D-163: "New Element" -- reported directly, correcting D-162's own first pass: these
+  // should be generic shape primitives (Line/Rectangle/Circle/Polygon, the language's own
+  // four shape kinds), not domain furniture presets (Bed/Desk/... carried over from the
+  // bundled `apartment` example) -- a floor-plan-specific catalog doesn't belong in the
+  // app's own general-purpose chrome the way a blank starting shape does. Neutral gray
+  // styling throughout (no domain color to pick for a shape that isn't anything yet), and
+  // no `label` -- a generic shape doesn't need one stating the obvious (unlike D-162's own
+  // furniture, where "Bed" genuinely named the thing).
+  //
+  // `polygon`'s own points are a simple unit triangle, offset to land near [0.3, 0.3] the
+  // same way rect/circle's own `position` does; `polyline` (Line) has no `fill` at all
+  // (matches every polyline in the bundled examples, e.g. wall_a/door) -- presetElementText
+  // below only writes a style key that's actually present on the preset, rather than
+  // assuming fill/stroke/strokeWidth all exist unconditionally the way D-162's own first
+  // pass did (every one of *its* presets happened to have all three).
   //
   // Deliberately a plain array, not backed by anything fancier: framed directly as a first
   // step toward later module-extensibility (F-048/D-157's own already-recorded "a module
   // can't add to the app" future direction) -- a future registration hook could just push
   // another entry onto this same array without restructuring anything here.
   const STANDARD_ELEMENTS = [
-    { idBase: "bed", label: "Bed", shape: "rect", size: [1.6, 2], style: { fill: "#cfe0f5", stroke: "#4a76a8", strokeWidth: 0.02 } },
-    { idBase: "desk", label: "Desk", shape: "rect", size: [1.2, 0.6], style: { fill: "#fbe3b0", stroke: "#a87a2b", strokeWidth: 0.02 } },
-    { idBase: "table", label: "Table", shape: "circle", radius: 0.35, style: { fill: "#bfe3f5", stroke: "#3a7a9a", strokeWidth: 0.03 } },
-    { idBase: "stove", label: "Stove", shape: "rect", size: [0.6, 0.6], style: { fill: "#d9534f", stroke: "#8a2f2a", strokeWidth: 0.02 } },
-    { idBase: "counter", label: "Counter", shape: "rect", size: [0.5, 1.2], style: { fill: "#e8c896", stroke: "#a9895c", strokeWidth: 0.02 } },
+    { idBase: "line", shape: "polyline", points: [[0.3, 0.3], [1.3, 0.3]], style: { stroke: "#666", strokeWidth: 0.02 } },
+    { idBase: "rect", shape: "rect", size: [1, 1], style: { fill: "#e8e8e8", stroke: "#666", strokeWidth: 0.02 } },
+    { idBase: "circle", shape: "circle", radius: 0.5, style: { fill: "#e8e8e8", stroke: "#666", strokeWidth: 0.02 } },
     {
-      idBase: "rug", label: "Rug", shape: "polygon",
-      points: [[0.6, 0.4], [1.5, 0.3], [1.7, 1.2], [1.1, 1.7], [0.3, 1.3]],
-      style: { fill: "#e0d5c0", stroke: "#b0a080", strokeWidth: 0.02 },
+      idBase: "polygon", shape: "polygon",
+      points: [[0.3, 1.3], [1.3, 1.3], [0.8, 0.3]],
+      style: { fill: "#e8e8e8", stroke: "#666", strokeWidth: 0.02 },
     },
   ];
 
   // Plain string templating, not an AST-based edit -- this is brand-new text, never
   // touching an existing token the way every other source-editing helper in this file
   // does. rect/circle get a `position` (the fixed [0.3, 0.3] landing spot every preset
-  // uses); polygon's own `points` already carry their own absolute-ish placement (see
-  // STANDARD_ELEMENTS's own comment), so it gets no separate position line at all.
+  // uses); polygon/polyline's own `points` already carry their own absolute-ish placement
+  // (see STANDARD_ELEMENTS's own comment), so they get no separate position line at all.
+  // Only writes the style keys the preset actually declares -- a polyline preset with no
+  // `fill` at all must not get a synthesized empty one.
   function presetElementText(preset, id, indent) {
     const inner = indent + "  ";
     const lines = [`${indent}element ${id} {`, `${inner}shape: "${preset.shape}"`];
@@ -1940,12 +1945,11 @@
       lines.push(`${inner}size: [${preset.size[0]}m, ${preset.size[1]}m]`, `${inner}position: [0.3m, 0.3m]`);
     } else if (preset.shape === "circle") {
       lines.push(`${inner}radius: ${preset.radius}m`, `${inner}position: [0.3m, 0.3m]`);
-    } else if (preset.shape === "polygon") {
+    } else if (preset.shape === "polygon" || preset.shape === "polyline") {
       lines.push(`${inner}points: [${preset.points.map(([x, y]) => `[${x}m, ${y}m]`).join(", ")}]`);
     }
-    const s = preset.style;
-    lines.push(`${inner}style: { fill: "${s.fill}", stroke: "${s.stroke}", strokeWidth: ${s.strokeWidth} }`);
-    lines.push(`${inner}label: "${preset.label}"`);
+    const styleParts = Object.entries(preset.style).map(([key, value]) => `${key}: ${typeof value === "string" ? `"${value}"` : value}`);
+    lines.push(`${inner}style: { ${styleParts.join(", ")} }`);
     lines.push(`${indent}}`);
     return lines.join("\n");
   }
