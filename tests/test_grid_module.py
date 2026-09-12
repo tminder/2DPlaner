@@ -159,6 +159,58 @@ def test_grid_flyout_stays_open_while_the_mouse_moves_down_into_it(app_page):
     assert "grid" not in source_text(app_page)
 
 
+def test_grid_flyout_layer_buttons_write_and_reflect_the_current_layer(app_page):
+    """F-042: layer/opacity were the last two grid sub-settings still source-text-only.
+    A separate group from Off/Squares/Lines -- type and layer are independent axes, so
+    they can't share one exclusive list."""
+    load_plan(app_page, BACK_GRID_PLAN)
+    app_page.click("#menu-tab-view")
+    app_page.hover("#grid-toggle-btn")
+    app_page.wait_for_timeout(150)
+    # No explicit `layer` written -- "Behind shapes" is the implicit default, active anyway.
+    assert app_page.locator("#grid-layer-back-btn").evaluate("el => el.classList.contains('active')")
+
+    app_page.click("#grid-layer-front-btn")
+    app_page.wait_for_timeout(150)
+    assert 'layer: "front"' in source_text(app_page)
+
+    app_page.hover("#grid-toggle-btn")
+    app_page.wait_for_timeout(150)
+    assert app_page.locator("#grid-layer-front-btn").evaluate("el => el.classList.contains('active')")
+    assert not app_page.locator("#grid-layer-back-btn").evaluate("el => el.classList.contains('active')")
+
+    app_page.click("#grid-layer-none-btn")
+    app_page.wait_for_timeout(150)
+    assert 'layer: "none"' in source_text(app_page)
+    assert app_page.locator(".plan-grid-bg").count() == 0
+
+
+def test_grid_flyout_opacity_input_writes_and_reflects_the_current_opacity(app_page):
+    load_plan(app_page, FRONT_GRID_PLAN)
+    app_page.click("#menu-tab-view")
+    app_page.hover("#grid-toggle-btn")
+    app_page.wait_for_timeout(150)
+    assert app_page.locator("#grid-opacity-input").input_value() == "0.3"
+
+    app_page.fill("#grid-opacity-input", "0.6")
+    app_page.locator("#grid-opacity-input").press("Enter")
+    app_page.wait_for_timeout(150)
+    assert "opacity: 0.6" in source_text(app_page)
+    assert app_page.locator(".plan-grid-bg").get_attribute("opacity") == "0.6"
+
+
+def test_grid_flyout_layer_before_grid_exists_creates_it_fresh(app_page):
+    load_plan(app_page, PLAN)  # no settings.grid at all yet
+    app_page.click("#menu-tab-view")
+    app_page.hover("#grid-toggle-btn")
+    app_page.wait_for_timeout(150)
+    app_page.click("#grid-layer-front-btn")
+    app_page.wait_for_timeout(150)
+    text = source_text(app_page)
+    assert 'layer: "front"' in text
+    assert app_page.locator(".plan-grid-bg").count() == 1
+
+
 def test_grid_flyout_off_button_turns_grid_off_and_reflects_active_state(app_page):
     """D-156: reported directly -- the only way to turn the grid off used to be the box's
     own plain click, easy to miss while already hovering the flyout. Off/Squares/Lines now

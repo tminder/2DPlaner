@@ -166,6 +166,10 @@
      .active convention .ribbon-btn.active already uses one level up), and the size field
      is a plain labeled number input, the one non-button row this menu has needed so far. */
   .submenu button.active { background: var(--amber-soft); color: var(--ink); font-weight: 600; }
+  /* F-042: separates the Off/Squares/Lines group above from the independent Layer group
+     below it (docs/index.html's own Grid flyout) -- two different settings axes sharing
+     one flyout, not one list. */
+  .submenu li.submenu-divider { height: 1px; margin: 4px 0; background: var(--line); }
   .submenu li.submenu-field { display: flex; align-items: center; gap: 8px; padding: 6px 16px; }
   .submenu li.submenu-field label { flex: none; color: var(--ink-soft); }
   .submenu li.submenu-field input { width: 56px; padding: 3px 5px; border: 1px solid var(--line);
@@ -521,9 +525,24 @@
           <li><button id="grid-off-btn" type="button">Off</button></li>
           <li><button id="grid-type-checker-btn" type="button">Squares</button></li>
           <li><button id="grid-type-lines-btn" type="button">Lines</button></li>
+          <li class="submenu-divider"></li>
+          <!-- F-042: `layer`/`opacity` were the two grid sub-settings still source-text-only.
+               A separate group from Off/Squares/Lines above, not folded into it -- type and
+               layer are independent axes (Lines+Hidden, Squares+In front, etc. are all valid
+               combinations a single flat exclusive list couldn't represent). "Hidden" is
+               deliberately not worded "Off" a second time -- unlike the real Off above, the
+               grid stays fully declared/configured here, just not drawn (`layer: "none"`,
+               F-039); wording it differently keeps the two from reading as the same control. -->
+          <li><button id="grid-layer-back-btn" type="button">Behind shapes</button></li>
+          <li><button id="grid-layer-front-btn" type="button">In front</button></li>
+          <li><button id="grid-layer-none-btn" type="button">Hidden</button></li>
           <li class="submenu-field">
             <label for="grid-size-input">Size (m)</label>
             <input type="number" id="grid-size-input" min="0.1" step="0.1">
+          </li>
+          <li class="submenu-field">
+            <label for="grid-opacity-input">Opacity</label>
+            <input type="number" id="grid-opacity-input" min="0.05" max="1" step="0.05">
           </li>
         </ul>
       </div>
@@ -2475,6 +2494,11 @@ function setGridSubKey(key, valueLiteral) {
 
 function setGridType(type) { setGridSubKey("type", `"${type}"`); }
 function setGridSize(meters) { setGridSubKey("size", formatNumber(meters, "m")); }
+// F-042: `layer`/`opacity` (F-039/D-149) were the two remaining grid sub-settings still
+// source-text-only. Same setGridSubKey reuse as type/size above -- a nested object is,
+// to that function, just another span to search, no new mechanism needed.
+function setGridLayer(layer) { setGridSubKey("layer", `"${layer}"`); }
+function setGridOpacity(opacity) { setGridSubKey("opacity", formatNumber(opacity, "")); }
 
 function updateGridToggleUi() {
   const btn = document.getElementById("grid-toggle-btn");
@@ -2495,6 +2519,18 @@ function updateGridToggleUi() {
   const sizeInput = document.getElementById("grid-size-input");
   if (sizeInput && document.activeElement !== sizeInput) {
     sizeInput.value = numOf(grid?.size ?? 1);
+  }
+
+  // F-042: layer is its own independent radio group (see the HTML's own comment for why
+  // it's not folded into Off/Squares/Lines above) -- "back" is both the explicit value and
+  // the implicit default (omitting `layer` entirely), so both read as the same active state.
+  const layer = grid?.layer ?? "back";
+  document.getElementById("grid-layer-back-btn")?.classList.toggle("active", layer === "back");
+  document.getElementById("grid-layer-front-btn")?.classList.toggle("active", layer === "front");
+  document.getElementById("grid-layer-none-btn")?.classList.toggle("active", layer === "none");
+  const opacityInput = document.getElementById("grid-opacity-input");
+  if (opacityInput && document.activeElement !== opacityInput) {
+    opacityInput.value = numOf(grid?.opacity ?? 1);
   }
 }
 
@@ -2683,6 +2719,13 @@ document.getElementById("grid-type-lines-btn").addEventListener("click", () => s
 document.getElementById("grid-size-input").addEventListener("change", (e) => {
   const v = parseFloat(e.target.value);
   if (Number.isFinite(v) && v > 0) setGridSize(v);
+});
+document.getElementById("grid-layer-back-btn").addEventListener("click", () => setGridLayer("back"));
+document.getElementById("grid-layer-front-btn").addEventListener("click", () => setGridLayer("front"));
+document.getElementById("grid-layer-none-btn").addEventListener("click", () => setGridLayer("none"));
+document.getElementById("grid-opacity-input").addEventListener("change", (e) => {
+  const v = parseFloat(e.target.value);
+  if (Number.isFinite(v) && v > 0 && v <= 1) setGridOpacity(v);
 });
 document.getElementById("snap-toggle-btn").addEventListener("click", toggleSnapSetting);
 document.getElementById("connections-toggle-btn").addEventListener("click", toggleShowConnectionsSetting);
