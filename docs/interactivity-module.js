@@ -1237,6 +1237,17 @@
     return false;
   }
 
+  // S-038: the shared "valid reparent/relate candidate" check -- exists, isn't the gesture's
+  // own source, isn't an ancestor/descendant of it either way. Was hand-duplicated identically
+  // in four places (relateDrag's own hover tracking, connectPick's hover tracking, connectPick's
+  // D-152 pointerup-resolution recompute, D-150's own reparent-drag candidate detection).
+  // `alsoExcludeId` covers D-150's one extra exclusion (the dragged node's own current parent --
+  // dropping back on it isn't a new one) without forking the check itself for that one caller.
+  function isValidGestureTarget(hoveredId, fromId, program, alsoExcludeId) {
+    return !!(hoveredId && hoveredId !== fromId && hoveredId !== alsoExcludeId && program.nodesById[hoveredId]
+      && !isAncestorOf(hoveredId, fromId, program) && !isAncestorOf(fromId, hoveredId, program));
+  }
+
   // D-141: rotates a plan-space point around a pivot by `deg` (clockwise, matching core's
   // own rotatedRectAABB / the rendered SVG rotate() transform) — used both to place resize
   // handles at a rotated rect's own visual corners and, with a negated angle, to rotate the
@@ -2143,99 +2154,18 @@
     });
   }
 
-  // D-148: "No placement (moves freely)" now genuinely detaches the element from its
-  // parent -- not just its placement/flush constraints (all this action used to clear) but
-  // the structural containment itself, promoting it to become a sibling of its former
-  // parent (one level up, under the grandparent), its position rewritten to keep it exactly
-  // where it visually was. Scoped to one level, matching setPlacementInside's own
-  // established "placement always means the immediate parent" convention -- not a blanket
-  // "detach from the whole ancestry". This project's grammar only ever allows a single root
-  // element (parseProgram parses exactly one top-level `element`, then only `connection`
-  // lines/EOF), so a node whose parent already IS the root has nowhere to promote to: it
-  // just keeps clearing placement/flush in place, same as this action always did before.
-  function clearPlacement(nodeId) {
-    withParsedSource((text, base) => {
-      const node = base.nodesById[nodeId];
-      if (!node) return;
-      const parent = node.parentId ? base.nodesById[node.parentId] : null;
-      const grandparent = parent?.parentId ? base.nodesById[parent.parentId] : null;
-      const propSpans = ["placement", "flush"].map((key) => findOwnPropertyLine(text, node, key)).filter(Boolean);
-      if (!propSpans.length) return;
-
-      if (!grandparent) {
-        commitSourceEdit(deleteSpans(text, propSpans), `'${nodeId}': placement cleared.`);
-        return;
-      }
-
-      // Two passes, not one combined edit list: stripping placement/flush first (via the
-      // exact same deleteSpans this action always used) means every offset used below comes
-      // from a *fresh* reparse of the already-stripped text, never sharing a position with
-      // one of the just-deleted property lines -- simpler and provably correct rather than
-      // reasoning about two edits that might land on the identical offset (e.g. if
-      // `placement` happened to be this node's very first property line, right where a
-      // freshly-inserted `position` line would also need to go).
-      const strippedText = deleteSpans(text, propSpans);
-      let strippedBase;
-      try { strippedBase = core.parseExpanded(strippedText); } catch (e) { return; }
-      const freshNode = strippedBase.nodesById[nodeId];
-      const freshParent = strippedBase.nodesById[parent.id];
-      const freshGrandparent = strippedBase.nodesById[grandparent.id];
-      if (!freshNode || !freshParent || !freshGrandparent) return;
-
-      const [x0, y0] = freshNode.props.position ?? [null, null];
-      if ((x0 && !core.isEditable(x0)) || (y0 && !core.isEditable(y0))) {
-        // Can't safely rewrite an expression-valued position to preserve where this sits
-        // visually -- degrades to clearing placement/flush in place, matching this
-        // codebase's own established "warn and fall back" convention for exactly this class
-        // of risk (D-141's flush-against-a-rotated-rect, D-143's expression-valued scale
-        // points).
-        commitSourceEdit(strippedText, `'${nodeId}': placement cleared, but its position is an expression -- can't move it out of '${parent.id}' automatically.`);
-        return;
-      }
-
-      const positions = {};
-      core.computePositions(strippedBase.root, null, [0, 0], positions);
-      const [nodeAbsX, nodeAbsY] = positions[freshNode.id];
-      const [gpAbsX, gpAbsY] = positions[freshGrandparent.id];
-      const newX = nodeAbsX - gpAbsX, newY = nodeAbsY - gpAbsY;
-
-      const cut = toLineSpan(strippedText, freshNode.start, freshNode.end);
-      const positionEdits = freshNode.props.position
-        ? [
-            { start: x0.start, end: x0.end, text: core.formatNumber(newX, x0.unit) },
-            { start: y0.start, end: y0.end, text: core.formatNumber(newY, y0.unit) },
-          ]
-        : [{
-            start: afterHeaderLine(strippedText, freshNode), end: afterHeaderLine(strippedText, freshNode),
-            text: `${lineIndentAt(strippedText, freshNode.start)}  position: [${core.formatNumber(newX, "m")}, ${core.formatNumber(newY, "m")}]\n`,
-          }];
-      const localEdits = positionEdits.map((e) => ({ start: e.start - cut.start, end: e.end - cut.start, text: e.text }));
-      let movedText = applyEditsDescending(strippedText.slice(cut.start, cut.end), localEdits);
-
-      // Dedented by one level -- the moved block now sits as a *sibling* of its former
-      // parent, not nested one level deeper than that, so its own indentation (carried
-      // along as-is for its whole subtree, whatever it contains) should read that way too.
-      const parentIndent = lineIndentAt(strippedText, freshParent.start);
-      const nodeIndent = lineIndentAt(strippedText, freshNode.start);
-      const extra = nodeIndent.startsWith(parentIndent) && nodeIndent.length > parentIndent.length
-        ? nodeIndent.slice(parentIndent.length) : "  ";
-      movedText = movedText.split("\n").map((line) => (line.startsWith(extra) ? line.slice(extra.length) : line)).join("\n");
-
-      const parentSpan = toLineSpan(strippedText, freshParent.start, freshParent.end);
-      const edits = [{ start: cut.start, end: cut.end, text: "" }, { start: parentSpan.end, end: parentSpan.end, text: movedText }];
-      commitSourceEdit(applyEditsDescending(strippedText, edits), `'${nodeId}': placement cleared, moved out of '${parent.id}'.`);
-    });
-  }
-
-  // D-150 (F-012): the drag-driven counterpart to clearPlacement above -- same two-pass
-  // strip-then-reparse-then-splice mechanic, generalized to an arbitrary drop target
-  // (a Shift-held ordinary drag's own reparent-candidate, see handlePointerMove/Up) instead
-  // of always the grandparent. `placement`/`flush` are stripped unconditionally for the
-  // exact same reason clearPlacement already strips them: a changed container invalidates
-  // any placement relative to the *old* one, since `placement` always means "this node's
-  // own current immediate parent" (setPlacementInside's own established rule) -- silently
-  // keeping it would mean it now applies to a parent the user never asked for that.
-  function reparentElement(nodeId, newParentId) {
+  // D-148/D-150/S-039: the drag-driven reparent (arbitrary target) generalizes what "No
+  // placement (moves freely)" needs (a target that's always specifically the grandparent) --
+  // same two-pass strip-placement-then-reparse-then-splice mechanic, same editable/missing/
+  // expression-position branching, same absolute-position-difference math, same cut-and-
+  // reinsert splice. `placement`/`flush` are stripped unconditionally: a changed container
+  // invalidates any placement relative to the *old* one, since `placement` always means "this
+  // node's own current immediate parent" (setPlacementInside's own established rule) --
+  // silently keeping it would mean it now applies to a parent the user never asked for that.
+  // `opts.successMessage`/`opts.degradeMessage` (both `(nodeId, newParentId) => string`) let
+  // clearPlacement below phrase its own two outcomes in its own terms ("placement cleared,
+  // moved out of ...") while sharing this exact mechanic rather than duplicating it.
+  function reparentElement(nodeId, newParentId, opts = {}) {
     withParsedSource((text, base) => {
       const node = base.nodesById[nodeId];
       const newParent = base.nodesById[newParentId];
@@ -2245,9 +2175,12 @@
 
       const propSpans = ["placement", "flush"].map((key) => findOwnPropertyLine(text, node, key)).filter(Boolean);
 
-      // Two passes, not one combined edit list -- see clearPlacement's own identical
-      // reasoning above: every offset below comes from a fresh reparse of the
-      // already-stripped text, never sharing a position with a just-deleted property line.
+      // Two passes, not one combined edit list: stripping placement/flush first means every
+      // offset used below comes from a *fresh* reparse of the already-stripped text, never
+      // sharing a position with one of the just-deleted property lines -- simpler and
+      // provably correct rather than reasoning about two edits that might land on the
+      // identical offset (e.g. if `placement` happened to be this node's very first property
+      // line, right where a freshly-inserted `position` line would also need to go).
       const strippedText = deleteSpans(text, propSpans);
       let strippedBase;
       try { strippedBase = core.parseExpanded(strippedText); } catch (e) { return; }
@@ -2255,12 +2188,20 @@
       const freshNewParent = strippedBase.nodesById[newParentId];
       if (!freshNode || !freshNewParent) return;
       // Re-checked against the fresh tree too -- belt and braces, matching this codebase's
-      // own established caution around structural edits (D-148's own identical instinct).
+      // own established caution around structural edits.
       if (freshNode.id === freshNewParent.id || isAncestorOf(freshNode.id, freshNewParent.id, strippedBase)) return;
 
       const [x0, y0] = freshNode.props.position ?? [null, null];
       if ((x0 && !core.isEditable(x0)) || (y0 && !core.isEditable(y0))) {
-        commitSourceEdit(strippedText, `'${nodeId}': can't move it into '${newParentId}' automatically -- its position is an expression, can't be safely rewritten.`);
+        // Can't safely rewrite an expression-valued position to preserve where this sits
+        // visually -- degrades to stripping placement/flush in place, matching this
+        // codebase's own established "warn and fall back" convention for exactly this class
+        // of risk (D-141's flush-against-a-rotated-rect, D-143's expression-valued scale
+        // points).
+        const degradeMessage = opts.degradeMessage
+          ? opts.degradeMessage(nodeId, newParentId)
+          : `'${nodeId}': can't move it into '${newParentId}' automatically -- its position is an expression, can't be safely rewritten.`;
+        commitSourceEdit(strippedText, degradeMessage);
         return;
       }
 
@@ -2283,32 +2224,69 @@
       const localEdits = positionEdits.map((e) => ({ start: e.start - cut.start, end: e.end - cut.start, text: e.text }));
       let movedText = applyEditsDescending(strippedText.slice(cut.start, cut.end), localEdits);
 
-      // Reindented to the *target's* own child depth -- unlike clearPlacement's always-
-      // one-level-shallower dedent (parent -> grandparent is always exactly one level), a
-      // drag can drop this anywhere: shallower, deeper, or a different branch entirely at
-      // the same depth. The node's own current indent prefix is swapped for the new
-      // parent's own child indent, line by line -- each line's *extra* indentation beyond
-      // that shared prefix (its own descendants, whatever it contains) carries through
-      // untouched, just re-based to the new starting depth.
+      // Reindented to the *target's* own child depth -- a drop target can be shallower,
+      // deeper, or a different branch entirely at the same depth. The node's own current
+      // indent prefix is swapped for the new parent's own child indent, line by line -- each
+      // line's *extra* indentation beyond that shared prefix (its own descendants, whatever
+      // it contains) carries through untouched, just re-based to the new starting depth.
       const oldIndent = lineIndentAt(strippedText, freshNode.start);
       const newIndent = lineIndentAt(strippedText, freshNewParent.start) + "  ";
       movedText = movedText.split("\n")
         .map((line) => (line.startsWith(oldIndent) ? newIndent + line.slice(oldIndent.length) : line))
         .join("\n");
 
-      // Inserted right after the new parent's own opening brace -- becoming its *child*,
-      // unlike clearPlacement's own insertion point (right after the old parent's closing
-      // line, becoming its *sibling* instead) -- the two mechanics part ways exactly here,
-      // matching each one's own actual intent. afterOpenBrace, not afterHeaderLine -- the
-      // target can be formatted single-line, where afterHeaderLine's own "next newline, or
-      // node.end" fallback would land after the target's own closing brace instead of
-      // inside it.
+      // Inserted right after the new parent's own opening brace -- becoming its *first
+      // child*. afterOpenBrace, not afterHeaderLine -- the target can be formatted
+      // single-line, where afterHeaderLine's own "next newline, or node.end" fallback would
+      // land after the target's own closing brace instead of inside it.
       const insertAt = afterOpenBrace(strippedText, freshNewParent);
       // A leading newline of its own -- movedText already carries its own indentation
       // (captured via toLineSpan on the way out) but nothing separating it from whatever
       // character sits immediately after the target's own `{` (usually none at all).
       const edits = [{ start: cut.start, end: cut.end, text: "" }, { start: insertAt, end: insertAt, text: `\n${movedText}` }];
-      commitSourceEdit(applyEditsDescending(strippedText, edits), `'${nodeId}': moved into '${newParentId}'.`);
+      const successMessage = opts.successMessage
+        ? opts.successMessage(nodeId, newParentId)
+        : `'${nodeId}': moved into '${newParentId}'.`;
+      commitSourceEdit(applyEditsDescending(strippedText, edits), successMessage);
+    });
+  }
+
+  // D-148/S-039: "No placement (moves freely)" genuinely detaches the element from its
+  // parent -- not just its placement/flush constraints (all this action used to clear) but
+  // the structural containment itself, promoting it to the grandparent, its position
+  // rewritten to keep it exactly where it visually was. Scoped to one level, matching
+  // setPlacementInside's own established "placement always means the immediate parent"
+  // convention -- not a blanket "detach from the whole ancestry". This project's grammar
+  // only ever allows a single root element (parseProgram parses exactly one top-level
+  // `element`, then only `connection` lines/EOF), so a node whose parent already IS the root
+  // has nowhere to promote to: it just keeps clearing placement/flush in place, same as this
+  // action always did before. The "has grandparent" case delegates entirely to
+  // reparentElement, which is provably equivalent here: the grandparent's own child indent
+  // is, by construction, exactly one level shallower than the node's current indent (parent
+  // is grandparent's child, one level deeper) -- exactly reparentElement's own general
+  // reindent-to-target-depth logic, applied to this specific target. The one visible
+  // difference from clearPlacement's old bespoke splice: the node now lands as the
+  // grandparent's *first* child (reparentElement's own insertion point) rather than as a
+  // sibling positioned right where the old parent used to sit among the grandparent's other
+  // children -- a cosmetic reordering only, not checked by any existing test.
+  function clearPlacement(nodeId) {
+    withParsedSource((text, base) => {
+      const node = base.nodesById[nodeId];
+      if (!node) return;
+      const parent = node.parentId ? base.nodesById[node.parentId] : null;
+      const grandparent = parent?.parentId ? base.nodesById[parent.parentId] : null;
+      const propSpans = ["placement", "flush"].map((key) => findOwnPropertyLine(text, node, key)).filter(Boolean);
+      if (!propSpans.length) return;
+
+      if (!grandparent) {
+        commitSourceEdit(deleteSpans(text, propSpans), `'${nodeId}': placement cleared.`);
+        return;
+      }
+
+      reparentElement(nodeId, grandparent.id, {
+        successMessage: (id) => `'${id}': placement cleared, moved out of '${parent.id}'.`,
+        degradeMessage: (id) => `'${id}': placement cleared, but its position is an expression -- can't move it out of '${parent.id}' automatically.`,
+      });
     });
   }
 
@@ -3730,13 +3708,11 @@
     if (vertexDrag) { applyVertexDrag(e.clientX, e.clientY); return; }
     if (scaleDrag) { applyScaleDrag(e.clientX, e.clientY); return; }
     if (connectPick) {
-      // Same candidate-validity check relateDrag's own branch already uses, just
-      // triggered by hover-with-no-button-down instead of hover-during-drag.
+      // S-038: shared isValidGestureTarget -- relateDrag's own branch below uses the exact
+      // same check, just triggered by hover-with-no-button-down instead of hover-during-drag.
       const el = document.elementFromPoint(e.clientX, e.clientY)?.closest("[data-id]");
       const hoveredId = el?.dataset.id;
-      const valid = hoveredId && hoveredId !== connectPick.fromId && program.nodesById[hoveredId]
-        && !isAncestorOf(hoveredId, connectPick.fromId, program) && !isAncestorOf(connectPick.fromId, hoveredId, program);
-      const newCandidateId = valid ? hoveredId : null;
+      const newCandidateId = isValidGestureTarget(hoveredId, connectPick.fromId, program) ? hoveredId : null;
       if (newCandidateId !== connectPick.candidateId) {
         if (connectPick.candidateId) core.rootEl.querySelector(`[data-id="${CSS.escape(connectPick.candidateId)}"]`)?.classList.remove("relate-candidate");
         if (newCandidateId) core.rootEl.querySelector(`[data-id="${CSS.escape(newCandidateId)}"]`)?.classList.add("relate-candidate");
@@ -3805,15 +3781,12 @@
         if (vb) { relateDrag.lineEl.setAttribute("x2", vb[0]); relateDrag.lineEl.setAttribute("y2", vb[1]); }
       }
       // Live-under-cursor target, not the source itself and not one of its own structural
-      // ancestors/descendants — the same isAncestorOf check applyDrag's own connection
-      // propagation already uses to avoid double-moving a structurally-nested pair, reused
-      // here for the same underlying reason: relating a node to its own container/child
-      // isn't a meaningful relationship this language has any other way to represent.
+      // ancestors/descendants — S-038's shared isValidGestureTarget, for the same underlying
+      // reason: relating a node to its own container/child isn't a meaningful relationship
+      // this language has any other way to represent.
       const el = document.elementFromPoint(e.clientX, e.clientY)?.closest("[data-id]");
       const hoveredId = el?.dataset.id;
-      const valid = hoveredId && hoveredId !== relateDrag.fromId && program.nodesById[hoveredId]
-        && !isAncestorOf(hoveredId, relateDrag.fromId, program) && !isAncestorOf(relateDrag.fromId, hoveredId, program);
-      const newCandidateId = valid ? hoveredId : null;
+      const newCandidateId = isValidGestureTarget(hoveredId, relateDrag.fromId, program) ? hoveredId : null;
       if (newCandidateId !== relateDrag.candidateId) {
         if (relateDrag.candidateId) core.rootEl.querySelector(`[data-id="${CSS.escape(relateDrag.candidateId)}"]`)?.classList.remove("relate-candidate");
         if (newCandidateId) core.rootEl.querySelector(`[data-id="${CSS.escape(newCandidateId)}"]`)?.classList.add("relate-candidate");
@@ -3842,24 +3815,21 @@
     applyDrag(drag, dx, dy);
 
     // D-150 (F-012): Shift held during an ordinary drag additionally looks for a valid
-    // reparent target under the cursor -- the exact same candidate-validity shape
-    // relateDrag/connectPick already use (exists, isn't the dragged node itself, isn't an
-    // ancestor/descendant either way), plus excluding the node's own *current* parent
-    // (dropping back on your own parent isn't a new one). Deliberately gated on a held
-    // modifier, not automatic: an ordinary drag frequently ends up over some other nearby
-    // shape, and reparenting on every such coincidence would make simple repositioning
-    // unpredictable. Skipped entirely for a group drag (drag.groupIds.length) -- v1 scope.
-    // applyDrag above always refreshes core.dragmsgEl fully on its own every frame, so this
-    // only ever *adds* to it when there's a candidate to report, never clears it otherwise.
+    // reparent target under the cursor -- S-038's shared isValidGestureTarget, plus excluding
+    // the node's own *current* parent (dropping back on your own parent isn't a new one).
+    // Deliberately gated on a held modifier, not automatic: an ordinary drag frequently ends
+    // up over some other nearby shape, and reparenting on every such coincidence would make
+    // simple repositioning unpredictable. Skipped entirely for a group drag
+    // (drag.groupIds.length) -- v1 scope. applyDrag above always refreshes core.dragmsgEl
+    // fully on its own every frame, so this only ever *adds* to it when there's a candidate to
+    // report, never clears it otherwise.
     if (drag.moved && !drag.groupIds.length) {
       const currentParentId = program?.nodesById[drag.id]?.parentId;
       let newCandidateId = null;
       if (e.shiftKey) {
         const el = document.elementFromPoint(e.clientX, e.clientY)?.closest("[data-id]");
         const hoveredId = el?.dataset.id;
-        const valid = hoveredId && hoveredId !== drag.id && hoveredId !== currentParentId && program.nodesById[hoveredId]
-          && !isAncestorOf(hoveredId, drag.id, program) && !isAncestorOf(drag.id, hoveredId, program);
-        newCandidateId = valid ? hoveredId : null;
+        newCandidateId = isValidGestureTarget(hoveredId, drag.id, program, currentParentId) ? hoveredId : null;
       }
       // Only the *candidate id* is decided here, synchronously, every frame -- the actual
       // highlight is applied from the drag-start-registered core.onRendered hook instead
@@ -3914,13 +3884,12 @@
       // goes straight from "not touching" to pointerdown/up at the target, no intervening
       // pointermove ever fires). A real bug, reported directly: every tap during a pick
       // silently cancelled it, since the stored candidateId was still null. Recomputing
-      // the identical validity check directly against this event's own point works the
-      // same for mouse (where a prior hover already agrees) and touch alike.
+      // the identical validity check (S-038's shared isValidGestureTarget) directly against
+      // this event's own point works the same for mouse (where a prior hover already agrees)
+      // and touch alike.
       const el = document.elementFromPoint(e.clientX, e.clientY)?.closest("[data-id]");
       const hoveredId = el?.dataset.id;
-      const candidateId = hoveredId && hoveredId !== fromId && program.nodesById[hoveredId]
-        && !isAncestorOf(hoveredId, fromId, program) && !isAncestorOf(fromId, hoveredId, program)
-        ? hoveredId : null;
+      const candidateId = isValidGestureTarget(hoveredId, fromId, program) ? hoveredId : null;
       cancelConnectPick();
       // Releasing over empty canvas, back on the source, or an invalid (ancestor/descendant)
       // candidate just cancels -- no menu, no edit, matching relateDrag's own convention.
