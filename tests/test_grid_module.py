@@ -132,6 +132,33 @@ def test_grid_flyout_type_before_grid_exists_creates_it_fresh(app_page):
     assert app_page.locator(".plan-grid-bg").count() == 1
 
 
+def test_grid_flyout_stays_open_while_the_mouse_moves_down_into_it(app_page):
+    """D-158: reported directly as unusable -- positionSubmenu (docs/index.html) placed the
+    flyout at `rect.bottom + 4`, a 4px gap below the button. Visibility is a pure CSS
+    `:hover > .submenu` rule, true only while the cursor is over the button or one of its
+    descendants; a `position: fixed` flyout sits outside the button's own box regardless of
+    gap size, so that 4px was a dead zone where the cursor was over neither -- hover lost,
+    flyout gone, before the cursor ever reached it. Moves the mouse in real steps from the
+    button down into the flyout (not a single teleporting move, which would never exercise
+    the dead zone at all) and confirms an item inside is still visible and clickable."""
+    load_plan(app_page, PLAN)
+    app_page.click("#menu-tab-view")
+    box = app_page.locator("#grid-toggle-btn").bounding_box()
+    app_page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] - 2)
+    app_page.wait_for_timeout(100)
+    sub_box = app_page.locator("#grid-toggle-btn .submenu").bounding_box()
+    target_x, target_y = sub_box["x"] + 30, sub_box["y"] + 10
+    app_page.mouse.move(target_x, target_y, steps=15)
+    app_page.wait_for_timeout(100)
+    assert app_page.locator("#grid-off-btn").is_visible()
+    # Actually clickable too, not just visible -- the point the mouse just arrived at is Off's
+    # own row (sub_box.y + 10, its first item), and PLAN has no grid declared, so clicking a
+    # no-op Off here is still a real hit-test, not a false positive from bounding_box alone.
+    app_page.mouse.click(target_x, target_y)
+    app_page.wait_for_timeout(100)
+    assert "grid" not in source_text(app_page)
+
+
 def test_grid_flyout_off_button_turns_grid_off_and_reflects_active_state(app_page):
     """D-156: reported directly -- the only way to turn the grid off used to be the box's
     own plain click, easy to miss while already hovering the flyout. Off/Squares/Lines now

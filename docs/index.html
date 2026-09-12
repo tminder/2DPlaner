@@ -2992,6 +2992,19 @@ try { setActiveMenuTab(localStorage.getItem(MENU_TAB_KEY) || "file"); } catch (e
 // that isn't actually scrolled at that moment (so this hit the Grid flyout too, in a row
 // that never even needed to scroll). Recomputed on every hover rather than once, since the
 // same button can sit at a different point after the row itself has been scrolled.
+//
+// D-158: `top: rect.bottom` -- flush against the button, no gap -- not `rect.bottom + 4`
+// as this originally shipped. Reported directly as unusable: visibility is a pure CSS
+// `.ribbon-btn.has-submenu:hover > .submenu` rule, which only stays true while the cursor
+// is over the button or one of its descendants; a `position: fixed` submenu sits outside
+// the button's own layout box regardless of gap size, so any dead space between the two
+// boxes is a zone where the cursor is over *neither*, hover is lost, and the menu vanishes
+// mid-transit before the cursor ever reaches it. The pre-D-153 CSS-only version had this
+// same button/menu relationship but zero gap (`top: 100%`), so it never hit this --
+// the +4px was a purely cosmetic add during that fix, never tested by actually moving the
+// mouse from the button down into the menu. Flush attachment closes the dead zone
+// entirely: the two boxes now share a boundary, so a straight-line move from one into the
+// other never leaves both at once.
 function positionSubmenu(wrapperEl) {
   const submenu = wrapperEl.querySelector(".submenu");
   if (!submenu) return;
@@ -3001,7 +3014,7 @@ function positionSubmenu(wrapperEl) {
   if (left + width > window.innerWidth - 8) left = rect.right - width;
   left = Math.max(8, left);
   submenu.style.left = `${left}px`;
-  submenu.style.top = `${rect.bottom + 4}px`;
+  submenu.style.top = `${rect.bottom}px`;
 }
 for (const el of document.querySelectorAll(".ribbon-btn.has-submenu")) {
   el.addEventListener("mouseenter", () => positionSubmenu(el));
