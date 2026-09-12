@@ -1,8 +1,18 @@
 """F-019/F-021: click-cycling, the stack-hint badge, hover-dim, and the outside-attachment
 exclusion -- the most fragile subsystem per the tech-debt audit (S-006), having needed
-four same-day bug-fix rounds (D-086, D-088, D-090, D-091) before settling."""
+four same-day bug-fix rounds (D-086, D-088, D-090, D-091) before settling. D-164 later
+replaced D-086's own bringToFront (a DOM reorder on selection) with dimming whatever
+currently occludes the selection instead -- covered near the bottom of this file."""
 
-from helpers import click_menu_item, element_center, load_plan, open_context_menu, selected_id, stack_badge_lines
+from helpers import (
+    click_menu_item,
+    element_center,
+    empty_canvas_point,
+    load_plan,
+    open_context_menu,
+    selected_id,
+    stack_badge_lines,
+)
 
 THREE_WAY_STACK = """
 element zimmer {
@@ -212,6 +222,91 @@ def test_badge_order_reflects_a_reorder_instead_of_a_stale_cache(app_page):
             .filter(Boolean)"""
     )
     assert ground_truth[0] == "sofa"
+
+
+def test_selecting_a_covered_element_dims_its_occluder_without_reordering_the_dom(app_page):
+    """D-164, replacing D-086's own bringToFront: selecting a stacked/covered element used
+    to raise its whole subtree to the end of the SVG (a real DOM reorder) so it would paint
+    on top. Now paint order is left alone entirely, and whatever's currently painted in
+    front of the selection -- at a point where the two actually overlap -- gets dimmed
+    instead, persisting for as long as it stays selected (not just during a hover, unlike
+    the F-021 stack-hint's own .stacked-dim -- this uses its own separate .occlusion-dim
+    class, see its own comment in interactivity-module.js for why sharing one is a bug)."""
+    load_plan(app_page, THREE_WAY_STACK)
+    cx, cy = element_center(app_page, "bett")
+    before_order = app_page.evaluate(
+        """() => Array.from(document.querySelector('#plan-root svg').children)
+            .map(c => c.dataset && c.dataset.id).filter(Boolean)"""
+    )
+
+    app_page.mouse.click(cx, cy)  # selects bett (topmost)
+    app_page.wait_for_timeout(120)
+    app_page.mouse.click(cx, cy)  # cycles to sofa, which bett now paints in front of
+    app_page.wait_for_timeout(150)
+    assert selected_id(app_page) == "sofa"
+
+    after_order = app_page.evaluate(
+        """() => Array.from(document.querySelector('#plan-root svg').children)
+            .map(c => c.dataset && c.dataset.id).filter(Boolean)"""
+    )
+    assert after_order == before_order  # no DOM reorder at all, unlike the old bringToFront
+
+    # Moved away from the stack point first -- otherwise F-021's own independent *hover*
+    # dim (still active, cursor still sitting exactly on the overlap after the click) would
+    # also mark sofa (the whole hovered group dims together, selected or not), muddying
+    # what's actually being tested here: dimming driven by *selection*, not by hover.
+    app_page.mouse.move(5, 5)
+    app_page.wait_for_timeout(150)
+    dims = app_page.evaluate(
+        """() => ({
+            bett: document.querySelector('[data-id="bett"]').classList.contains('occlusion-dim'),
+            sofa: document.querySelector('[data-id="sofa"]').classList.contains('occlusion-dim'),
+        })"""
+    )
+    assert dims == {"bett": True, "sofa": False}  # the occluder dims, the selection itself doesn't
+
+
+def test_deselecting_removes_the_occlusion_dim(app_page):
+    load_plan(app_page, THREE_WAY_STACK)
+    cx, cy = element_center(app_page, "bett")
+    app_page.mouse.click(cx, cy)
+    app_page.wait_for_timeout(120)
+    app_page.mouse.click(cx, cy)  # selects sofa, bett dims as its occluder
+    app_page.wait_for_timeout(150)
+    app_page.mouse.move(5, 5)  # away from the stack -- isolates selection-dim from hover-dim
+    app_page.wait_for_timeout(150)
+    assert app_page.evaluate("document.querySelector('[data-id=\"bett\"]').classList.contains('occlusion-dim')")
+
+    ex, ey = empty_canvas_point(app_page, "zimmer", 0.5, "bottom")
+    app_page.mouse.click(ex, ey)  # empty canvas -- deselects
+    app_page.wait_for_timeout(150)
+    app_page.mouse.move(5, 5)
+    app_page.wait_for_timeout(150)
+    assert not app_page.evaluate("document.querySelector('[data-id=\"bett\"]').classList.contains('occlusion-dim')")
+
+
+def test_selecting_a_container_does_not_dim_its_own_children(app_page):
+    """A container's own children always paint after it and usually sit inside its own
+    bounds -- normal nesting, not something to dim away just because the container itself
+    got selected."""
+    load_plan(app_page, THREE_WAY_STACK)
+    cx, cy = element_center(app_page, "bett")
+    app_page.mouse.click(cx, cy)
+    app_page.wait_for_timeout(120)
+    app_page.mouse.click(cx, cy)
+    app_page.wait_for_timeout(120)
+    app_page.mouse.click(cx, cy)  # third click in the cycle: zimmer, the shared root
+    app_page.wait_for_timeout(150)
+    assert selected_id(app_page) == "zimmer"
+
+    app_page.mouse.move(5, 5)  # away from the stack -- isolates selection-dim from hover-dim
+    app_page.wait_for_timeout(150)
+    dims = app_page.evaluate(
+        """() => ['bett', 'sofa'].map(
+            id => document.querySelector(`[data-id="${id}"]`).classList.contains('occlusion-dim')
+        )"""
+    )
+    assert dims == [False, False]
 
 
 def test_click_cycling_still_reaches_every_element_after_a_mid_cycle_reorder(app_page):

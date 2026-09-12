@@ -77,6 +77,15 @@
          via a JS-toggled class, not a :hover selector, since the mouse is only ever literally
          over one of these elements even though every one of them needs to dim together. */
       #plan-root:not(.dragging) svg .obj.stacked-dim { opacity: 0.55; }
+      /* D-164: same visual treatment as .stacked-dim above, deliberately a separate class
+         rather than reused -- .stacked-dim's own add/remove is driven by hover (leaving a
+         stack wipes it from every member unconditionally), completely independent of
+         selection state. Sharing one class caused a real bug, found live: moving the mouse
+         away after selecting a covered element cleared its occluder's dim too, since the
+         hover code's own cleanup doesn't know (or need to know) this other reason the same
+         class might be wanted. Two classes an element can hold at once, never conflicting
+         (same opacity either way) -- each mechanism only ever touches its own. */
+      #plan-root:not(.dragging) svg .obj.occlusion-dim { opacity: 0.55; }
       #interactivity-stack-badge { position: fixed; z-index: 1001; pointer-events: none;
         transform: translate(14px, 14px); background: rgba(30,68,87,0.94); color: #fff;
         font-family: system-ui, sans-serif; font-size: 12px; font-weight: 600;
@@ -549,6 +558,28 @@
       return { kind: "polygon", points: node.props.points.map((pt) => core.resolvePointAbs(pt, ownAbs, positions)) };
     }
     return null; // polyline and shapeless elements don't participate in collision checking
+  }
+
+  // D-164: a simple {x,y,width,height} AABB for occlusion-dimming purposes (see
+  // dimOccludingElements below) -- reuses solidGeometryFor's own per-shape geometry for
+  // rect/circle/polygon rather than re-deriving it, just converted to the box shape
+  // rectsIntersect expects. Polyline is deliberately excluded from solidGeometryFor
+  // (not a collision participant, no meaningful "solid" area) but a wall/line segment can
+  // still visually cover something, so it gets its own small bbox-from-points branch here
+  // rather than being skipped entirely.
+  function occlusionBBox(node, positions) {
+    const geom = solidGeometryFor(node, positions);
+    if (geom?.kind === "rect") return { x: geom.left, y: geom.top, width: geom.right - geom.left, height: geom.bottom - geom.top };
+    if (geom?.kind === "circle") return { x: geom.cx - geom.r, y: geom.cy - geom.r, width: geom.r * 2, height: geom.r * 2 };
+    let points = geom?.kind === "polygon" ? geom.points : null;
+    if (!points && node.props.shape === "polyline" && node.props.points) {
+      const ownAbs = positions[node.id];
+      points = ownAbs && node.props.points.map((pt) => core.resolvePointAbs(pt, ownAbs, positions));
+    }
+    if (!points || !points.length) return null;
+    const xs = points.map((p) => p[0]), ys = points.map((p) => p[1]);
+    const minX = Math.min(...xs), minY = Math.min(...ys);
+    return { x: minX, y: minY, width: Math.max(...xs) - minX, height: Math.max(...ys) - minY };
   }
 
   // Same geometry as solidGeometryFor, but shifted by the drag's own (dx, dy) — every point
@@ -2625,35 +2656,46 @@
     expandedGroup = null;
   }
 
-  // Selecting a stacked/covered element (D-077's click-cycling) puts it in the *logical*
-  // foreground (it's now the thing further clicks/drags target) but does nothing to its
-  // *visual* stacking — render order alone still decides paint order, so a selected element
-  // can stay hidden under whatever already covered it. This raises the whole selected
-  // subtree (the node and every descendant, reusing collectAllNodes — same walk F-022's
-  // validation pass already uses) to the end of the SVG, preserving their existing relative
-  // order so a container's own children still paint on top of it, not the other way
-  // around. Also moves each shape's immediately-following annotation `<g>` (if any) along
-  // with it, so a re-ordered element's label/dimensions stay attached rather than being
-  // left behind at the old position — preserves the exact sibling adjacency
-  // annotations-module.js's own hover CSS rule depends on.
-  function bringToFront(svgEl, prog) {
-    // F-029: every multi-selected member is raised, others first and the primary
-    // (selectedId) last, so it still paints topmost — same per-subtree raise as before,
-    // just looped once per member instead of once total.
-    const ids = selectedIds.size
-      ? [...selectedIds].filter((id) => id !== selectedId).concat(selectedId)
-      : [selectedId];
-    for (const id of ids) {
-      const node = prog.nodesById[id];
-      if (!node) continue;
-      for (const n of collectAllNodes(node, [])) {
-        const el = svgEl.querySelector(`[data-id="${CSS.escape(n.id)}"]`);
-        if (!el) continue;
-        const next = el.nextElementSibling;
-        const annotation = next && next.tagName === "g" && next.classList.contains("annotation") ? next : null;
-        svgEl.appendChild(el);
-        if (annotation) svgEl.appendChild(annotation);
+  // D-164: reported directly, replacing D-086's own bringToFront -- selecting a
+  // stacked/covered element used to raise it (and its whole subtree) to the end of the
+  // SVG, a real DOM reorder. Requested instead: leave paint order alone entirely, and
+  // dim whatever's currently painted *in front of* the selection at a point where the two
+  // actually overlap, so the selected element stays visible (partially, through the
+  // dimmed occluder) without moving anything. Own `.occlusion-dim` class, same opacity
+  // F-021's own hover-triggered `.stacked-dim` already established -- same visual
+  // language, deliberately a *different* class, not the same one reused: found live,
+  // not assumed, that sharing one would be a real bug -- F-021's own hover-cleanup
+  // unconditionally strips `.stacked-dim` from every element that leaves its hover-set,
+  // with no awareness of (or need to know about) any other reason the same class might be
+  // wanted, so moving the mouse away after selecting a covered element silently cleared
+  // this mechanism's own dim too. Two independent classes an element can hold at once
+  // instead, each mechanism only ever touching its own — recomputed fresh every render the
+  // same way the `.selected` class right above it is, off selection state rather than
+  // hover/cursor position, so this needs none of that other mechanism's own incremental
+  // diffing or reapply-after-a-stationary-render handling either.
+  //
+  // "In front of" means a strictly higher paintOrderRank than the selected member being
+  // checked (captured once per render, see capturePaintOrderRank, immune to this no longer
+  // reordering anything). Descendants of the selected element are excluded on purpose --
+  // a container's own children always paint after it and usually sit inside its own
+  // bounds, which is normal nesting, not something to dim away just because the container
+  // itself got selected.
+  function dimOccludingElements(svgEl, prog, positions) {
+    const selected = selectedIds.size ? [...selectedIds] : [selectedId];
+    const occluding = new Set();
+    for (const selId of selected) {
+      const selNode = prog.nodesById[selId];
+      const selRank = paintOrderRank.get(selId);
+      const selBox = selNode && occlusionBBox(selNode, positions);
+      if (!selNode || selRank === undefined || !selBox) continue;
+      for (const [id, rank] of paintOrderRank) {
+        if (rank <= selRank || selected.includes(id) || isAncestorOf(selId, id, prog)) continue;
+        const box = occlusionBBox(prog.nodesById[id], positions);
+        if (box && rectsIntersect(selBox, box)) occluding.add(id);
       }
+    }
+    for (const id of occluding) {
+      svgEl.querySelector(`[data-id="${CSS.escape(id)}"]`)?.classList.add("occlusion-dim");
     }
   }
 
@@ -2724,12 +2766,12 @@
         core.rootEl.querySelector(`[data-id="${CSS.escape(id)}"]`)?.classList.add("selected");
       }
       core.rootEl.dataset.selectedId = selectedId;
-      bringToFront(svgEl, prog);
+      dimOccludingElements(svgEl, prog, positions);
     } else {
       delete core.rootEl.dataset.selectedId;
     }
-    // F-016: after bringToFront above, not before — handles must paint on top of the
-    // selected shape (and stay hit-testable there), not get reburied by its own reorder.
+    // F-016: resize handles are always appended last (insertAdjacentHTML "beforeend"),
+    // so they paint on top of the selected shape regardless of anything above.
     renderResizeHandles(svgEl, prog, positions);
 
     // A stationary click-cycle click never re-fires pointerover (the hovered DOM node gets

@@ -8,7 +8,7 @@ This file holds only *currently open* debt. An entry is removed once it's resolv
 
 ## S-007 `handleRendered` is a god-function with six unrelated responsibilities
 
-Recomputes bboxes; runs the full plan validation pass; resets/manages pan-zoom `viewState`/`lastCoreFit`; updates the scale bar; toggles the selection class *and* calls `bringToFront` (a DOM reorder); refreshes the stack-hint badge and reapplies `stacked-dim` classes — all in one callback with no sub-function boundaries, despite its own name suggesting "reapply overlay state after a render." (Was seven — D-107 removed the connect/disconnect icon-markup responsibility outright along with the icons themselves, not just moved it elsewhere.)
+Recomputes bboxes; runs the full plan validation pass; resets/manages pan-zoom `viewState`/`lastCoreFit`; updates the scale bar; toggles the selection class *and* calls `dimOccludingElements` (D-164, replacing the older `bringToFront` DOM reorder); refreshes the stack-hint badge and reapplies `stacked-dim` classes — all in one callback with no sub-function boundaries, despite its own name suggesting "reapply overlay state after a render." (Was seven — D-107 removed the connect/disconnect icon-markup responsibility outright along with the icons themselves, not just moved it elsewhere.)
 
 ## S-008 Validation checkers and drag-time clamps duplicate the same scope logic independently
 
@@ -53,10 +53,6 @@ Called on every proposed move during an active drag, over the entire plan every 
 ## S-023 `annotations-module.js` re-derives geometry core already computed, with no enforced link
 
 `annotationMarkupForNode`'s own comment admits it "mirrors core's own `renderShape` branching exactly," re-deriving rect corners and polygon/polyline absolute points from scratch since core doesn't expose per-node corner lists after rendering. Any future shape-branch change in `renderShape` can silently desync this copy — nothing links the two.
-
-## S-024 `bringToFront`'s annotation-sibling-adjacency handling is a fragile implicit contract
-
-`bringToFront` (`interactivity-module.js`) moves each shape's "immediately-following annotation `<g>`" along with it, explicitly to preserve the sibling adjacency `annotations-module.js`'s own `:hover + .annotation` CSS selector depends on. `annotations-module.js` has zero awareness that another module reorders its output this way. Consistent today; breaks silently (hover-reveal stops working for a raised element) if either side's naming/nesting convention ever drifts without the other being updated.
 
 ## S-025 Auto-load policy is applied inconsistently across modules that share the same justification
 
