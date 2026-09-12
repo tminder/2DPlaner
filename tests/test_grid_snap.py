@@ -1,7 +1,14 @@
-"""F-031: grid-snapped dragging and resizing -- hard snap, no modifier-key exception,
-covering both ordinary drag (position) and the D-116 resize handles. On by default
-whenever a grid is declared (unchanged); D-149 added an explicit `snap: false` escape
-hatch to show a grid without forcing snapping, without touching that default."""
+"""F-031 (original): grid-snapped dragging and resizing -- hard snap, no modifier-key
+exception, covering both ordinary drag (position) and the D-116 resize handles.
+
+D-161: snapping is now fully independent of the grid -- `settings.snap: { size: ... }` is
+its own object (the same presence-means-on shape `settings.grid` already uses), with its
+own size, read nowhere near `settings.grid` at all. This replaces the original F-031/D-149
+design, where declaring a `grid` silently turned snapping on by default (`grid.snap: false`
+was the only way to suppress it) -- reported directly as confusing/buggy, since the header's
+own Snap button (D-156) could never actually turn snapping *off* while a grid stayed
+declared. `grid.snap` is no longer read anywhere; it's an inert leftover key on any plan
+still carrying it."""
 
 import re
 
@@ -38,20 +45,24 @@ GRID_PLAN = """
 settings { grid: { size: 0.5 } }
 """ + PLAN
 
-NO_SNAP_GRID_PLAN = """
+SNAP_PLAN = """
+settings { snap: { size: 0.5 } }
+""" + PLAN
+
+GRID_SNAP_FALSE_PLAN = """
 settings { grid: { size: 0.5, snap: false } }
 """ + PLAN
 
-STANDALONE_SNAP_PLAN = """
-settings { snap: true }
+GRID_SNAP_TRUE_PLAN = """
+settings { grid: { size: 0.5, snap: true } }
 """ + PLAN
 
-GRID_SNAP_FALSE_PLUS_STANDALONE_PLAN = """
-settings { grid: { size: 0.5, snap: false }, snap: true }
+GRID_AND_DIFFERENT_SNAP_SIZE_PLAN = """
+settings { grid: { size: 0.5 }, snap: { size: 0.25 } }
 """ + PLAN
 
 TIGHT_CONTAINMENT_PLAN = """
-settings { grid: { size: 0.5 } }
+settings { snap: { size: 0.5 } }
 element room {
   shape: "rect"
   size: [4m, 3m]
@@ -115,8 +126,8 @@ def is_multiple_of(value, step, eps=EPS):
     return remainder < eps or (step - remainder) < eps
 
 
-def test_ordinary_drag_snaps_to_grid_when_declared(app_page):
-    load_plan(app_page, GRID_PLAN)
+def test_ordinary_drag_snaps_when_settings_snap_declared(app_page):
+    load_plan(app_page, SNAP_PLAN)
     x, y = element_center(app_page, "sofa")
     drag(app_page, x, y, x + 47, y + 23)  # a deliberately "ugly" pixel delta
 
@@ -125,74 +136,94 @@ def test_ordinary_drag_snaps_to_grid_when_declared(app_page):
     assert is_multiple_of(py, STEP), f"y={py} not a multiple of {STEP}"
 
 
-def test_ordinary_drag_is_free_without_a_grid_declared(app_page):
-    load_plan(app_page, PLAN)  # no settings.grid at all
+def test_ordinary_drag_is_free_with_nothing_declared(app_page):
+    load_plan(app_page, PLAN)  # no settings.grid or settings.snap at all
     x, y = element_center(app_page, "sofa")
     drag(app_page, x, y, x + 47, y + 23)
 
     px, py = sofa_position(source_text(app_page))
     # The same "ugly" pixel delta as the snapped test above should NOT land on a clean
-    # multiple of 0.5 -- confirms the coupling (no grid declared -> no snapping at all),
-    # not just that some snapping happened to produce a round number by chance.
+    # multiple of 0.5 -- confirms snapping genuinely didn't happen, not just that it
+    # happened to produce a round number by chance.
     assert not (is_multiple_of(px, STEP) and is_multiple_of(py, STEP))
 
 
-def test_explicit_snap_false_disables_snapping_even_with_a_grid_declared(app_page):
-    """D-149: grid visibility and snap are decoupled -- an explicit `snap: false` turns
-    discrete snapping off while the grid itself is still declared (and still visible),
-    the reverse of test_ordinary_drag_is_free_without_a_grid_declared's own no-grid-at-all
-    case."""
-    load_plan(app_page, NO_SNAP_GRID_PLAN)
-    x, y = element_center(app_page, "sofa")
-    drag(app_page, x, y, x + 47, y + 23)  # the same "ugly" pixel delta as the snapped case
-
-    px, py = sofa_position(source_text(app_page))
-    assert not (is_multiple_of(px, STEP) and is_multiple_of(py, STEP))
-
-
-def test_standalone_snap_flag_enables_snapping_with_no_grid_declared(app_page):
-    """D-156: reported directly -- grid visibility and snapping should be independently
-    switchable from two separate header buttons, not just via a hand-edited `layer:
-    "none"` (which still required declaring a `grid` object at all). `settings.snap` is a
-    second, independent enable-path with no dependency on `grid` whatsoever."""
-    load_plan(app_page, STANDALONE_SNAP_PLAN)
-    assert app_page.locator(".plan-grid-bg").count() == 0  # no grid rendered at all
+def test_declaring_a_grid_alone_no_longer_implies_snapping(app_page):
+    """D-161: the regression this whole redesign exists to fix, reported directly --
+    `settings.grid`'s mere existence used to turn snapping on by default (F-031/D-149),
+    which meant the header's own Snap button could never actually disable it while a grid
+    was declared. A grid with no `settings.snap` at all must now behave exactly like no
+    grid at all, snap-wise."""
+    load_plan(app_page, GRID_PLAN)
     x, y = element_center(app_page, "sofa")
     drag(app_page, x, y, x + 47, y + 23)
 
     px, py = sofa_position(source_text(app_page))
-    assert is_multiple_of(px, 1.0)  # default increment: no grid.size to read, falls back to 1m
-    assert is_multiple_of(py, 1.0)
+    assert not (is_multiple_of(px, STEP) and is_multiple_of(py, STEP))
 
 
-def test_standalone_snap_flag_still_snaps_even_when_grid_declared_snap_false(app_page):
-    """The two enable-paths are OR'd, not mutually exclusive -- grid.snap: false only ever
-    suppressed the *grid-driven* default (test_explicit_snap_false_disables_snapping_even_
-    with_a_grid_declared above); it doesn't become a master override just because a second,
-    independent flag now also exists."""
-    load_plan(app_page, GRID_SNAP_FALSE_PLUS_STANDALONE_PLAN)
+def test_grid_snap_subkey_is_now_inert_in_either_direction(app_page):
+    """The old F-031/D-149 `grid.snap` sub-key is no longer read at all -- neither
+    `false` nor `true` on it does anything now; only `settings.snap`'s own existence
+    decides. Guards against a half-migration where one direction was cleaned up but the
+    other still accidentally read the old key."""
+    load_plan(app_page, GRID_SNAP_FALSE_PLAN)
+    x, y = element_center(app_page, "sofa")
+    drag(app_page, x, y, x + 47, y + 23)
+    px, py = sofa_position(source_text(app_page))
+    assert not (is_multiple_of(px, STEP) and is_multiple_of(py, STEP))
+
+    load_plan(app_page, GRID_SNAP_TRUE_PLAN)
+    x, y = element_center(app_page, "sofa")
+    drag(app_page, x, y, x + 47, y + 23)
+    px, py = sofa_position(source_text(app_page))
+    assert not (is_multiple_of(px, STEP) and is_multiple_of(py, STEP))
+
+
+def test_snap_size_is_independent_of_grid_size(app_page):
+    """D-161: reported directly -- the snap increment should be choosable independently
+    of the visible grid's own size. A grid declared at 0.5m alongside snap declared at
+    0.25m must snap to 0.25m, not silently fall back to the grid's own size."""
+    load_plan(app_page, GRID_AND_DIFFERENT_SNAP_SIZE_PLAN)
     x, y = element_center(app_page, "sofa")
     drag(app_page, x, y, x + 47, y + 23)
 
     px, py = sofa_position(source_text(app_page))
-    assert is_multiple_of(px, STEP)
-    assert is_multiple_of(py, STEP)
+    assert is_multiple_of(px, 0.25), f"x={px} not a multiple of 0.25"
+    assert is_multiple_of(py, 0.25), f"y={py} not a multiple of 0.25"
 
 
-def test_snap_toggle_button_writes_and_reflects_standalone_flag(app_page):
+def test_snap_toggle_button_writes_and_reflects_its_own_object(app_page):
     load_plan(app_page, PLAN)
     app_page.click("#menu-tab-view")
     assert not app_page.locator("#snap-toggle-btn").evaluate("el => el.classList.contains('active')")
 
     app_page.click("#snap-toggle-btn")
     app_page.wait_for_timeout(150)
-    assert "snap: true" in source_text(app_page)
+    assert "snap: {" in source_text(app_page)
     assert app_page.locator("#snap-toggle-btn").evaluate("el => el.classList.contains('active')")
 
     app_page.click("#snap-toggle-btn")
     app_page.wait_for_timeout(150)
     assert "snap" not in source_text(app_page)
     assert not app_page.locator("#snap-toggle-btn").evaluate("el => el.classList.contains('active')")
+
+
+def test_snap_flyout_size_input_writes_and_reflects_the_current_size(app_page):
+    load_plan(app_page, SNAP_PLAN)
+    app_page.click("#menu-tab-view")
+    app_page.hover("#snap-toggle-btn")
+    app_page.wait_for_timeout(150)
+    assert app_page.locator("#snap-size-input").input_value() == "0.5"
+
+    app_page.fill("#snap-size-input", "0.25")
+    app_page.locator("#snap-size-input").press("Enter")
+    app_page.wait_for_timeout(150)
+    assert "size: 0.25m" in source_text(app_page)
+
+    app_page.hover("#snap-toggle-btn")
+    app_page.wait_for_timeout(150)
+    assert app_page.locator("#snap-size-input").input_value() == "0.25"
 
 
 def test_drag_snapping_still_respects_containment_clamp(app_page):
@@ -209,7 +240,7 @@ def test_drag_snapping_still_respects_containment_clamp(app_page):
 
 
 def test_resize_corner_handle_snaps_to_a_grid_intersection(app_page):
-    load_plan(app_page, GRID_PLAN)
+    load_plan(app_page, SNAP_PLAN)
     select(app_page, "sofa")
     hx, hy = handle_center(app_page, "sofa", "br")
     drag(app_page, hx, hy, hx + 53, hy + 31)  # another "ugly" delta
@@ -225,7 +256,7 @@ def test_resize_corner_handle_snaps_to_a_grid_intersection(app_page):
 
 
 def test_resize_radius_handle_snaps_to_a_grid_multiple(app_page):
-    load_plan(app_page, GRID_PLAN)
+    load_plan(app_page, SNAP_PLAN)
     select(app_page, "lamp")
     hx, hy = handle_center(app_page, "lamp", "radius")
     drag(app_page, hx, hy, hx + 60, hy + 17)
@@ -234,10 +265,10 @@ def test_resize_radius_handle_snaps_to_a_grid_multiple(app_page):
     assert is_multiple_of(r, STEP)
 
 
-def test_keyboard_nudge_and_resize_are_unaffected_by_grid(app_page):
-    # D-109's own keyboardStep is deliberately independent of grid.size -- confirms that
-    # decision still holds even with a grid declared, not just documented intent.
-    load_plan(app_page, GRID_PLAN)
+def test_keyboard_nudge_and_resize_are_unaffected_by_snap_size(app_page):
+    # D-109's own keyboardStep is deliberately independent of snap.size -- confirms that
+    # decision still holds even with snapping declared, not just documented intent.
+    load_plan(app_page, SNAP_PLAN)
     select(app_page, "sofa")
     before = source_text(app_page)
     app_page.keyboard.press("ArrowRight")
@@ -245,7 +276,7 @@ def test_keyboard_nudge_and_resize_are_unaffected_by_grid(app_page):
 
     px, py = sofa_position(source_text(app_page))
     before_px, before_py = sofa_position(before)
-    assert abs(px - (before_px + 0.1)) < 1e-6  # default keyboardStep, not grid.size (0.5)
+    assert abs(px - (before_px + 0.1)) < 1e-6  # default keyboardStep, not snap.size (0.5)
     assert abs(py - before_py) < 1e-6
 
 
@@ -253,7 +284,7 @@ def test_polygon_vertex_handle_snaps_to_a_grid_intersection(app_page):
     # D-139: a polygon/polyline vertex handle snaps the dragged point itself to a grid
     # intersection, the same convention the rect corner handle already uses above (not a
     # derived value like the radius handle's own multiple-of-size snap).
-    load_plan(app_page, GRID_PLAN)
+    load_plan(app_page, SNAP_PLAN)
     select(app_page, "rug")
     before = rug_points(source_text(app_page))
     hx, hy = vertex_handle_center(app_page, "rug", 0)

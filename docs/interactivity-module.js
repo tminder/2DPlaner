@@ -1254,31 +1254,24 @@
     return [cx + dx * cos - dy * sin, cy + dx * sin + dy * cos];
   }
 
-  // F-031: grid-snapped dragging/resizing — reads `size` off `settings.grid` so the snap
-  // increment can never drift from the visible grid's own size. Hard snap, no modifier-key
-  // exception. D-149 decoupled this from the grid's own *visibility*: an explicit
-  // `snap: false` turns discrete snapping off while a grid is still declared (and possibly
-  // still visible) — omitting `snap` entirely preserves the original "on whenever a grid is
-  // declared" default exactly. The reverse (snap with no visible grid) was already possible
-  // via grid-module.js's own `layer: "none"` (grid still *declared*, just not rendered) —
-  // but that still required declaring a `grid` object at all, just to get snapping with
-  // nothing shown.
+  // F-031 (original): grid-snapped dragging/resizing, hard snap, no modifier-key exception.
+  // D-149 first decoupled this from the grid's own *visibility* (`grid.snap: false` turned
+  // snapping off while a grid stayed declared/visible) but snapping itself still always
+  // read `grid.size` and could never be fully independent of `grid` existing at all.
   //
-  // D-156: reported directly -- the grid's own visibility and snapping should be
-  // switchable independently from two separate header buttons, not just via a hand-edited
-  // `layer: "none"`. A standalone `settings.snap: true` (own header button, independent of
-  // `grid` entirely) is now a *second*, independent way snapping turns on -- doesn't
-  // require a `grid` object to exist at all. The original grid-declared-implies-snap
-  // default above is untouched, so any plan already relying on `grid.snap: false` (F-031,
-  // tested by tests/test_grid_snap.py) keeps behaving exactly as it did before; the two
-  // enable-paths are simply OR'd together, each independently controllable from its own
-  // button.
+  // D-161: reported directly, twice over -- `settings.grid`'s mere existence used to keep
+  // snapping on by default regardless of any header button (D-156's own `settings.snap`
+  // button could turn it on but, confusingly, never *off* while a grid was declared), and
+  // the snap increment had no way to differ from the visible grid's own size. `snap` is now
+  // its own object, `settings.snap: { size: ... }` -- the same presence-means-on shape
+  // `grid` itself already uses -- with zero remaining dependency on `grid` in either
+  // direction. `grid.snap` (the old F-031/D-149 sub-key) is no longer read anywhere; an
+  // old plan still carrying it keeps rendering its grid exactly as before, just with that
+  // one key now inert rather than doing anything.
   function snapIncrement() {
-    const grid = program?.settings?.grid;
-    const gridDrivenOn = !!grid && grid.snap !== false;
-    const standaloneOn = program?.settings?.snap === true;
-    if (!gridDrivenOn && !standaloneOn) return null;
-    const size = core.numOf(grid?.size ?? 1);
+    const snap = program?.settings?.snap;
+    if (!snap) return null;
+    const size = core.numOf(snap.size ?? 1);
     return size > 0 ? size : null;
   }
 

@@ -455,7 +455,9 @@ def test_dragging_a_scale_handle_on_an_exclusive_corner_ref_shape_moves_the_corn
 
 
 def test_scale_handle_snaps_to_a_grid_intersection(app_page):
-    load_plan(app_page, "settings { grid: { size: 0.5 } }\n" + SCALE_PLAN)
+    # D-161: snapping is independent of the grid now -- settings.snap, not settings.grid,
+    # is what actually turns it on (see test_grid_snap.py for the full decoupling).
+    load_plan(app_page, "settings { snap: { size: 0.5 } }\n" + SCALE_PLAN)
     select(app_page, "box")
     hbox = app_page.locator('.resize-handle[data-corner="scale-br"]').bounding_box()
     hx, hy = hbox["x"] + hbox["width"] / 2, hbox["y"] + hbox["height"] / 2
