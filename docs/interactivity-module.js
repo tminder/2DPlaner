@@ -2118,13 +2118,87 @@
     });
   }
 
+  // D-148: "No placement (moves freely)" now genuinely detaches the element from its
+  // parent -- not just its placement/flush constraints (all this action used to clear) but
+  // the structural containment itself, promoting it to become a sibling of its former
+  // parent (one level up, under the grandparent), its position rewritten to keep it exactly
+  // where it visually was. Scoped to one level, matching setPlacementInside's own
+  // established "placement always means the immediate parent" convention -- not a blanket
+  // "detach from the whole ancestry". This project's grammar only ever allows a single root
+  // element (parseProgram parses exactly one top-level `element`, then only `connection`
+  // lines/EOF), so a node whose parent already IS the root has nowhere to promote to: it
+  // just keeps clearing placement/flush in place, same as this action always did before.
   function clearPlacement(nodeId) {
     withParsedSource((text, base) => {
       const node = base.nodesById[nodeId];
       if (!node) return;
-      const spans = ["placement", "flush"].map((key) => findOwnPropertyLine(text, node, key)).filter(Boolean);
-      if (!spans.length) return;
-      commitSourceEdit(deleteSpans(text, spans), `'${nodeId}': placement cleared.`);
+      const parent = node.parentId ? base.nodesById[node.parentId] : null;
+      const grandparent = parent?.parentId ? base.nodesById[parent.parentId] : null;
+      const propSpans = ["placement", "flush"].map((key) => findOwnPropertyLine(text, node, key)).filter(Boolean);
+      if (!propSpans.length) return;
+
+      if (!grandparent) {
+        commitSourceEdit(deleteSpans(text, propSpans), `'${nodeId}': placement cleared.`);
+        return;
+      }
+
+      // Two passes, not one combined edit list: stripping placement/flush first (via the
+      // exact same deleteSpans this action always used) means every offset used below comes
+      // from a *fresh* reparse of the already-stripped text, never sharing a position with
+      // one of the just-deleted property lines -- simpler and provably correct rather than
+      // reasoning about two edits that might land on the identical offset (e.g. if
+      // `placement` happened to be this node's very first property line, right where a
+      // freshly-inserted `position` line would also need to go).
+      const strippedText = deleteSpans(text, propSpans);
+      let strippedBase;
+      try { strippedBase = core.parseExpanded(strippedText); } catch (e) { return; }
+      const freshNode = strippedBase.nodesById[nodeId];
+      const freshParent = strippedBase.nodesById[parent.id];
+      const freshGrandparent = strippedBase.nodesById[grandparent.id];
+      if (!freshNode || !freshParent || !freshGrandparent) return;
+
+      const [x0, y0] = freshNode.props.position ?? [null, null];
+      if ((x0 && !core.isEditable(x0)) || (y0 && !core.isEditable(y0))) {
+        // Can't safely rewrite an expression-valued position to preserve where this sits
+        // visually -- degrades to clearing placement/flush in place, matching this
+        // codebase's own established "warn and fall back" convention for exactly this class
+        // of risk (D-141's flush-against-a-rotated-rect, D-143's expression-valued scale
+        // points).
+        commitSourceEdit(strippedText, `'${nodeId}': placement cleared, but its position is an expression -- can't move it out of '${parent.id}' automatically.`);
+        return;
+      }
+
+      const positions = {};
+      core.computePositions(strippedBase.root, null, [0, 0], positions);
+      const [nodeAbsX, nodeAbsY] = positions[freshNode.id];
+      const [gpAbsX, gpAbsY] = positions[freshGrandparent.id];
+      const newX = nodeAbsX - gpAbsX, newY = nodeAbsY - gpAbsY;
+
+      const cut = toLineSpan(strippedText, freshNode.start, freshNode.end);
+      const positionEdits = freshNode.props.position
+        ? [
+            { start: x0.start, end: x0.end, text: core.formatNumber(newX, x0.unit) },
+            { start: y0.start, end: y0.end, text: core.formatNumber(newY, y0.unit) },
+          ]
+        : [{
+            start: afterHeaderLine(strippedText, freshNode), end: afterHeaderLine(strippedText, freshNode),
+            text: `${lineIndentAt(strippedText, freshNode.start)}  position: [${core.formatNumber(newX, "m")}, ${core.formatNumber(newY, "m")}]\n`,
+          }];
+      const localEdits = positionEdits.map((e) => ({ start: e.start - cut.start, end: e.end - cut.start, text: e.text }));
+      let movedText = applyEditsDescending(strippedText.slice(cut.start, cut.end), localEdits);
+
+      // Dedented by one level -- the moved block now sits as a *sibling* of its former
+      // parent, not nested one level deeper than that, so its own indentation (carried
+      // along as-is for its whole subtree, whatever it contains) should read that way too.
+      const parentIndent = lineIndentAt(strippedText, freshParent.start);
+      const nodeIndent = lineIndentAt(strippedText, freshNode.start);
+      const extra = nodeIndent.startsWith(parentIndent) && nodeIndent.length > parentIndent.length
+        ? nodeIndent.slice(parentIndent.length) : "  ";
+      movedText = movedText.split("\n").map((line) => (line.startsWith(extra) ? line.slice(extra.length) : line)).join("\n");
+
+      const parentSpan = toLineSpan(strippedText, freshParent.start, freshParent.end);
+      const edits = [{ start: cut.start, end: cut.end, text: "" }, { start: parentSpan.end, end: parentSpan.end, text: movedText }];
+      commitSourceEdit(applyEditsDescending(strippedText, edits), `'${nodeId}': placement cleared, moved out of '${parent.id}'.`);
     });
   }
 

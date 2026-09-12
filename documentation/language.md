@@ -460,6 +460,18 @@ supports, same narrow scope as everywhere else placement is checked. Scoped iden
 to plain `"inside"`: a `rect` child (literal size) against a `rect` parent only — declaring
 `flush` against a `polygon`/other parent warns rather than silently doing nothing.
 
+**Right-click's own "No placement (moves freely)" action (D-148) does more than clear
+`placement`/`flush`:** it promotes the element one level up in the source, out of its own
+parent's `{ }` block and into a sibling of it under the *grandparent* — not just freed from
+containment, genuinely no longer nested inside that parent at all. Its `position` is
+rewritten (or added, if it had none) to keep it exactly where it visually was. Scoped to
+one level, matching `placement`'s own "always the immediate parent" rule — not a blanket
+detach from the whole ancestry. If the parent is already the plan's own root element (this
+grammar only ever allows one), there's nowhere to promote to, so it falls back to clearing
+`placement`/`flush` in place, same as before this existed. An expression-valued `position`
+degrades the same way, since it can't be safely rewritten to preserve where the element
+sits.
+
 **Still open:** containment for an element moved along by a `connection` rather than
 dragged directly (the same F-004 gap collision checking has).
 
