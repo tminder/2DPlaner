@@ -4,6 +4,7 @@ capped at 5 items at the top level."""
 
 from helpers import (
     click_menu_item,
+    dispatch_pointer,
     element_center,
     empty_canvas_point,
     load_plan,
@@ -116,6 +117,41 @@ def test_clicking_empty_canvas_cancels_a_pending_pick_without_connecting(app_pag
 
     assert app_page.locator("#interactivity-context-menu").is_hidden()
     assert source_text(app_page) == before
+
+
+def test_touch_tap_resolves_a_pending_pick(app_page):
+    """D-152: a real bug, reported directly -- touch has no hover state without an active
+    drag, so a single tap (pointerdown+pointerup at the same point, no intervening
+    pointermove) never populated connectPick's own hover-tracked candidateId, and every
+    tap during a pick silently cancelled it instead of connecting. Long-presses sofa via
+    raw touch PointerEvents (dispatch_pointer, matching test_mobile_gestures.py's own
+    convention for reaching touch-only states no higher-level Playwright action can), taps
+    "Connect to…", then taps the target as a single touch tap with no hover at all."""
+    load_plan(app_page, ROOM_WITH_TWO_CHILDREN)
+    before = source_text(app_page)
+    sx, sy = element_center(app_page, "sofa")
+    lx, ly = element_center(app_page, "lamp")
+
+    dispatch_pointer(app_page, "pointerdown", 1, sx, sy, pointer_type="touch")
+    app_page.wait_for_timeout(700)  # past LONG_PRESS_MS
+    dispatch_pointer(app_page, "pointerup", 1, sx, sy, pointer_type="touch")
+    app_page.wait_for_timeout(150)
+    # The radial menu's own root is a deliberate 0x0 anchor box (D-145) -- Playwright's own
+    # is_hidden()/is_visible() heuristics read that as "not visible" regardless of the
+    # underlying `hidden` attribute, so the DOM property itself is what test_mobile_gestures.py
+    # already checks for exactly this reason; matched here rather than reintroducing the
+    # same false negative.
+    assert app_page.evaluate("document.getElementById('interactivity-context-menu').hidden") is False
+
+    click_menu_item(app_page, "Connect to…")
+
+    dispatch_pointer(app_page, "pointerdown", 2, lx, ly, pointer_type="touch")
+    dispatch_pointer(app_page, "pointerup", 2, lx, ly, pointer_type="touch")
+    app_page.wait_for_timeout(150)
+    assert menu_items(app_page) == ["Connect to lamp"]
+
+    click_menu_item(app_page, "Connect to lamp")
+    assert source_text(app_page) == before + "connection sofa lamp\n"
 
 
 def test_right_click_during_a_pending_pick_cancels_it_instead_of_opening_a_menu(app_page):

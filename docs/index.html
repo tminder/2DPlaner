@@ -70,7 +70,12 @@
      interactivity-module.js's own .radial-menu styles: this chrome has to work with no
      plan module loaded at all, so it can't depend on one module's runtime-injected CSS
      just because that module happens to always auto-load (D-034). */
-  .ribbon-group { display: flex; gap: 2px; }
+  /* D-151: wraps onto more than one row rather than overflowing the viewport horizontally
+     -- a tab with enough buttons (File's own six) didn't fit in one row on a narrow/mobile
+     screen, widening the whole page with an unwanted horizontal scrollbar. Every
+     .ribbon-group (each menu tab's own panel, plus the Account group reusing this same
+     class) gets this for free, not just the one tab that happened to overflow first. */
+  .ribbon-group { display: flex; flex-wrap: wrap; gap: 2px; }
   .ribbon-btn { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 62px;
     padding: 5px 2px; border: 1px solid transparent; border-radius: 8px; background: none;
     font-size: 10.5px; text-align: center; white-space: normal; line-height: 1.2; cursor: pointer;
@@ -136,7 +141,11 @@
      defined here since this menu doesn't share that module's injected stylesheet either. */
   .ribbon-btn.has-submenu { cursor: default; }
   .ribbon-btn.has-submenu:hover { background: #eef2ff; border-color: #d3ddfa; }
-  .submenu { display: none; position: absolute; top: -7px; left: 100%; margin: 0; padding: 4px 0;
+  /* D-151: below the button, not to its side -- reported directly, and also the more
+     mobile-friendly direction: a flyout growing sideways is far more likely to run off a
+     narrow screen's own right edge than one growing down from a button already inside the
+     viewport. */
+  .submenu { display: none; position: absolute; top: 100%; left: 0; margin: 4px 0 0; padding: 4px 0;
     min-width: 190px; list-style: none; background: #fff; border: 1px solid #ccc; border-radius: 6px;
     box-shadow: 0 4px 14px rgba(0,0,0,0.18); font-size: 13px; text-align: left; white-space: nowrap;
     z-index: 20; } /* without this, a later header sibling (e.g. Grid) paints over it -- there's
@@ -279,10 +288,33 @@
      Below it: the two panes become tabs — showing both panes at once, even stacked, leaves
      neither one tall enough to be usable — rather than a redesign of either. */
   @media (max-width: 760px) {
+    /* D-151: reported directly -- the gap between the tab strip and the toolbar's own
+       buttons below it (header's own desktop-sized 0.35rem column gap, plus the toolbar's
+       own top padding) reads as noticeably too generous once vertical space is already
+       tight on a phone screen. */
+    header { gap: 0.15rem; }
     .header-row1 { padding: 0.4rem 0.5rem 0; gap: 0.4rem; }
-    #header-toolbar { padding: 0.4rem 0.5rem; }
+    #header-toolbar { padding: 0.25rem 0.5rem; }
     button, select { font-size: 0.78rem; padding: 0.32rem 0.55rem; }
     header .spacer { display: none; }
+    /* D-151: reported directly -- iOS Safari zooms the whole page in on focus whenever a
+       text field's own effective font-size is under 16px. Bumped to exactly 16px here
+       (mobile only; desktop's own smaller code-editor/form font is untouched) rather than
+       disabling zoom via the viewport meta tag, which would also break the plan viewer's
+       own deliberate pinch-to-zoom (F-036). Matches each field's own existing selector so
+       this actually wins over its desktop rule at equal specificity (source order). */
+    textarea,
+    .modal input,
+    .submenu li.submenu-field input { font-size: 16px; }
+    /* D-151: a flyout anchored to its button's own *left* edge (this file's own default,
+       fine with the desktop-width room to spare) can still run off a narrow screen's right
+       edge once that button itself sits well to the right -- found live, right after
+       switching the flyout to open below instead of beside. Anchoring to the button's own
+       *right* edge instead and growing leftward, mobile-only, keeps it within a narrow
+       viewport for the layouts this app's own header actually produces (a left-to-right
+       button row, pushed rightward by wrapping) -- not a universal fix for every possible
+       button position, just the one this app has. */
+    .submenu { left: auto; right: 0; }
 
     .mobile-tabs { display: flex; gap: 0.4rem; padding: 0.5rem 0.5rem 0; background: #fff; border-bottom: 1px solid #ddd; }
     .tab-btn {

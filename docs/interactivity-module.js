@@ -3907,7 +3907,20 @@
     // *before* the native contextmenu event even fired to cancel it. handleContextMenu's
     // own connectPick-cancel handles the right-click case instead.
     if (connectPick && e.button === 0) {
-      const { fromId, candidateId } = connectPick;
+      const { fromId } = connectPick;
+      // D-152: resolved fresh from this event's own point, not from connectPick's own
+      // candidateId -- that's only ever populated by handlePointerMove's hover tracking,
+      // which never runs on touch (there's no hover state without an active drag: a tap
+      // goes straight from "not touching" to pointerdown/up at the target, no intervening
+      // pointermove ever fires). A real bug, reported directly: every tap during a pick
+      // silently cancelled it, since the stored candidateId was still null. Recomputing
+      // the identical validity check directly against this event's own point works the
+      // same for mouse (where a prior hover already agrees) and touch alike.
+      const el = document.elementFromPoint(e.clientX, e.clientY)?.closest("[data-id]");
+      const hoveredId = el?.dataset.id;
+      const candidateId = hoveredId && hoveredId !== fromId && program.nodesById[hoveredId]
+        && !isAncestorOf(hoveredId, fromId, program) && !isAncestorOf(fromId, hoveredId, program)
+        ? hoveredId : null;
       cancelConnectPick();
       // Releasing over empty canvas, back on the source, or an invalid (ancestor/descendant)
       // candidate just cancels -- no menu, no edit, matching relateDrag's own convention.
