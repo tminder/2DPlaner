@@ -260,7 +260,7 @@
 
         <h3>Style</h3>
         <pre class="code-block">style: { fill: <span class="s">"#cfe0f5"</span>, stroke: <span class="s">"#4a76a8"</span>, strokeWidth: 0.02 }</pre>
-        <p>Plain color/stroke properties, same idea as CSS. <code>strokeWidth</code> is in meters too, like everything else geometric.</p>
+        <p>Plain color/stroke properties, same idea as CSS. <code>strokeWidth</code> is in meters too, like everything else geometric. Instead of an inline object, <code>style</code> can also be a plain name pointing at a preset declared once in a plan-wide <code>settings {}</code> block (see Settings &amp; modules) — handy once the same colors are reused across many elements.</p>
 
         <h3>Labels</h3>
         <p><code>label: "Bett"</code> plus <code>show: "hover"</code> or <code>show: "always"</code> puts a text label on the shape — hidden until you hover over it, or always visible.</p>
@@ -278,13 +278,17 @@
     position: [0.3m, 0.4m]
   }
 }</pre>
-        <p>Add <code>childPlacement: "inside"</code> to a parent and its rect children are automatically kept from being dragged outside its own boundary — they slide along the wall instead of leaving the room.</p>
+        <p>Add <code>childPlacement: "inside"</code> to a parent and its rect children are automatically kept from being dragged outside its own boundary — they slide along the wall instead of leaving the room. A single child can set the same thing itself with <code>placement: "inside"</code> (or <code>"outside"</code>, for something attached to a container's outer edge), and <code>flush: true</code> pins it exactly to the boundary it's touching instead of just somewhere inside it. In the app, the right-click menu's <strong>Placement</strong> submenu sets all of this for you.</p>
+
+        <h3>Hiding things</h3>
+        <p>Any element can be <code>hidden: true</code> — it, and everything nested inside it, is left out of the drawing entirely rather than just covered up. The app's <strong>Layers</strong> panel is the easiest way to toggle this without editing the property by hand, and reorder which elements paint in front of which.</p>
       </section>
 
       <section id="connections">
         <h2>Connections</h2>
         <p>A <code>connection</code> links two elements so dragging one carries the other along with it — useful for a piece of furniture that should always stay flush against another:</p>
         <pre class="code-block"><span class="k">connection</span> stove counter</pre>
+        <p>In the app, you don't need to type this by hand: hold <strong>Ctrl</strong> (or <strong>Cmd</strong> on a Mac) and drag from one element onto another, anywhere on the canvas, and a small menu offers to connect them or, for a bare point dropped onto a rectangle, attach it to that rectangle's outside edge. Right-click an existing connection's own element for a <strong>Disconnect</strong> option. Connection lines stay hidden by default — hovering either end shows one temporarily, or set <code>settings { showConnections: true }</code> to keep every connection visible permanently.</p>
 
         <h3>Shared corners</h3>
         <p>Walls that actually meet at a point should share that point exactly, rather than two separate coordinates that happen to match. Give a shape's <code>points</code> a sibling element's id instead of a literal <code>[x, y]</code> pair, and it always resolves to that element's own current position:</p>
@@ -304,12 +308,29 @@
 
       <section id="interactivity">
         <h2>Working in the app</h2>
+
+        <h3>Selecting, moving, and resizing</h3>
         <ul>
-          <li><strong>Drag</strong> any shape to move it, or drag one of its corners to reshape it.</li>
-          <li><strong>Click</strong> a shape to select it — its span in the code pane highlights, and small connect/disconnect icons appear where it touches other elements.</li>
-          <li><strong>Right-click</strong> a shape for a context menu (currently: Delete).</li>
-          <li><strong>Scroll</strong> to zoom the viewer, drag empty space to pan, and use the <em>Fit</em> button to reset the view.</li>
+          <li><strong>Click</strong> a shape to select it — its span in the code pane highlights. If it's completely covered by something else, click again at the same spot to reach it; hovering shows a small label listing everything stacked there.</li>
+          <li><strong>Drag</strong> a selected shape to move it, or one of its corner handles to resize it (rectangles and circles — a shape built from corner references resizes by dragging its own corners instead).</li>
+          <li>Arrow keys nudge the selection by a small step; hold <strong>Shift</strong> and the same keys resize it.</li>
         </ul>
+
+        <h3>The right-click menu</h3>
+        <p>Delete, Duplicate (copies the whole shape, including anything nested inside it), Bring to Front/Send to Back, a <strong>Placement</strong> submenu (inside its container, flush to the edge, or free of both), and — once connected to something — Disconnect.</p>
+
+        <h3>The rest of the toolbar</h3>
+        <ul>
+          <li><strong>New Element</strong> (Edit tab) drops a fresh line, rectangle, circle, or polygon into the selected element, or the plan's own root if nothing's selected.</li>
+          <li><strong>Undo</strong>/<strong>Redo</strong> (or Ctrl+Z / Ctrl+Shift+Z) cover every drag, edit, and menu action.</li>
+          <li><strong>Grid</strong> and <strong>Snap</strong> are independent, each with its own flyout and its own spacing — a fine visual grid with coarse snapping, or the reverse, are both one click away.</li>
+          <li><strong>Units</strong> switches the scale bar and dimension labels between metric and feet/inches — display only, a plan's own code always stays metric.</li>
+          <li><strong>Layers</strong> lists every element in front-to-back order; hide one or reorder it with the ▲/▼ buttons — a hidden element is saved as <code>hidden: true</code> in the plan itself, not just remembered by the app.</li>
+          <li><strong>Export</strong> gets the current plan out as a plan file, a PNG, or an SVG.</li>
+          <li>Scroll (or pinch, on a touchscreen) to zoom, drag empty space to pan, and use <strong>Fit</strong> to reset the view. Drag the thin divider between the code and the drawing to resize either pane.</li>
+          <li>On a phone, the editor splits into <strong>Code</strong>/<strong>Viewer</strong> tabs, and holding a shape opens the same right-click menu a long press away.</li>
+        </ul>
+
         <div class="callout">
           <strong>Collisions and overlaps</strong>
           Two shapes are allowed to overlap by default — a rug under a table, say. Set <code>allowCollisions: true</code> on an element (or in a plan-wide <code>settings {}</code> block) to have it slide along whatever it bumps into instead of overlapping it.
@@ -325,9 +346,25 @@
           <tr><td><code>allowCollisions</code></td><td><code>true</code></td><td>whether siblings may overlap</td></tr>
           <tr><td><code>allowSelfIntersectingPolygons</code></td><td><code>false</code></td><td>whether a polygon may cross itself</td></tr>
           <tr><td><code>edgeLengths</code></td><td><code>false</code></td><td>show each edge's length by default</td></tr>
+          <tr><td><code>styles</code></td><td>—</td><td>named style presets, referenced by name from any element's own <code>style</code></td></tr>
+          <tr><td><code>grid</code></td><td>off</td><td>background grid — size, layer, and opacity, also settable from the header</td></tr>
+          <tr><td><code>snap</code></td><td>off</td><td>snap-to-grid distance while dragging or resizing, independent of the grid above</td></tr>
+          <tr><td><code>keyboardStep</code></td><td><code>0.1</code></td><td>how far the arrow keys move or resize the selected element</td></tr>
+          <tr><td><code>showConnections</code></td><td><code>false</code></td><td>keep every connection's line permanently visible, not just on hover</td></tr>
         </table>
         </div>
-        <p><code>module "name.js"</code> loads extra rendering or interactivity from a file — three modules load into every plan automatically (labels/dimensions, drag-and-drop, and the code-highlighting you're using right now if you're in the app), so you'll rarely need to write this yourself.</p>
+        <pre class="code-block"><span class="k">settings</span> {
+  styles: {
+    wall: { stroke: <span class="s">"#444"</span>, strokeWidth: 0.1 }
+  }
+}
+
+<span class="k">element</span> wall_a {
+  shape: <span class="s">"polyline"</span>
+  points: [corner_1, corner_2]
+  style: <span class="s">"wall"</span>
+}</pre>
+        <p><code>module "name.js"</code> loads extra rendering or interactivity from a file — four modules load into every plan automatically (the background grid, labels/dimensions, drag-and-drop, and the code-highlighting you're using right now if you're in the app), so you'll rarely need to write this yourself.</p>
 
         <h3>Custom (external) modules</h3>
         <p>A module doesn't have to be one of the three built-in ones — <code>module</code> also accepts a full URL, fetched and run alongside a plan's own three:</p>
@@ -342,7 +379,7 @@
 
       <section id="saving">
         <h2>Saving &amp; the cloud</h2>
-        <p>Every plan you touch is saved automatically in your browser — no account needed. Use <em>Import…</em>/<em>Export…</em> to move a plan to and from a file on your computer.</p>
+        <p>Every plan you touch is saved automatically in your browser — no account needed. The header's <strong>Open</strong> and <strong>New</strong> buttons each open a full picker with a live preview of every plan or example, so switching or starting one means seeing it first, not just a name in a list. Use <em>Import…</em> to bring in a plan file, and <em>Export</em> to get the current one back out — as a plan file, a PNG, or an SVG.</p>
         <p>Sign in (top of the app, or on the <a href="/profile/">Profile</a> page) to also explicitly push the plan you're working on to the cloud, or pull one you saved earlier back in — useful for picking up the same plan on a different device. This is optional and separate from the automatic local save, which always happens regardless of whether you're signed in. Don't have an account yet? Create one directly on the <a href="/profile/">Profile</a> page — you'll get an email to confirm it before you can sign in.</p>
       </section>
 
@@ -399,6 +436,15 @@
     show: <span class="s">"hover"</span>
   }
 
+  <span class="k">element</span> desk {
+    shape: <span class="s">"rect"</span>
+    size: [1.2m, 0.6m]
+    position: [3.6m, 0.2m]
+    style: { fill: <span class="s">"#fbe3b0"</span>, stroke: <span class="s">"#a87a2b"</span>, strokeWidth: 0.02 }
+    label: <span class="s">"Schreibtisch"</span>
+    show: <span class="s">"hover"</span>
+  }
+
   <span class="k">element</span> side_table {
     shape: <span class="s">"circle"</span>
     radius: 0.35m
@@ -441,40 +487,271 @@
         </div>
 
         <div class="example-card">
-          <h3>Utility Connection</h3>
-          <p class="desc">A property boundary, a house, and a power line reaching from the street to a fixed attachment point on the house — the same primitives used for a room work just as well outside one.</p>
+          <h3>Electrical Grid</h3>
+          <p class="desc">Three property parcels, each with its own house, all wired to one shared distribution cabinet — connections linking every parcel to its neighbors and to the cabinet, and a <code>styles</code> block giving the whole plan one consistent palette instead of five separately-authored colors.</p>
           <details class="example-code">
             <summary>Show the code</summary>
-            <pre class="code-block"><span class="k">element</span> grundstueck {
-  shape: <span class="s">"polygon"</span>
-  points: [[0m, 0m], [11m, 0m], [12m, 9m], [-1m, 9m]]
-  style: { fill: <span class="s">"#dce8c8"</span>, stroke: <span class="s">"#7a9a5a"</span>, strokeWidth: 0.06 }
-  label: <span class="s">"Grundstück"</span>
-  show: <span class="s">"hover"</span>
-  edgeLengths: true
+            <pre class="code-block"><span class="k">settings</span> {
+  styles: {
+    parcel: { fill: <span class="s">"#e7ecdf"</span>, stroke: <span class="s">"#7c8f6a"</span>, strokeWidth: 0.05 }
+    haus: { fill: <span class="s">"#dcdcd7"</span>, stroke: <span class="s">"#55554f"</span>, strokeWidth: 0.07 }
+    kabel: { stroke: <span class="s">"#c98a1c"</span>, strokeWidth: 0.05, strokeDash: <span class="s">"0.3,0.15"</span> }
+    kabine: { fill: <span class="s">"#3a3a38"</span>, stroke: <span class="s">"#1c1c1a"</span>, strokeWidth: 0.06 }
+  }
+}
 
-  <span class="k">element</span> haus {
+<span class="k">element</span> stromnetz {
+  <span class="k">element</span> parzelle_1 {
     shape: <span class="s">"rect"</span>
-    size: [5.5m, 4m]
-    position: [3m, 3m]
-    style: { fill: <span class="s">"#e8d6b8"</span>, stroke: <span class="s">"#8a6a42"</span>, strokeWidth: 0.08 }
-    label: <span class="s">"Haus"</span>
-    show: <span class="s">"always"</span>
-    dimensions: true
+    size: [8m, 9m]
+    position: [0m, 0m]
+    style: <span class="s">"parcel"</span>
+    label: <span class="s">"Parzelle 1"</span>
+    show: <span class="s">"hover"</span>
+    edgeLengths: true
+
+    <span class="k">element</span> haus_1 {
+      shape: <span class="s">"rect"</span>
+      size: [4m, 4m]
+      position: [2m, 3m]
+      style: <span class="s">"haus"</span>
+      label: <span class="s">"Haus 1"</span>
+      show: <span class="s">"always"</span>
+      dimensions: true
+    }
+
+    <span class="k">element</span> hausanschluss_1 { position: [4m, 3m] }
   }
 
-  <span class="k">element</span> haus_anschluss { position: [3m, 4.5m] }
+  <span class="k">element</span> parzelle_2 {
+    shape: <span class="s">"rect"</span>
+    size: [8m, 9m]
+    position: [9m, 0m]
+    style: <span class="s">"parcel"</span>
+    label: <span class="s">"Parzelle 2"</span>
+    show: <span class="s">"hover"</span>
+    edgeLengths: true
 
-  <span class="k">element</span> stromanschluss {
+    <span class="k">element</span> haus_2 {
+      shape: <span class="s">"rect"</span>
+      size: [4m, 4m]
+      position: [2m, 3m]
+      style: <span class="s">"haus"</span>
+      label: <span class="s">"Haus 2"</span>
+      show: <span class="s">"always"</span>
+      dimensions: true
+    }
+
+    <span class="k">element</span> hausanschluss_2 { position: [4m, 3m] }
+  }
+
+  <span class="k">element</span> parzelle_3 {
+    shape: <span class="s">"rect"</span>
+    size: [8m, 9m]
+    position: [18m, 0m]
+    style: <span class="s">"parcel"</span>
+    label: <span class="s">"Parzelle 3"</span>
+    show: <span class="s">"hover"</span>
+    edgeLengths: true
+
+    <span class="k">element</span> haus_3 {
+      shape: <span class="s">"rect"</span>
+      size: [4m, 4m]
+      position: [2m, 3m]
+      style: <span class="s">"haus"</span>
+      label: <span class="s">"Haus 3"</span>
+      show: <span class="s">"always"</span>
+      dimensions: true
+    }
+
+    <span class="k">element</span> hausanschluss_3 { position: [4m, 3m] }
+  }
+
+  <span class="k">element</span> verteilkabine {
+    shape: <span class="s">"rect"</span>
+    size: [1m, 1m]
+    position: [12.5m, -1.5m]
+    style: <span class="s">"kabine"</span>
+    label: <span class="s">"Verteilkabine"</span>
+    show: <span class="s">"always"</span>
+    dimensions: true
+
+    <span class="k">element</span> kabine_anschluss { position: [0.5m, 1m] }
+  }
+
+  <span class="k">element</span> kabel_1 {
     shape: <span class="s">"polyline"</span>
-    points: [[1.5m, 0.5m], [1.5m, 4.5m], haus_anschluss]
-    style: { stroke: <span class="s">"#e0a800"</span>, strokeWidth: 0.05, strokeDash: <span class="s">"0.3,0.15"</span> }
-    label: <span class="s">"Stromanschluss"</span>
+    points: [kabine_anschluss, [4m, -0.5m], hausanschluss_1]
+    style: <span class="s">"kabel"</span>
+    label: <span class="s">"Hausanschluss 1"</span>
+    show: <span class="s">"hover"</span>
+  }
+
+  <span class="k">element</span> kabel_2 {
+    shape: <span class="s">"polyline"</span>
+    points: [kabine_anschluss, hausanschluss_2]
+    style: <span class="s">"kabel"</span>
+    label: <span class="s">"Hausanschluss 2"</span>
+    show: <span class="s">"hover"</span>
+  }
+
+  <span class="k">element</span> kabel_3 {
+    shape: <span class="s">"polyline"</span>
+    points: [kabine_anschluss, [22m, -0.5m], hausanschluss_3]
+    style: <span class="s">"kabel"</span>
+    label: <span class="s">"Hausanschluss 3"</span>
     show: <span class="s">"hover"</span>
   }
 }
 
-<span class="k">connection</span> haus_anschluss haus</pre>
+<span class="k">connection</span> parzelle_1 parzelle_2
+<span class="k">connection</span> parzelle_2 parzelle_3
+<span class="k">connection</span> parzelle_1 parzelle_3
+<span class="k">connection</span> hausanschluss_1 haus_1
+<span class="k">connection</span> hausanschluss_2 haus_2
+<span class="k">connection</span> hausanschluss_3 haus_3
+<span class="k">connection</span> hausanschluss_1 verteilkabine
+<span class="k">connection</span> hausanschluss_2 verteilkabine
+<span class="k">connection</span> hausanschluss_3 verteilkabine</pre>
+          </details>
+        </div>
+
+        <div class="example-card">
+          <h3>Campervan Build</h3>
+          <p class="desc">A camper's interior split into three layer groups — furniture, electrics, plumbing — with the water tank tucked directly under the bench seat, a real packaging trick small campervans actually use. Hide the "Einrichtung" layer in the app and the tank underneath it appears, exactly where an installer would need to see it.</p>
+          <details class="example-code">
+            <summary>Show the code</summary>
+            <pre class="code-block"><span class="k">element</span> camper {
+  shape: <span class="s">"rect"</span>
+  size: [3.6m, 1.8m]
+  position: [0m, 0m]
+  style: { fill: <span class="s">"#f2f0ec"</span>, stroke: <span class="s">"#333"</span>, strokeWidth: 0.04 }
+  label: <span class="s">"Camper"</span>
+
+  <span class="k">element</span> einrichtung {
+    label: <span class="s">"Einrichtung"</span>
+
+    <span class="k">element</span> kueche {
+      shape: <span class="s">"rect"</span>
+      size: [0.6m, 1.2m]
+      position: [0m, 0m]
+      style: { fill: <span class="s">"#e8c896"</span>, stroke: <span class="s">"#a9895c"</span>, strokeWidth: 0.02 }
+      label: <span class="s">"Küche"</span>
+      show: <span class="s">"hover"</span>
+    }
+
+    <span class="k">element</span> sitzbank {
+      shape: <span class="s">"rect"</span>
+      size: [1m, 0.6m]
+      position: [0.8m, 0m]
+      style: { fill: <span class="s">"#d8c7e8"</span>, stroke: <span class="s">"#7a5a9a"</span>, strokeWidth: 0.02 }
+      label: <span class="s">"Sitzbank"</span>
+      show: <span class="s">"hover"</span>
+    }
+
+    <span class="k">element</span> haengeschrank {
+      shape: <span class="s">"rect"</span>
+      size: [0.8m, 0.25m]
+      position: [0m, 1.55m]
+      style: { fill: <span class="s">"#cbb994"</span>, stroke: <span class="s">"#8a7850"</span>, strokeWidth: 0.02 }
+      label: <span class="s">"Hängeschrank"</span>
+      show: <span class="s">"hover"</span>
+    }
+
+    <span class="k">element</span> bett {
+      shape: <span class="s">"rect"</span>
+      size: [1.7m, 1.8m]
+      position: [1.9m, 0m]
+      style: { fill: <span class="s">"#cfe0f5"</span>, stroke: <span class="s">"#4a76a8"</span>, strokeWidth: 0.02 }
+      label: <span class="s">"Bett"</span>
+      show: <span class="s">"always"</span>
+      dimensions: true
+    }
+  }
+
+  <span class="k">element</span> elektrik {
+    label: <span class="s">"Elektrik"</span>
+
+    <span class="k">element</span> batterie {
+      shape: <span class="s">"rect"</span>
+      size: [0.3m, 0.25m]
+      position: [0.05m, 1.5m]
+      style: { fill: <span class="s">"#3a3a38"</span>, stroke: <span class="s">"#1c1c1a"</span>, strokeWidth: 0.02 }
+      label: <span class="s">"Batterie"</span>
+      show: <span class="s">"hover"</span>
+
+      <span class="k">element</span> batterie_anschluss { position: [0.3m, 0.12m] }
+    }
+
+    <span class="k">element</span> sicherungskasten {
+      shape: <span class="s">"rect"</span>
+      size: [0.25m, 0.2m]
+      position: [1.55m, 1.55m]
+      style: { fill: <span class="s">"#555555"</span>, stroke: <span class="s">"#222222"</span>, strokeWidth: 0.02 }
+      label: <span class="s">"Sicherungskasten"</span>
+      show: <span class="s">"hover"</span>
+
+      <span class="k">element</span> sicherung_anschluss { position: [0m, 0.1m] }
+    }
+
+    <span class="k">element</span> leselampe {
+      shape: <span class="s">"circle"</span>
+      radius: 0.06m
+      position: [2.7m, 0.2m]
+      style: { fill: <span class="s">"#fce97a"</span>, stroke: <span class="s">"#a89a2a"</span>, strokeWidth: 0.02 }
+      label: <span class="s">"Leselampe"</span>
+      show: <span class="s">"hover"</span>
+    }
+
+    <span class="k">element</span> kabel_batterie_sicherung {
+      shape: <span class="s">"polyline"</span>
+      points: [batterie_anschluss, sicherung_anschluss]
+      style: { stroke: <span class="s">"#c98a1c"</span>, strokeWidth: 0.03, strokeDash: <span class="s">"0.1,0.06"</span> }
+      label: <span class="s">"Kabel"</span>
+      show: <span class="s">"hover"</span>
+    }
+
+    <span class="k">element</span> kabel_sicherung_lampe {
+      shape: <span class="s">"polyline"</span>
+      points: [sicherung_anschluss, [2.7m, 1.5m], leselampe]
+      style: { stroke: <span class="s">"#c98a1c"</span>, strokeWidth: 0.03, strokeDash: <span class="s">"0.1,0.06"</span> }
+      label: <span class="s">"Kabel"</span>
+      show: <span class="s">"hover"</span>
+    }
+  }
+
+  <span class="k">element</span> sanitaer {
+    label: <span class="s">"Sanitär"</span>
+
+    <span class="k">element</span> wassertank {
+      shape: <span class="s">"rect"</span>
+      size: [0.9m, 0.5m]
+      position: [0.85m, 0.05m]
+      style: { fill: <span class="s">"#8fc5e0"</span>, stroke: <span class="s">"#3a7a9a"</span>, strokeWidth: 0.02 }
+      label: <span class="s">"Wassertank"</span>
+      show: <span class="s">"hover"</span>
+    }
+
+    <span class="k">element</span> pumpe {
+      shape: <span class="s">"circle"</span>
+      radius: 0.08m
+      position: [0.7m, 0.4m]
+      style: { fill: <span class="s">"#5aa0c0"</span>, stroke: <span class="s">"#2a5a7a"</span>, strokeWidth: 0.02 }
+      label: <span class="s">"Pumpe"</span>
+      show: <span class="s">"hover"</span>
+    }
+
+    <span class="k">element</span> abfluss { position: [1.75m, 0.3m] }
+
+    <span class="k">element</span> rohr {
+      shape: <span class="s">"polyline"</span>
+      points: [pumpe, abfluss]
+      style: { stroke: <span class="s">"#3a7a9a"</span>, strokeWidth: 0.025 }
+      label: <span class="s">"Rohr"</span>
+      show: <span class="s">"hover"</span>
+    }
+  }
+}</pre>
           </details>
         </div>
       </section>
