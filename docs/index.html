@@ -158,6 +158,17 @@
     z-index: 20; } /* without this, a later header sibling (e.g. Grid) paints over it -- there's
     no wrapping dropdown panel establishing an elevated stacking context anymore (D-105/D-106) */
   .ribbon-btn.has-submenu:hover > .submenu { display: block; }
+  /* Reported directly: on a touchscreen, a flyout that only ever opens via CSS :hover is
+     unreachable -- a tap doesn't establish any lasting hover state, so the flyout at best
+     flashes open for an instant and then disappears the moment the finger lifts or moves
+     toward its own content, revealing whatever's underneath (the mobile Code/Viewer pane).
+     `(hover: none)` targets exactly this case (a real touchscreen, not just a narrow
+     viewport -- a touch laptop with an attached mouse keeps its normal hover behavior) --
+     a JS-toggled .submenu-open class takes over as the show/hide mechanism there instead
+     of :hover, wired below. */
+  @media (hover: none) {
+    .ribbon-btn.has-submenu.submenu-open > .submenu { display: block; }
+  }
   .submenu li { padding: 0; }
   .submenu button { display: block; width: 100%; padding: 6px 16px; border: none; background: none;
     text-align: left; font: inherit; font-size: 13px; cursor: pointer; }
@@ -592,6 +603,13 @@
       <div class="ribbon-btn has-submenu" id="snap-toggle-btn" title="Snap dragged/resized elements to their own grid increment, independent of whether a grid is shown">
         <svg class="ribbon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15-4-4 6.75-6.77a7.79 7.79 0 0 1 11 11L13 22l-4-4 6.39-6.36a2.14 2.14 0 0 0-3-3L6 15" /><path d="m5 8 4 4" /><path d="m12 15 4 4" /></svg><span class="ribbon-label">Snap</span>
         <ul class="submenu">
+          <!-- On touch, the box's own click no longer toggles snap (its default action is
+               suppressed there so the same tap can open this flyout instead, see the touch
+               handling script below) -- these two give that control back explicitly, the
+               same "Off" shape Grid's own flyout already established (D-156). -->
+          <li><button id="snap-on-btn" type="button">On</button></li>
+          <li><button id="snap-off-btn" type="button">Off</button></li>
+          <li class="submenu-divider"></li>
           <li class="submenu-field">
             <label for="snap-size-input">Size (m)</label>
             <input type="number" id="snap-size-input" min="0.1" step="0.1">
@@ -2665,7 +2683,10 @@ function updateSnapToggleUi() {
   const btn = document.getElementById("snap-toggle-btn");
   if (!btn) return;
   const snap = program?.settings?.snap;
-  btn.classList.toggle("active", snap !== undefined);
+  const isOn = snap !== undefined;
+  btn.classList.toggle("active", isOn);
+  document.getElementById("snap-on-btn")?.classList.toggle("active", isOn);
+  document.getElementById("snap-off-btn")?.classList.toggle("active", !isOn);
   const sizeInput = document.getElementById("snap-size-input");
   if (sizeInput && document.activeElement !== sizeInput) {
     sizeInput.value = numOf(snap?.size ?? 1);
@@ -2858,6 +2879,8 @@ document.getElementById("snap-toggle-btn").addEventListener("click", (e) => {
   if (e.target.closest(".submenu")) return;
   toggleSnapSetting();
 });
+document.getElementById("snap-on-btn").addEventListener("click", () => setSnapEnabled(true));
+document.getElementById("snap-off-btn").addEventListener("click", () => setSnapEnabled(false));
 document.getElementById("snap-size-input").addEventListener("change", (e) => {
   const v = parseFloat(e.target.value);
   if (Number.isFinite(v) && v > 0) setSnapSize(v);
@@ -3230,6 +3253,66 @@ function positionSubmenu(wrapperEl) {
 }
 for (const el of document.querySelectorAll(".ribbon-btn.has-submenu")) {
   el.addEventListener("mouseenter", () => positionSubmenu(el));
+}
+
+// Reported directly: on a real touchscreen, these flyouts (New Element, Grid, Snap, Export)
+// were effectively unreachable -- a tap can't sustain the CSS :hover state the whole
+// mechanism above depends on, so the flyout at best flashed open for an instant before
+// vanishing the moment the finger lifted or moved toward its own content, uncovering
+// whatever was underneath (the mobile Code/Viewer pane). `.submenu-open` (see the
+// `(hover: none)` CSS rule above) is the touch-driven equivalent of :hover, toggled here by
+// a single delegated, capture-phase click listener -- capture on `document` runs strictly
+// before any bubble-phase listener on the tapped button itself, which is what lets
+// `stopPropagation()` below actually prevent that box's own default click action (Grid's
+// own on/off toggle, Snap's own) from *also* firing for the same tap that just opened its
+// flyout: on a mouse, that shortcut only ever fires once someone's already hovering and
+// deliberately clicks anyway, but touch has no such "already looking at it" moment to make
+// that click deliberate.
+function isTouchOnly() { return window.matchMedia("(hover: none)").matches; }
+function closeAllSubmenus() {
+  for (const el of document.querySelectorAll(".ribbon-btn.has-submenu.submenu-open")) {
+    el.classList.remove("submenu-open");
+  }
+}
+document.addEventListener("click", (e) => {
+  if (!isTouchOnly()) return;
+  if (e.target.closest(".submenu")) {
+    // A real action inside the now-open flyout (Squares, Off, a preset...) is still on its
+    // own way to firing via this same click's normal bubble -- close the flyout right after
+    // instead of leaving it hover-stuck with no hover to ever end it, but not for a field
+    // someone just tapped into to type a value (closing mid-focus would yank it away).
+    if (e.target.tagName !== "INPUT") setTimeout(closeAllSubmenus, 0);
+    return;
+  }
+  const wrapper = e.target.closest(".ribbon-btn.has-submenu");
+  if (!wrapper) return;
+  const wasOpen = wrapper.classList.contains("submenu-open");
+  closeAllSubmenus();
+  if (!wasOpen) {
+    wrapper.classList.add("submenu-open");
+    positionSubmenu(wrapper);
+  }
+  e.stopPropagation();
+}, true);
+// Belt-and-braces close-on-outside-tap: `interactivity-module.js`'s own `handlePointerDown`
+// calls `preventDefault()` on every pointerdown inside `#plan-root`, which suppresses the
+// browser's own synthesis of the `click` the listener above depends on for that specific
+// target (the same mechanism D-113/D-152 already found and worked around) -- so a tap on
+// the canvas while a flyout is open wouldn't otherwise ever close it. `pointerdown` itself
+// isn't suppressed, only the click it would have produced.
+document.addEventListener("pointerdown", (e) => {
+  if (isTouchOnly() && !e.target.closest(".ribbon-btn.has-submenu, .submenu")) closeAllSubmenus();
+}, true);
+
+// Snap's own flyout only ever had a Size field -- on a mouse, the box's own click (still
+// this button's default action above; touch is the one case that now suppresses it) was the
+// *only* way to turn snapping on or off at all. Explicit On/Off buttons, mirroring Grid's
+// own Off item exactly (D-156), so a touch user who can no longer rely on that shortcut
+// still has a real way to enable/disable snap once its flyout actually opens for them.
+function setSnapEnabled(enabled) {
+  const isOn = program?.settings?.snap !== undefined;
+  if (enabled === isOn) return;
+  toggleSnapSetting();
 }
 </script>
 </body>
