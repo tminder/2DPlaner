@@ -906,15 +906,12 @@ const EXAMPLES = {
 }
 
 element plan {
-  shape: "rect"
-  size: [4m, 3m]
-  position: [0m, 0m]
-  style: { fill: "#f7f5f0", stroke: "#333", strokeWidth: 0.04 }
 }
 `,
   apartment: `settings {
   version: 1
   allowSelfIntersectingPolygons: false
+  dimensionStyle: "arrows"
 }
 
 element room {
@@ -923,29 +920,8 @@ element room {
   position: [0m, 0m]
   style: { fill: "#f7f5f0", stroke: "#333", strokeWidth: 0.04 }
   childPlacement: "inside"
-
-  element corner_1 { position: [0m, 0m] }
-  element corner_2 { position: [2.2m, 0m] }
-  element corner_3 { position: [3.1m, 0m] }
-  element corner_4 { position: [5m, 0m] }
-
-  element wall_a {
-    shape: "polyline"
-    points: [corner_1, corner_2]
-    style: { stroke: "#444", strokeWidth: 0.1 }
-  }
-  element door {
-    shape: "polyline"
-    points: [corner_2, corner_3]
-    style: { stroke: "#8a6a42", strokeWidth: 0.1, strokeDash: "0.15,0.1" }
-    label: "Tür"
-    show: "hover"
-  }
-  element wall_b {
-    shape: "polyline"
-    points: [corner_3, corner_4]
-    style: { stroke: "#444", strokeWidth: 0.1 }
-  }
+  edgeLengths: true
+  show: "always"
 
   element bed {
     shape: "rect"
@@ -956,29 +932,31 @@ element room {
     show: "hover"
   }
 
+  element wardrobe {
+    shape: "rect"
+    size: [0.6m, 1.4m]
+    position: [4.4m, 0.3m]
+    placement: "inside"
+    flush: true
+    style: { fill: "#d8c7e8", stroke: "#7a5a9a", strokeWidth: 0.02 }
+    label: "Schrank"
+    show: "hover"
+  }
+
   element desk {
     shape: "rect"
-    size: [1.2m, 0.6m]
-    position: [3.6m, 0.2m]
+    size: [1.1m, 0.55m]
+    position: [2.6m, 2.7m]
+    rotation: 18
     style: { fill: "#fbe3b0", stroke: "#a87a2b", strokeWidth: 0.02 }
     label: "Schreibtisch"
     show: "hover"
   }
 
-  element side_table {
-    shape: "circle"
-    radius: 0.35m
-    position: [2.5m, 3.3m]
-    style: { fill: "#bfe3f5", stroke: "#3a7a9a", strokeWidth: 0.03 }
-    label: "Tisch"
-    show: "always"
-    dimensions: true
-  }
-
   element stove {
     shape: "rect"
     size: [0.6m, 0.6m]
-    position: [4.1m, 2.6m]
+    position: [4.1m, 2.0m]
     style: { fill: "#d9534f", stroke: "#8a2f2a", strokeWidth: 0.02 }
     label: "Herd"
     show: "hover"
@@ -987,7 +965,7 @@ element room {
   element counter {
     shape: "rect"
     size: [0.5m, 1.2m]
-    position: [4.1m, 1.4m]
+    position: [4.1m, 2.7m]
     style: { fill: "#e8c896", stroke: "#a9895c", strokeWidth: 0.02 }
     label: "Ablage"
     show: "hover"
@@ -995,10 +973,20 @@ element room {
 
   element rug {
     shape: "polygon"
-    points: [[1m, 2.6m], [1.9m, 2.5m], [2.1m, 3.4m], [1.5m, 3.9m], [0.7m, 3.5m]]
+    points: [[0.9m, 2.6m], [1.8m, 2.4m], [2.2m, 3.3m], [1.5m, 3.9m], [0.7m, 3.4m]]
     style: { fill: "#e0d5c0", stroke: "#b0a080", strokeWidth: 0.02 }
     label: "Teppich"
     show: "hover"
+  }
+
+  element side_table {
+    shape: "circle"
+    radius: 0.35m
+    position: [1.5m, 3.2m]
+    style: { fill: "#bfe3f5", stroke: "#3a7a9a", strokeWidth: 0.03 }
+    label: "Tisch"
+    show: "always"
+    dimensions: true
   }
 }
 
@@ -1016,14 +1004,24 @@ connection stove counter
 }
 
 element stromnetz {
+  element c0 { position: [0m, 0m] }
+  element c1 { position: [8m, 0m] }
+  element c2 { position: [16m, 0m] }
+  element c3 { position: [24m, 0m] }
+  element c4 { position: [0m, 9m] }
+  element c5 { position: [8m, 9m] }
+  element c6 { position: [16m, 9m] }
+  element c7 { position: [24m, 9m] }
+
   element parzelle_1 {
-    shape: "rect"
-    size: [8m, 9m]
+    shape: "polygon"
+    points: [c0, c1, c5, c4]
     position: [0m, 0m]
     style: "parcel"
     label: "Parzelle 1"
     show: "hover"
     edgeLengths: true
+    childPlacement: "inside"
 
     element haus_1 {
       shape: "rect"
@@ -1035,17 +1033,21 @@ element stromnetz {
       dimensions: true
     }
 
-    element hausanschluss_1 { position: [4m, 3m] }
+    element hausanschluss_1 {
+      position: [4m, 3m]
+      placement: "outside"
+    }
   }
 
   element parzelle_2 {
-    shape: "rect"
-    size: [8m, 9m]
-    position: [9m, 0m]
+    shape: "polygon"
+    points: [c1, c2, c6, c5]
+    position: [8m, 0m]
     style: "parcel"
     label: "Parzelle 2"
     show: "hover"
     edgeLengths: true
+    childPlacement: "inside"
 
     element haus_2 {
       shape: "rect"
@@ -1057,17 +1059,21 @@ element stromnetz {
       dimensions: true
     }
 
-    element hausanschluss_2 { position: [4m, 3m] }
+    element hausanschluss_2 {
+      position: [4m, 3m]
+      placement: "outside"
+    }
   }
 
   element parzelle_3 {
-    shape: "rect"
-    size: [8m, 9m]
-    position: [18m, 0m]
+    shape: "polygon"
+    points: [c2, c3, c7, c6]
+    position: [16m, 0m]
     style: "parcel"
     label: "Parzelle 3"
     show: "hover"
     edgeLengths: true
+    childPlacement: "inside"
 
     element haus_3 {
       shape: "rect"
@@ -1079,24 +1085,36 @@ element stromnetz {
       dimensions: true
     }
 
-    element hausanschluss_3 { position: [4m, 3m] }
+    element hausanschluss_3 {
+      position: [4m, 3m]
+      placement: "outside"
+    }
   }
 
   element verteilkabine {
     shape: "rect"
     size: [1m, 1m]
-    position: [12.5m, -1.5m]
+    position: [11.5m, -1.5m]
     style: "kabine"
     label: "Verteilkabine"
     show: "always"
     dimensions: true
 
     element kabine_anschluss { position: [0.5m, 1m] }
+
+    element sicherung_intern {
+      shape: "rect"
+      size: [0.6m, 0.6m]
+      position: [0.2m, 0.2m]
+      style: { fill: "#555555", stroke: "#222222", strokeWidth: 0.02 }
+      label: "Sicherungen"
+      hidden: true
+    }
   }
 
   element kabel_1 {
     shape: "polyline"
-    points: [kabine_anschluss, [4m, -0.5m], hausanschluss_1]
+    points: [kabine_anschluss, [3m, -0.5m], hausanschluss_1]
     style: "kabel"
     label: "Hausanschluss 1"
     show: "hover"
@@ -1112,7 +1130,7 @@ element stromnetz {
 
   element kabel_3 {
     shape: "polyline"
-    points: [kabine_anschluss, [22m, -0.5m], hausanschluss_3]
+    points: [kabine_anschluss, [21m, -0.5m], hausanschluss_3]
     style: "kabel"
     label: "Hausanschluss 3"
     show: "hover"
@@ -1121,7 +1139,6 @@ element stromnetz {
 
 connection parzelle_1 parzelle_2
 connection parzelle_2 parzelle_3
-connection parzelle_1 parzelle_3
 connection hausanschluss_1 haus_1
 connection hausanschluss_2 haus_2
 connection hausanschluss_3 haus_3
@@ -1167,10 +1184,22 @@ element camper {
       show: "hover"
     }
 
+    element klapptisch {
+      shape: "rect"
+      size: [0.5m, 0.35m]
+      position: [1.55m, 0.55m]
+      rotation: 20
+      style: { fill: "#c9a876", stroke: "#8a6a42", strokeWidth: 0.02 }
+      label: "Klapptisch"
+      show: "hover"
+    }
+
     element haengeschrank {
       shape: "rect"
-      size: [0.8m, 0.25m]
-      position: [0m, 1.55m]
+      size: [0.5m, 0.25m]
+      position: [0.9m, 1.55m]
+      placement: "inside"
+      flush: true
       style: { fill: "#cbb994", stroke: "#8a7850", strokeWidth: 0.02 }
       label: "Hängeschrank"
       show: "hover"
@@ -1270,6 +1299,8 @@ element camper {
     }
   }
 }
+
+connection klapptisch sitzbank
 `,
 };
 

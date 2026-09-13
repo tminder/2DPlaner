@@ -389,43 +389,28 @@
 
         <div class="example-card">
           <h3>Blank</h3>
-          <p class="desc">The absolute minimum: one rectangle, nothing else. The same plan shown in "Getting started" above.</p>
+          <p class="desc">A genuinely empty canvas — a single, shapeless root element and nothing else, so there's nothing to undo or delete before you start drawing or typing your own plan.</p>
         </div>
 
         <div class="example-card">
           <h3>Studio Apartment</h3>
-          <p class="desc">A small room with a bed, desk, side table, and a rug — shared-corner walls with a door, containment keeping the furniture inside the room, and a connection linking the stove to the counter beside it.</p>
+          <p class="desc">A small room with a bed, a wardrobe flush against the wall, a desk angled into a corner, and a rug — containment keeping the furniture inside the room, a connection linking the stove to the counter beside it, and arrow-tipped dimension lines around the room's own outer edges.</p>
           <details class="example-code">
             <summary>Show the code</summary>
-            <pre class="code-block"><span class="k">element</span> room {
+            <pre class="code-block"><span class="k">settings</span> {
+  version: 1
+  allowSelfIntersectingPolygons: false
+  dimensionStyle: <span class="s">"arrows"</span>
+}
+
+<span class="k">element</span> room {
   shape: <span class="s">"rect"</span>
   size: [5m, 4m]
   position: [0m, 0m]
   style: { fill: <span class="s">"#f7f5f0"</span>, stroke: <span class="s">"#333"</span>, strokeWidth: 0.04 }
   childPlacement: <span class="s">"inside"</span>
-
-  <span class="k">element</span> corner_1 { position: [0m, 0m] }
-  <span class="k">element</span> corner_2 { position: [2.2m, 0m] }
-  <span class="k">element</span> corner_3 { position: [3.1m, 0m] }
-  <span class="k">element</span> corner_4 { position: [5m, 0m] }
-
-  <span class="k">element</span> wall_a {
-    shape: <span class="s">"polyline"</span>
-    points: [corner_1, corner_2]
-    style: { stroke: <span class="s">"#444"</span>, strokeWidth: 0.1 }
-  }
-  <span class="k">element</span> door {
-    shape: <span class="s">"polyline"</span>
-    points: [corner_2, corner_3]
-    style: { stroke: <span class="s">"#8a6a42"</span>, strokeWidth: 0.1, strokeDash: <span class="s">"0.15,0.1"</span> }
-    label: <span class="s">"Tür"</span>
-    show: <span class="s">"hover"</span>
-  }
-  <span class="k">element</span> wall_b {
-    shape: <span class="s">"polyline"</span>
-    points: [corner_3, corner_4]
-    style: { stroke: <span class="s">"#444"</span>, strokeWidth: 0.1 }
-  }
+  edgeLengths: true
+  show: <span class="s">"always"</span>
 
   <span class="k">element</span> bed {
     shape: <span class="s">"rect"</span>
@@ -436,29 +421,31 @@
     show: <span class="s">"hover"</span>
   }
 
+  <span class="k">element</span> wardrobe {
+    shape: <span class="s">"rect"</span>
+    size: [0.6m, 1.4m]
+    position: [4.4m, 0.3m]
+    placement: <span class="s">"inside"</span>
+    flush: true
+    style: { fill: <span class="s">"#d8c7e8"</span>, stroke: <span class="s">"#7a5a9a"</span>, strokeWidth: 0.02 }
+    label: <span class="s">"Schrank"</span>
+    show: <span class="s">"hover"</span>
+  }
+
   <span class="k">element</span> desk {
     shape: <span class="s">"rect"</span>
-    size: [1.2m, 0.6m]
-    position: [3.6m, 0.2m]
+    size: [1.1m, 0.55m]
+    position: [2.6m, 2.7m]
+    rotation: 18
     style: { fill: <span class="s">"#fbe3b0"</span>, stroke: <span class="s">"#a87a2b"</span>, strokeWidth: 0.02 }
     label: <span class="s">"Schreibtisch"</span>
     show: <span class="s">"hover"</span>
   }
 
-  <span class="k">element</span> side_table {
-    shape: <span class="s">"circle"</span>
-    radius: 0.35m
-    position: [2.5m, 3.3m]
-    style: { fill: <span class="s">"#bfe3f5"</span>, stroke: <span class="s">"#3a7a9a"</span>, strokeWidth: 0.03 }
-    label: <span class="s">"Tisch"</span>
-    show: <span class="s">"always"</span>
-    dimensions: true
-  }
-
   <span class="k">element</span> stove {
     shape: <span class="s">"rect"</span>
     size: [0.6m, 0.6m]
-    position: [4.1m, 2.6m]
+    position: [4.1m, 2.0m]
     style: { fill: <span class="s">"#d9534f"</span>, stroke: <span class="s">"#8a2f2a"</span>, strokeWidth: 0.02 }
     label: <span class="s">"Herd"</span>
     show: <span class="s">"hover"</span>
@@ -467,7 +454,7 @@
   <span class="k">element</span> counter {
     shape: <span class="s">"rect"</span>
     size: [0.5m, 1.2m]
-    position: [4.1m, 1.4m]
+    position: [4.1m, 2.7m]
     style: { fill: <span class="s">"#e8c896"</span>, stroke: <span class="s">"#a9895c"</span>, strokeWidth: 0.02 }
     label: <span class="s">"Ablage"</span>
     show: <span class="s">"hover"</span>
@@ -475,10 +462,20 @@
 
   <span class="k">element</span> rug {
     shape: <span class="s">"polygon"</span>
-    points: [[1m, 2.6m], [1.9m, 2.5m], [2.1m, 3.4m], [1.5m, 3.9m], [0.7m, 3.5m]]
+    points: [[0.9m, 2.6m], [1.8m, 2.4m], [2.2m, 3.3m], [1.5m, 3.9m], [0.7m, 3.4m]]
     style: { fill: <span class="s">"#e0d5c0"</span>, stroke: <span class="s">"#b0a080"</span>, strokeWidth: 0.02 }
     label: <span class="s">"Teppich"</span>
     show: <span class="s">"hover"</span>
+  }
+
+  <span class="k">element</span> side_table {
+    shape: <span class="s">"circle"</span>
+    radius: 0.35m
+    position: [1.5m, 3.2m]
+    style: { fill: <span class="s">"#bfe3f5"</span>, stroke: <span class="s">"#3a7a9a"</span>, strokeWidth: 0.03 }
+    label: <span class="s">"Tisch"</span>
+    show: <span class="s">"always"</span>
+    dimensions: true
   }
 }
 
@@ -488,7 +485,7 @@
 
         <div class="example-card">
           <h3>Electrical Grid</h3>
-          <p class="desc">Three property parcels, each with its own house, all wired to one shared distribution cabinet — connections linking every parcel to its neighbors and to the cabinet, and a <code>styles</code> block giving the whole plan one consistent palette instead of five separately-authored colors.</p>
+          <p class="desc">Three directly adjacent property parcels — each a <code>polygon</code> sharing its boundary corners with its neighbor — all wired to one shared distribution cabinet. Each house's own connection point declares <code>placement: "outside"</code>, and the cabinet's internal fuse panel stays <code>hidden</code> until you need it.</p>
           <details class="example-code">
             <summary>Show the code</summary>
             <pre class="code-block"><span class="k">settings</span> {
@@ -501,14 +498,24 @@
 }
 
 <span class="k">element</span> stromnetz {
+  <span class="k">element</span> c0 { position: [0m, 0m] }
+  <span class="k">element</span> c1 { position: [8m, 0m] }
+  <span class="k">element</span> c2 { position: [16m, 0m] }
+  <span class="k">element</span> c3 { position: [24m, 0m] }
+  <span class="k">element</span> c4 { position: [0m, 9m] }
+  <span class="k">element</span> c5 { position: [8m, 9m] }
+  <span class="k">element</span> c6 { position: [16m, 9m] }
+  <span class="k">element</span> c7 { position: [24m, 9m] }
+
   <span class="k">element</span> parzelle_1 {
-    shape: <span class="s">"rect"</span>
-    size: [8m, 9m]
+    shape: <span class="s">"polygon"</span>
+    points: [c0, c1, c5, c4]
     position: [0m, 0m]
     style: <span class="s">"parcel"</span>
     label: <span class="s">"Parzelle 1"</span>
     show: <span class="s">"hover"</span>
     edgeLengths: true
+    childPlacement: <span class="s">"inside"</span>
 
     <span class="k">element</span> haus_1 {
       shape: <span class="s">"rect"</span>
@@ -520,17 +527,21 @@
       dimensions: true
     }
 
-    <span class="k">element</span> hausanschluss_1 { position: [4m, 3m] }
+    <span class="k">element</span> hausanschluss_1 {
+      position: [4m, 3m]
+      placement: <span class="s">"outside"</span>
+    }
   }
 
   <span class="k">element</span> parzelle_2 {
-    shape: <span class="s">"rect"</span>
-    size: [8m, 9m]
-    position: [9m, 0m]
+    shape: <span class="s">"polygon"</span>
+    points: [c1, c2, c6, c5]
+    position: [8m, 0m]
     style: <span class="s">"parcel"</span>
     label: <span class="s">"Parzelle 2"</span>
     show: <span class="s">"hover"</span>
     edgeLengths: true
+    childPlacement: <span class="s">"inside"</span>
 
     <span class="k">element</span> haus_2 {
       shape: <span class="s">"rect"</span>
@@ -542,17 +553,21 @@
       dimensions: true
     }
 
-    <span class="k">element</span> hausanschluss_2 { position: [4m, 3m] }
+    <span class="k">element</span> hausanschluss_2 {
+      position: [4m, 3m]
+      placement: <span class="s">"outside"</span>
+    }
   }
 
   <span class="k">element</span> parzelle_3 {
-    shape: <span class="s">"rect"</span>
-    size: [8m, 9m]
-    position: [18m, 0m]
+    shape: <span class="s">"polygon"</span>
+    points: [c2, c3, c7, c6]
+    position: [16m, 0m]
     style: <span class="s">"parcel"</span>
     label: <span class="s">"Parzelle 3"</span>
     show: <span class="s">"hover"</span>
     edgeLengths: true
+    childPlacement: <span class="s">"inside"</span>
 
     <span class="k">element</span> haus_3 {
       shape: <span class="s">"rect"</span>
@@ -564,24 +579,36 @@
       dimensions: true
     }
 
-    <span class="k">element</span> hausanschluss_3 { position: [4m, 3m] }
+    <span class="k">element</span> hausanschluss_3 {
+      position: [4m, 3m]
+      placement: <span class="s">"outside"</span>
+    }
   }
 
   <span class="k">element</span> verteilkabine {
     shape: <span class="s">"rect"</span>
     size: [1m, 1m]
-    position: [12.5m, -1.5m]
+    position: [11.5m, -1.5m]
     style: <span class="s">"kabine"</span>
     label: <span class="s">"Verteilkabine"</span>
     show: <span class="s">"always"</span>
     dimensions: true
 
     <span class="k">element</span> kabine_anschluss { position: [0.5m, 1m] }
+
+    <span class="k">element</span> sicherung_intern {
+      shape: <span class="s">"rect"</span>
+      size: [0.6m, 0.6m]
+      position: [0.2m, 0.2m]
+      style: { fill: <span class="s">"#555555"</span>, stroke: <span class="s">"#222222"</span>, strokeWidth: 0.02 }
+      label: <span class="s">"Sicherungen"</span>
+      hidden: true
+    }
   }
 
   <span class="k">element</span> kabel_1 {
     shape: <span class="s">"polyline"</span>
-    points: [kabine_anschluss, [4m, -0.5m], hausanschluss_1]
+    points: [kabine_anschluss, [3m, -0.5m], hausanschluss_1]
     style: <span class="s">"kabel"</span>
     label: <span class="s">"Hausanschluss 1"</span>
     show: <span class="s">"hover"</span>
@@ -597,7 +624,7 @@
 
   <span class="k">element</span> kabel_3 {
     shape: <span class="s">"polyline"</span>
-    points: [kabine_anschluss, [22m, -0.5m], hausanschluss_3]
+    points: [kabine_anschluss, [21m, -0.5m], hausanschluss_3]
     style: <span class="s">"kabel"</span>
     label: <span class="s">"Hausanschluss 3"</span>
     show: <span class="s">"hover"</span>
@@ -606,7 +633,6 @@
 
 <span class="k">connection</span> parzelle_1 parzelle_2
 <span class="k">connection</span> parzelle_2 parzelle_3
-<span class="k">connection</span> parzelle_1 parzelle_3
 <span class="k">connection</span> hausanschluss_1 haus_1
 <span class="k">connection</span> hausanschluss_2 haus_2
 <span class="k">connection</span> hausanschluss_3 haus_3
@@ -618,7 +644,7 @@
 
         <div class="example-card">
           <h3>Campervan Build</h3>
-          <p class="desc">A camper's interior split into three layer groups — furniture, electrics, plumbing — with the water tank tucked directly under the bench seat, a real packaging trick small campervans actually use. Hide the "Einrichtung" layer in the app and the tank underneath it appears, exactly where an installer would need to see it.</p>
+          <p class="desc">A camper's interior split into three layer groups — furniture, electrics, plumbing — with the water tank tucked directly under the bench seat, a real packaging trick small campervans actually use. A fold-out table sits angled off the bench (<code>rotation</code>), a cabinet stays pinned flush against the van's own wall, and hiding the "Einrichtung" layer in the app reveals the tank underneath, exactly where an installer would need to see it.</p>
           <details class="example-code">
             <summary>Show the code</summary>
             <pre class="code-block"><span class="k">element</span> camper {
@@ -649,10 +675,22 @@
       show: <span class="s">"hover"</span>
     }
 
+    <span class="k">element</span> klapptisch {
+      shape: <span class="s">"rect"</span>
+      size: [0.5m, 0.35m]
+      position: [1.55m, 0.55m]
+      rotation: 20
+      style: { fill: <span class="s">"#c9a876"</span>, stroke: <span class="s">"#8a6a42"</span>, strokeWidth: 0.02 }
+      label: <span class="s">"Klapptisch"</span>
+      show: <span class="s">"hover"</span>
+    }
+
     <span class="k">element</span> haengeschrank {
       shape: <span class="s">"rect"</span>
-      size: [0.8m, 0.25m]
-      position: [0m, 1.55m]
+      size: [0.5m, 0.25m]
+      position: [0.9m, 1.55m]
+      placement: <span class="s">"inside"</span>
+      flush: true
       style: { fill: <span class="s">"#cbb994"</span>, stroke: <span class="s">"#8a7850"</span>, strokeWidth: 0.02 }
       label: <span class="s">"Hängeschrank"</span>
       show: <span class="s">"hover"</span>
@@ -751,7 +789,9 @@
       show: <span class="s">"hover"</span>
     }
   }
-}</pre>
+}
+
+<span class="k">connection</span> klapptisch sitzbank</pre>
           </details>
         </div>
       </section>
