@@ -601,6 +601,20 @@
       <button class="ribbon-btn" id="connections-toggle-btn" title="Show a line between every connected pair of elements">
         <svg class="ribbon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17H7A5 5 0 0 1 7 7h2" /><path d="M15 7h2a5 5 0 1 1 0 10h-2" /><line x1="8" x2="16" y1="12" y2="12" /></svg><span class="ribbon-label">Connections</span>
       </button>
+      <!-- Requested directly, with a reference image showing arrow-tipped dimension lines
+           for wall/edge lengths -- scoped to exactly that: edgeLengths' own per-edge
+           measurements gain an alternate arrow-line style (annotations-module.js), toggled
+           by a real plan-wide `settings.dimensionStyle` flag (not a viewer/localStorage
+           preference like Units below it -- this changes what the *plan* itself declares,
+           the same "settings, not local state" call D-107/D-161 already made for
+           showConnections/snap). A rect/circle's own centered "W × H"/"⌀" dimensions text
+           is deliberately untouched either way -- a single summary number has no natural
+           line between two points to draw; the bigger "auto-detect aligned walls and draw a
+           summed dimension chain" idea from the reference image is recorded as F-053
+           instead of built here. -->
+      <button class="ribbon-btn" id="dimension-style-toggle-btn" title="Switch how edge-length measurements are drawn: plain text, or an arrow-tipped dimension line">
+        <svg class="ribbon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16" /><path d="m4 12 4-4" /><path d="m4 12 4 4" /><path d="m20 12-4-4" /><path d="m20 12-4 4" /></svg><span class="ribbon-label">Dimensions: Text</span>
+      </button>
       <!-- F-013: like Snap above, a session UI preference (localStorage) -- whether
            dimension/edge-length labels and the scale bar read in meters or feet-inches is
            about how *this viewer* wants numbers labeled, not a fact about the plan itself,
@@ -2384,6 +2398,7 @@ async function rerender(opts = {}) {
     updateGridToggleUi();
     updateSnapToggleUi();
     updateShowConnectionsToggleUi();
+    updateDimensionStyleToggleUi();
     for (const cb of renderedCallbacks) cb(program, result);
     return result;
   } catch (e) {
@@ -2521,6 +2536,12 @@ function toggleSettingsFlag(key, insertLiteral) {
 
 function toggleGridSetting() { toggleSettingsFlag("grid", "{ }"); }
 function toggleShowConnectionsSetting() { toggleSettingsFlag("showConnections", "true"); }
+// A plan-wide, presence-based flag, the same shape as showConnections/snap -- absent (or any
+// other value) means the existing plain-text edge-length style; "arrows" switches every
+// edgeLengths annotation to an arrow-tipped dimension line (annotations-module.js). Reuses
+// toggleSettingsFlag unchanged -- inserting/removing a differently-valued key is exactly what
+// it already does, nothing new needed here.
+function toggleDimensionStyleSetting() { toggleSettingsFlag("dimensionStyle", '"arrows"'); }
 // D-156: an explicit "make it so" for the grid submenu's own Off item -- unlike
 // toggleGridSetting above (a plain flip, right for the box's own click), Off must be a
 // no-op when the grid is already off rather than turning it back on.
@@ -2624,6 +2645,18 @@ function updateShowConnectionsToggleUi() {
   const btn = document.getElementById("connections-toggle-btn");
   if (!btn) return;
   btn.classList.toggle("active", program?.settings?.showConnections === true);
+}
+
+// A real plan setting (unlike Units below), so this reads program.settings directly rather
+// than a localStorage variable -- and, like Units, the label text itself carries the current
+// state (a two-way style switch, not a plain on/off flag).
+function updateDimensionStyleToggleUi() {
+  const btn = document.getElementById("dimension-style-toggle-btn");
+  if (!btn) return;
+  const arrows = program?.settings?.dimensionStyle === "arrows";
+  btn.classList.toggle("active", arrows);
+  const label = btn.querySelector(".ribbon-label");
+  if (label) label.textContent = arrows ? "Dimensions: Arrows" : "Dimensions: Text";
 }
 
 // D-156: mirrors updateShowConnectionsToggleUi's own shape exactly -- a standalone flat
@@ -2830,6 +2863,7 @@ document.getElementById("snap-size-input").addEventListener("change", (e) => {
   if (Number.isFinite(v) && v > 0) setSnapSize(v);
 });
 document.getElementById("connections-toggle-btn").addEventListener("click", toggleShowConnectionsSetting);
+document.getElementById("dimension-style-toggle-btn").addEventListener("click", toggleDimensionStyleSetting);
 
 document.getElementById("delete-btn").addEventListener("click", () => {
   const p = activePlan();

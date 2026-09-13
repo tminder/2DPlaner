@@ -45,18 +45,39 @@
     return !!settings.edgeLengths;
   }
 
-  // One label per edge of an already-resolved absolute point list — `closed` adds the
+  // Requested directly, with a reference image: edge-length measurements can optionally be
+  // drawn as an arrow-tipped dimension line instead of plain text, switched for the whole
+  // plan via a real `settings.dimensionStyle: "arrows"` flag (the header's own Dimensions
+  // button, docs/index.html) — the same plan-wide, presence-based shape showConnections/snap
+  // already use, not a viewer/localStorage preference like Units, since this changes what the
+  // plan itself declares. Deliberately scoped to edgeLengths only: a rect/circle's own
+  // centered "W × H"/"⌀" text (dimensionText above) has no two points to draw a line
+  // between, so it's untouched either way. The reference image's other idea — auto-detecting
+  // aligned walls along a whole shape's outer boundary and drawing a summed, multi-segment
+  // dimension chain — is a materially bigger, separate capability, recorded as F-053 rather
+  // than attempted here.
+  function dimensionStyleIsArrows(settings) {
+    return settings?.dimensionStyle === "arrows";
+  }
+
+  // The arrowhead marker referenced by every arrow-style dimension line — defined once, an
+  // SVG-standard `orient="auto-start-reverse"` triangle so the same one marker id points
+  // outward at both ends of any line regardless of its own direction. Only ever inserted into
+  // the live SVG when arrow style is actually active (handleRendered below), so a plan using
+  // the default text style never carries the extra markup.
+  const DIM_ARROW_DEFS = `<defs><marker id="dim-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z" fill="#555" /></marker></defs>`;
+
+  // One entry per edge of an already-resolved absolute point list — `closed` adds the
   // wraparound edge (last point back to the first) for rect/polygon, omits it for polyline's
-  // open path (which has no enclosed area to be outside of in the first place). Each label
-  // sits a short distance off its own edge, on the outward side — for a closed shape that
-  // means away from `centroid` (the two normal candidates are checked against it directly,
-  // so this is correct regardless of the point list's own winding direction) — and reads in
-  // the same direction as the edge itself via an SVG rotation, flipped 180° when that would
-  // otherwise render the text upside down.
+  // open path (which has no enclosed area to be outside of in the first place). Each edge's
+  // own outward normal points away from `centroid` for a closed shape (the two normal
+  // candidates are checked against it directly, so this is correct regardless of the point
+  // list's own winding direction); `angle` reads in the same direction as the edge itself,
+  // flipped 180° when that would otherwise render text upside down. Geometry only — text-vs-
+  // arrow rendering happens in edgeLengthMarkup below, using this same data either way.
   function edgeLengthLines(pts, closed, centroid) {
     const n = pts.length;
     const count = closed ? n : n - 1;
-    const OFFSET = 0.15;
     const lines = [];
     for (let i = 0; i < count; i++) {
       const a = pts[i], b = pts[(i + 1) % n];
@@ -71,16 +92,38 @@
       }
       const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
       const readableAngle = angleDeg > 90 || angleDeg < -90 ? angleDeg + 180 : angleDeg;
-      lines.push({
-        pos: [mid[0] + nx * OFFSET, mid[1] + ny * OFFSET],
-        angle: readableAngle,
-        text: core.formatMeasurement(len),
-      });
+      lines.push({ a, b, nx, ny, mid, angle: readableAngle, text: core.formatMeasurement(len) });
     }
     return lines;
   }
 
-  function annotationMarkup(node, anchor, edgeLines) {
+  // Svg-plan-units gap between a shape's own edge and its label/dimension line — unchanged
+  // from before this feature existed. ARROW_TEXT_GAP is arrow-style only, an *additional*
+  // push so the text clears the dimension line itself rather than sitting on top of it
+  // (matching the reference image's own "text above, line below" layout, which needs no gap
+  // cut into the line for the text).
+  const EDGE_OFFSET = 0.15;
+  const ARROW_TEXT_GAP = 0.14;
+
+  // Plain text (unchanged default) or a witness-tick + arrow-tipped dimension line + text
+  // (arrowStyle), for one edge's worth of `edgeLengthLines` geometry. The two witness ticks
+  // run from the edge's own real endpoints out to the offset dimension line — the same
+  // convention the reference image uses to show exactly which two points are being measured,
+  // cheap to add since both endpoints and the offset direction are already computed above.
+  function edgeLengthMarkup({ a, b, nx, ny, mid, angle, text }, arrowStyle) {
+    const gap = EDGE_OFFSET + (arrowStyle ? ARROW_TEXT_GAP : 0);
+    const textPos = [mid[0] + nx * gap, mid[1] + ny * gap];
+    const textEl = `<text x="${textPos[0]*core.M}" y="${textPos[1]*core.M}" transform="rotate(${angle} ${textPos[0]*core.M} ${textPos[1]*core.M})" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#555">${escapeXml(text)}</text>`;
+    if (!arrowStyle) return textEl;
+    const p1 = [a[0] + nx * EDGE_OFFSET, a[1] + ny * EDGE_OFFSET];
+    const p2 = [b[0] + nx * EDGE_OFFSET, b[1] + ny * EDGE_OFFSET];
+    const tick1 = `<line x1="${a[0]*core.M}" y1="${a[1]*core.M}" x2="${p1[0]*core.M}" y2="${p1[1]*core.M}" stroke="#555" stroke-width="0.75" pointer-events="none" />`;
+    const tick2 = `<line x1="${b[0]*core.M}" y1="${b[1]*core.M}" x2="${p2[0]*core.M}" y2="${p2[1]*core.M}" stroke="#555" stroke-width="0.75" pointer-events="none" />`;
+    const dimLine = `<line x1="${p1[0]*core.M}" y1="${p1[1]*core.M}" x2="${p2[0]*core.M}" y2="${p2[1]*core.M}" stroke="#555" stroke-width="1" marker-start="url(#dim-arrow)" marker-end="url(#dim-arrow)" pointer-events="none" />`;
+    return tick1 + tick2 + dimLine + textEl;
+  }
+
+  function annotationMarkup(node, anchor, edgeLines, arrowStyle) {
     const label = node.props.label;
     const dims = node.props.dimensions ? dimensionText(node) : null;
     if (!label && !dims && !edgeLines.length) return "";
@@ -91,9 +134,7 @@
     const textEls = lines.map((line, i) =>
       `<text x="${anchor[0]*core.M}" y="${startY + i*lineHeight}" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#222">${escapeXml(line)}</text>`
     ).join("");
-    const edgeTextEls = edgeLines.map(({ pos, angle, text }) =>
-      `<text x="${pos[0]*core.M}" y="${pos[1]*core.M}" transform="rotate(${angle} ${pos[0]*core.M} ${pos[1]*core.M})" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#555">${escapeXml(text)}</text>`
-    ).join("");
+    const edgeMarkupEls = edgeLines.map((e) => edgeLengthMarkup(e, arrowStyle)).join("");
     // One show mode per element governs label, dimensions, and edge lengths together
     // (D-026/D-038) — a single group, rather than a second independent visibility axis.
     // Label/dimensions get their own nested group (F-018) so nudgeApartAlwaysAnnotations
@@ -101,7 +142,7 @@
     // group, nudging the whole thing would drag each edge-length label away from the edge
     // it's actually describing too, for a conflict that was never about them.
     const labelGroup = textEls ? `<g class="annotation-label">${textEls}</g>` : "";
-    return `<g class="annotation" data-show="${showMode}">${labelGroup}${edgeTextEls}</g>`;
+    return `<g class="annotation" data-show="${showMode}">${labelGroup}${edgeMarkupEls}</g>`;
   }
 
   // Mirrors core's own renderShape branching exactly (same shape/style conditions, same
@@ -112,6 +153,7 @@
   function annotationMarkupForNode(node, positions, settings) {
     const ownAbs = positions[node.id];
     const { shape, style } = node.props;
+    const arrowStyle = dimensionStyleIsArrows(settings);
     if (shape === "rect" && style) {
       const w = core.numOf(node.props.size[0]), h = core.numOf(node.props.size[1]);
       const anchor = [ownAbs[0] + w / 2, ownAbs[1] + h / 2]; // rotation-invariant: it's the pivot itself
@@ -130,16 +172,16 @@
         });
       }
       const edgeLines = edgeLengthsEnabled(node, settings) ? edgeLengthLines(corners, true, anchor) : [];
-      return annotationMarkup(node, anchor, edgeLines);
+      return annotationMarkup(node, anchor, edgeLines, arrowStyle);
     }
     if ((shape === "polyline" || shape === "polygon") && style) {
       const absPts = node.props.points.map((pt) => core.resolvePointAbs(pt, ownAbs, positions));
       const anchor = [absPts.reduce((s, p) => s + p[0], 0) / absPts.length, absPts.reduce((s, p) => s + p[1], 0) / absPts.length];
       const edgeLines = edgeLengthsEnabled(node, settings) ? edgeLengthLines(absPts, shape === "polygon", anchor) : [];
-      return annotationMarkup(node, anchor, edgeLines);
+      return annotationMarkup(node, anchor, edgeLines, arrowStyle);
     }
-    if (shape === "circle" && style) return annotationMarkup(node, ownAbs, []);
-    if (window.PlanModules && window.PlanModules[shape]) return annotationMarkup(node, ownAbs, []);
+    if (shape === "circle" && style) return annotationMarkup(node, ownAbs, [], arrowStyle);
+    if (window.PlanModules && window.PlanModules[shape]) return annotationMarkup(node, ownAbs, [], arrowStyle);
     // A bare/no-shape element gets no annotation — matches core's own prior behavior
     // exactly; a shapeless element can't carry a label yet (documented gap, not something
     // this refactor changes).
@@ -261,6 +303,7 @@
   function handleRendered(prog, result) {
     const svgEl = core.rootEl.querySelector("svg");
     if (!svgEl) return;
+    if (dimensionStyleIsArrows(prog.settings)) svgEl.insertAdjacentHTML("afterbegin", DIM_ARROW_DEFS);
     const positions = {};
     core.computePositions(prog.root, null, [0, 0], positions);
     insertAnnotations(prog.root, positions, prog.settings, svgEl);
