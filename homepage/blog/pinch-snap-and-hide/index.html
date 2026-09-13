@@ -154,12 +154,13 @@
 
     <div class="post">
       <p class="lede">A plan is never finished in one pass — you sketch the shell, add furniture, hide a layer to see what's underneath, resize a couch, nudge it onto the grid, and start again from your phone on the couch. This update is about making all of that feel natural, not just possible.</p>
+      <p>It builds directly on two things we'd just shipped: the <a href="/blog/six-bugs-we-found/">undo button</a> from a few days earlier, and the <a href="/blog/the-toolbar-we-redesigned-three-times/">icon-led toolbar</a> from right before that — both of which this update leans on rather than works around.</p>
 
       <h2>Layers, the way you'd expect them to work</h2>
-      <p>A real plan is a stack of concerns — the room shell, the furniture, the wiring, the plumbing — and sometimes you want to see just one of them at a time. Planagonia now has a proper layers panel: expand any group, and hide or show it with one click. Hide the seating in a camper van build and the water tank hidden underneath it is suddenly visible, exactly where a real installer would need to see it. Reordering works the same way — drag a layer up, and it comes forward in the drawing, the same way it would in any design tool.</p>
+      <p>A real plan is a stack of concerns — the room shell, the furniture, the wiring, the plumbing — and sometimes you want to see just one of them at a time. Planagonia now has a proper layers panel: expand any group, and hide or show it with one click. Hide the seating in a camper van build and the water tank hidden underneath it is suddenly visible, exactly where a real installer would need to see it. Reordering works via simple up/down buttons for now, full drag-to-reorder is still to come, but moving a layer up already brings it forward in the drawing, the same way it would in any design tool. Hiding a layer is saved as part of the plan itself, not just something the app remembers for you on this one device — open the same plan somewhere else, or hand the code to someone else entirely, and it's still hidden there too, exactly matching what you saw.</p>
 
       <h2>Finding — and starting — a plan, properly</h2>
-      <p>Opening or starting a plan used to mean a small dropdown listing names. It's now two dedicated screens, one for each — and every plan shows as a real, live preview of what's actually in it, not just a label. Starting from scratch, picking one of the built-in examples, or going back to something you saved last week are all one click away, and you can actually see what you're picking before you commit to it.</p>
+      <p>Opening or starting a plan used to mean a small dropdown listing names. It's now two dedicated screens, one for each — and every plan shows as a real, live preview of what's actually in it, not just a label. Starting from scratch, picking one of the built-in examples, or going back to something you saved last week are all one click away, and you can actually see what you're picking before you commit to it. These aren't cached thumbnails that can quietly go stale — each preview is rendered live from the plan's own current text, the exact same code that draws the real editor, so it can never show something different from what opening it would actually give you. Signed-in accounts get the same live previews for plans saved to the cloud, right alongside the ones saved locally in your browser.</p>
 
       <h2>A workspace that resizes with you</h2>
       <p>The code on the left and the drawing on the right now share a draggable divider, so you can give either side more room depending on what you're doing — writing a longer description, or looking closely at a dense layout. It remembers where you left it the next time you open the app.</p>
@@ -169,18 +170,21 @@
       <ul>
         <li><strong>Pinch to zoom</strong>, with two fingers, the way you'd expect on any map or photo app.</li>
         <li><strong>Hold a shape</strong> to open its right-click menu — no right mouse button needed.</li>
-        <li><strong>Drag a shape's own corner to resize it</strong> — a small square handle appears on whichever piece of furniture or room you've selected, and dragging it grows or shrinks the shape directly, on both a screen and a trackpad. Circles get one handle on their own edge instead, for resizing the radius.</li>
+        <li><strong>Drag a shape's own corner to resize it</strong> — a small square handle appears on whichever piece of furniture or room you've selected, and dragging it grows or shrinks the shape directly, on both a screen and a trackpad. Dragging any corner except the bottom-right moves the shape's position at the same time as its size, matching how corner-dragging works in any real design tool, while the bottom-right corner alone resizes in place with its position untouched. Circles get one handle on their own edge instead, for resizing the radius.</li>
       </ul>
       <p>Sketch a room shell on your laptop, then pull out your phone on site to double-check a measurement or nudge a wall — all of it now works the way you'd actually reach for it.</p>
 
       <h2>Things line up, if you want them to</h2>
       <p>Turn on the background grid, and dragging or resizing anything now snaps it to that grid automatically — no more eyeballing whether two walls are actually aligned. It's tied directly to the same grid setting you already use to show the grid at all, so the two never disagree with each other about what "aligned" even means.</p>
 
+      <h2>Nudging things with the keyboard, not just the mouse</h2>
+      <p>Not every adjustment deserves a full drag across the screen. Select anything now and the arrow keys move it a small, fixed step at a time — handy for lining something up by feel rather than by eye, or making a correction too small to reliably grab with a mouse. Hold Shift and the same arrow keys resize it instead: width and height on a rectangle, radius on a circle. Both respect exactly the same rules a mouse drag already does — a connected element still moves with whatever it's attached to, and a container still keeps its contents inside it — because under the hood, a keyboard nudge really is just a very small, precise drag.</p>
+
       <div class="callout">
         Want to try any of this? <a href="/app/">Open the app</a> — everything above is already live, no update needed on your end. Bring it up on your phone and give the new touch gestures a go.
       </div>
 
-      <p>None of this changes what Planagonia fundamentally is — a plan is still a small program you (or an AI on your behalf) can write and read. What's changed is how much the editor around that program now feels like a real design tool, on whatever device you actually have in hand.</p>
+      <p>None of this changes what Planagonia fundamentally is — a plan is still a small program you (or an AI on your behalf) can write and read. What's changed is how much the editor around that program now feels like a real design tool, on whatever device you actually have in hand. We kept going from here — the <a href="/blog/new-shapes-and-independent-snapping/">grid and snap pairing introduced above</a> later became two fully independent settings.</p>
     </div>
   </main>
 </div>

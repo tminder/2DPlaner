@@ -153,7 +153,7 @@
     <p class="dateline">September 3, 2026</p>
 
     <div class="post">
-      <p class="lede">Planagonia's whole pitch is that a floor plan can be written, not just drawn — by you, or by an AI on your behalf, in a small language built to be easy to get right. We'd said that since day one. What we hadn't done was actually test it against a second, independent AI with no connection to this project at all. So we did: two AIs, the same brief, the same camper van, zero coordination between them. Here's what comparing their two attempts taught us, and what it led us to build.</p>
+      <p class="lede">Planagonia's whole pitch is that a floor plan can be written, not just drawn — by you, or by an AI on your behalf, in a small language built to be easy to get right. We'd said that since <a href="/blog/planagonia-is-live/">Planagonia went live</a>. What we hadn't done was actually test it against a second, independent AI with no connection to this project at all. So we did: two AIs, the same brief, the same camper van, zero coordination between them. Here's what comparing their two attempts taught us, and what it led us to build.</p>
 
       <h2>The claim we'd never actually put to the test</h2>
       <p>The idea behind Planagonia's own language is specific: it's not meant to be merely readable by an AI, the way most file formats technically are if you feed them in whole. It's meant to be a format an AI can <em>write correctly</em>, on the first try, from a plain description of a room — because that's the entire point of separating "what a plan looks like" (a drawing) from "what a plan is" (a small, plain-text program). We'd used it ourselves constantly. We'd documented it carefully. Neither of those is the same as watching someone with zero context reach for it cold.</p>
@@ -178,10 +178,21 @@
         <li>"Keep contents inside" now applies at every nesting depth, not just the first — an object inside a cabinet inside a van is held to the same rule as the cabinet itself.</li>
         <li>Duplicate names are now caught and flagged the instant they'd cause a conflict, rather than silently redirecting an edit to the wrong object.</li>
         <li>You can now <strong>undo</strong> a mistake — a drag gone wrong, an accidental delete — with Ctrl+Z, the way you'd expect from any editor.</li>
-        <li>Right-clicking a piece of furniture now lets you <strong>duplicate</strong> it, instead of retyping the whole thing to add a second identical chair.</li>
+        <li>Right-clicking a piece of furniture now lets you <strong>duplicate</strong> it, instead of retyping the whole thing to add a second identical chair — including everything nested inside it, like a drawer with its own hardware, all copied together as one unit.</li>
         <li>Windows and doors can now be built directly into a wall, staying flush against it as you slide them along, instead of floating independently over it.</li>
         <li>You can now <strong>export a plan as an image</strong> (PNG or SVG), not just as code — handy for dropping a floor plan straight into a chat or a document.</li>
       </ul>
+
+      <h2>A door that stays part of its own wall</h2>
+      <p>Windows and doors being flush against a wall, mentioned above, is only half of a bigger idea we finished around the same time: a wall built with a door already cut into it now behaves as one real thing, not two shapes that happen to sit next to each other. Drag the wall itself and the whole assembly — wall and door together — moves as one. Drag just the door, and it slides along its own wall instead, staying exactly the width of the doorway the wall was built with, right up until it reaches either end.</p>
+
+      <h2>A side effect: reaching what's actually hidden underneath</h2>
+      <p>Both camper vans, once built, had the exact problem a real camper van has: things stacked on top of each other. A cabinet with a sink inset into it. A shelf sitting flush over a water tank. Once one object is completely covered by another, clicking on it used to be simply impossible — whichever shape painted last always won every click, with no way to reach anything underneath it, and no way to even tell something else was there. We call the fix click-cycling: click once and you get whatever's on top, exactly as before; click again at that same spot and you step to the next thing underneath it, one click at a time, wrapping back to the top once you've gone all the way through. Hovering shows a small floating label naming everything stacked at that point, so you're never left guessing what's actually there. Right-click still gets you a full menu, now including <strong>Bring to Front</strong> and <strong>Send to Back</strong>, for when you want to actually change which one paints on top for good, not just reach it for a moment.</p>
+
+      <h2>Labels that used to overlap now nudge apart on their own</h2>
+      <p>A label set to always show — a room's name, a piece of furniture's dimensions — used to render exactly where its own shape sits, even if that meant landing squarely on top of a neighbor's label. Two adjacent, similarly-sized pieces of furniture (a bed and a desk, in one of the camper van tests) reliably produced exactly this. Planagonia now measures every always-visible label's actual rendered size and, whenever two of them genuinely overlap, nudges both apart along whichever direction moves them the least — small and automatic, and it only ever kicks in when there's a real conflict to resolve in the first place.</p>
+
+      <p>A couple of smaller things came out of the same stretch of testing: the app's header now links straight back to the main Planagonia site, where before there was no way back to the homepage without editing the URL by hand, and every page across the site — the app included — finally got a proper favicon instead of a generic icon in the browser tab.</p>
 
       <div class="callout">
         Want to see any of this yourself? <a href="/app/">Open the app</a> — everything above is already live, no update needed on your end.

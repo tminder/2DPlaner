@@ -161,7 +161,14 @@
 
       <h2>You can finally create an account</h2>
       <p>Until now, whatever you drew in Planagonia only ever lived in the one browser you drew it in — close it on a different computer and your plan simply wasn't there. That's fixed. You can now sign up with just an email address and a password, confirm your email with one click, and save your plans to your account instead of just to your browser. Start a layout on your laptop at home, check it later on your phone — it'll be right there.</p>
-      <p>We kept the sign-up itself as small as we could: no username to invent, no extra fields. Just an email and a password, and we take care of the rest.</p>
+      <p>We kept the sign-up itself as small as we could: no username to invent, no extra fields. Just an email and a password, and we take care of the rest. We also added basic protection against repeated login attempts behind the scenes, so the sign-in itself can't simply be guessed at by brute force — the kind of thing you never see directly, but that has to be in place before letting anyone create their own account at all.</p>
+
+      <h2>A single page that explains everything, and one to see your account</h2>
+      <p>Alongside the app itself, this launch brought two more pages: a proper <a href="/docs/">documentation page</a>, covering getting started, every kind of element and connection, and the full source of all three example plans copied verbatim so you can paste one straight in and get exactly what's described; and a <a href="/profile/">profile page</a> showing who's signed in and the plans saved to their account. Signing in on one is recognized by the other automatically, in the same browser tab — a small, direct benefit of building both to live under the same address as the app itself, rather than as separate, disconnected tools bolted together afterward.</p>
+
+      <h2>Dragging works the moment you paste in a plan, not just after you've typed a bit</h2>
+      <p>Because an AI can hand you a whole plan in one shot rather than build it up one line at a time, we found a real gap only by testing exactly that: paste a complete, freshly-generated plan straight into the editor and try to drag something, and dragging could silently stop working entirely — no error, nothing in the corner of the screen, it just didn't happen. The cause was subtle: the editor keeps a few small helpers active behind the scenes to make dragging, labels, and syntax highlighting work, and normally switches them on for you automatically. But if a plan arrives already fully formed, rather than growing gradually as you type — exactly how an AI hands you one — that automatic step could get silently skipped. It's fixed now, and covered by a permanent check so it can't quietly come back.</p>
+      <p>Two smaller things came out of the same pass: opening one of the built-in example plans just to look at it no longer adds a clutter entry to "My plans" — only actually changing something does that now — and the <strong>Fit</strong> button, which recenters the view on your whole plan, reliably does exactly that in every case we could find, including after dragging something well outside the original view.</p>
 
       <h2>The whole site now actually works on a phone</h2>
       <p>Until this week, Planagonia was designed with a full-size computer screen in mind. Rather than build a separate mobile version, we kept the desktop layout as the one source of truth and layered phone-specific rules on top of it, so nothing about the computer experience changed:</p>
@@ -177,11 +184,9 @@
         <li>A small "Beta" label on the app itself. It's still evolving quickly, and we'd rather say so than let you find out the hard way.</li>
       </ul>
 
-      <div class="callout">
-        Curious what any of this actually looks like? <a href="/app/">Open the app</a> and try it — no account needed just to look around, though now you can save your work to one if you'd like it to follow you.
-      </div>
+      <p>Curious what any of this actually looks like? <a href="/app/">Open the app</a> and try it — no account needed just to look around, though now you can save your work to one if you'd like it to follow you.</p>
 
-      <p>We'll keep posting here as Planagonia grows — the next things on our list include letting you resend a confirmation email if the first one gets lost, and jumping straight from a saved plan on your profile into the app. Thanks for reading, and for trying something this new.</p>
+      <p>We'll keep posting here as Planagonia grows — the next things on our list include letting you resend a confirmation email if the first one gets lost, and jumping straight from a saved plan on your profile into the app. Thanks for reading, and for trying something this new. If you want to see where things went from here, the <a href="/blog/">rest of the blog</a> picks up right where this post leaves off.</p>
     </div>
   </main>
 </div>

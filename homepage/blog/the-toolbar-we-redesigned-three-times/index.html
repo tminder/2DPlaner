@@ -168,16 +168,27 @@
       <h2>A real popup instead of browser prompts</h2>
       <p>Signing in used to mean answering two of your browser's own plain <code>prompt()</code> boxes, one for a username and one for a password — functional, but the kind of thing that makes a product look unfinished. That's gone now too. Signing in and creating an account both happen in an actual popup inside the app, built to match the same sign-in form already used on your account page, so it's the same flow and the same wording whichever way you get there — and a genuine error message if something goes wrong, instead of nothing at all.</p>
 
+      <h2>Toggles that actually look like toggles</h2>
+      <p>The grid on/off setting used to live as a checkmark next to a menu item — technically clear, but nothing about it looked interactive until you'd already opened the menu and found it. It's now a plain button in the header that visibly stays pressed while the grid is on, the same way a Bold button in a word processor looks pressed while it's active — no menu required to even tell whether it's currently on.</p>
+
+      <h2>Connecting two things that aren't touching</h2>
+      <p>Wiring two elements together — a power line to a socket, a fixture to its own supply — used to mean small +/- icons that only ever appeared once two things were already physically touching each other. That's gone, replaced with a single gesture: hold Ctrl (or Cmd on a Mac) and drag from one element to another, anywhere on the canvas, even if they're nowhere near each other yet. Drop it on a valid target and a small menu asks what kind of relationship you meant — connected, or attached to its outside edge — worded in plain terms, the same way the new Placement submenu below already is. Removing a connection moved out of that old icon entirely and into the right-click menu instead, sitting next to Duplicate and the object's other actions.</p>
+
       <h2>A few other things that shipped alongside it</h2>
+      <p>Alongside the toolbar itself, and the <a href="/blog/six-bugs-we-found/">undo button and duplicate action we'd added only a couple of days earlier</a>, a few smaller things shipped this week too:</p>
       <ul>
-        <li>Planagonia now has a real, automated test suite — a growing set of checks that actually launch the app in a browser and interact with it, run before anything ships. It's the kind of infrastructure you don't see, but it's the reason we can rebuild something like the toolbar three times in a day and still be confident nothing else quietly broke along the way.</li>
+        <li>Planagonia now has a real, automated test suite — a growing set of checks that actually launch the app in a browser and interact with it, run before anything ships. It's the kind of infrastructure you don't see, but it's the reason we can rebuild something like the toolbar three times in a day and still be confident nothing else quietly broke along the way. It now also runs on its own, on every single change we make, rather than only when someone remembers to run it by hand first.</li>
         <li>One of the app's built-in starter examples, previously a single house with one power line, is now a small electrical grid — three connected parcels, each with its own house, all wired to a shared distribution cabinet, styled entirely through a handful of named, reusable style definitions rather than repeating the same colors on every shape. A good look at what that feature is actually for once a plan gets bigger than a single room.</li>
-        <li>The right-click menu on any object picked up a proper "Placement" submenu — options for keeping something inside its container, snapped flush to its edge, or set free of both, each shown with a checkmark for whichever is currently active, worded in plain terms instead of the underlying property names.</li>
+        <li>Hovering an element that's connected to another now highlights its partner in the exact same color as an ordinary hover, instead of a separate, slightly different one — the two ends of one connection read as one relationship now, not two unrelated highlights.</li>
       </ul>
 
-      <div class="callout">
-        Want to see where it landed? <a href="/app/">Open the app</a> — the toolbar at the top is exactly what's described here, live right now.
-      </div>
+      <h2>Placement, as a menu instead of a mystery</h2>
+      <p>The right-click menu on any object also picked up a proper "Placement" submenu — three always-shown options, each naming the actual container by name: keep it inside, snap it flush to the edge, or set it free of both, with a checkmark on whichever is currently active. Picking "Inside" or "Snapped to edge" doesn't just set a property and leave the object exactly where it happened to be — it immediately snaps into a valid position using the same math a drag already uses, so choosing an option and seeing nothing visibly change never happens.</p>
+
+      <h2>More authoring mistakes caught automatically</h2>
+      <p>Beyond the checks we added <a href="/blog/six-bugs-we-found/">a couple of days earlier</a> for overlaps and duplicate names, the app now also recognizes when a plan uses a property that doesn't actually apply to what it's attached to — a rotation value on a shape that can't rotate, an "always show" dimension label on a shape with no single fixed width to show, a wall's own "flush" setting declared without it actually being placed inside anything. Small typos and copy-paste leftovers that used to sit silently in a plan now show up in the same validation panel as everything else that's actually wrong with it.</p>
+
+      <p>Want to see where it landed? <a href="/app/">Open the app</a> — the toolbar at the top is exactly what's described here, live right now.</p>
 
       <p>We're not precious about a first attempt here, or a second one — if a real look at something reveals it isn't quite right, we'd rather rebuild it the same day than leave it as-is until "later." Thanks for reading, and for putting up with a toolbar that occasionally changes shape underneath you.</p>
     </div>

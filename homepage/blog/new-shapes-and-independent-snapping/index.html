@@ -160,8 +160,14 @@
       <p>It's deliberately generic — the four basic shapes the language itself is built from, not a catalog of furniture. Anything more specific than that is exactly what you already have code and AI for.</p>
 
       <h2>Grid and Snap, finally two separate switches</h2>
-      <p>Turning on the background grid used to also turn on snapping, whether you wanted it or not, and there was no clean way to set a snap distance that didn't match the grid's own spacing. Both of those are gone now: <strong>Grid</strong> and <strong>Snap</strong> are two independent buttons in the header, each with its own flyout, each with its own size. Want a fine visual grid but coarse snapping? Want snapping on with no grid showing at all? Both are one click away now, and neither setting has any opinion about what the other one is doing.</p>
+      <p>Turning on the <a href="/blog/pinch-snap-and-hide/">background grid we shipped a few days ago</a> used to also turn on snapping, whether you wanted it or not, and there was no clean way to set a snap distance that didn't match the grid's own spacing. Both of those are gone now: <strong>Grid</strong> and <strong>Snap</strong> are two independent buttons in the header, each with its own flyout, each with its own size. Want a fine visual grid but coarse snapping? Want snapping on with no grid showing at all? Both are one click away now, and neither setting has any opinion about what the other one is doing.</p>
       <p>The grid's own flyout also grew the two settings that were previously code-only: whether it renders behind your shapes or in front of them as a translucent overlay, and how see-through that overlay is.</p>
+
+      <h2>Selecting something no longer jumps it to the front</h2>
+      <p>Selecting a shape used to visually move it in front of everything else so you could actually see and work with it — useful, but it meant a plan's own paint order silently changed just from clicking around, which isn't something a click is supposed to do on its own. Now the selected shape stays exactly where it was in the stack; instead, whatever's actually covering it becomes translucent for as long as it's selected, so you can see through it without anything else moving. Deliberately sending something to the back or front for good is still exactly one right-click away, same as before — it's only the side effect of plain selection that's gone.</p>
+
+      <h2>Two fewer handles on a plain line</h2>
+      <p>A two-point line — a cable, a simple divider — used to show four scale-corner handles when selected, the same set every rectangle gets, even though dragging any of them never did anything the line's own two endpoint handles couldn't already do more directly. A straight two-point line now shows exactly its two ends and nothing else; anything with three or more points — a real polygon, a multi-point path — keeps its full set of scale handles exactly as before. It's the same instinct behind the <a href="/blog/the-toolbar-we-redesigned-three-times/">Placement submenu we added earlier</a> — one more small mismatch between what a shape actually needs and what the editor was showing for it, closed the same careful way.</p>
 
       <h2>See it in feet and inches, without changing a thing</h2>
       <p>Planagonia's plan language is — and stays — metric under the hood, the same way it always has been: real-world units, unambiguous for a person or an AI to write. But not everyone thinks in meters, so the header now has a <strong>Units</strong> toggle that switches the scale bar and any dimension labels on your plan to feet and inches on the fly. Nothing about your plan's own code changes when you flip it — it's purely how the numbers are displayed to you, so a plan written by anyone, in any unit preference, still reads the same to everyone else.</p>
@@ -170,7 +176,7 @@
         Want to try any of this? <a href="/app/">Open the app</a> — everything above is already live, no update needed on your end.
       </div>
 
-      <p>None of these change what a plan fundamentally is in Planagonia — still a small program, still something an AI can write for you and you can still shape by hand. They're just three fewer moments where the editor made you work around it instead of with it.</p>
+      <p>None of these change what a plan fundamentally is in Planagonia — still a small program, still something an AI can write for you and you can still shape by hand. They're just five fewer moments where the editor made you work around it instead of with it.</p>
     </div>
   </main>
 </div>
