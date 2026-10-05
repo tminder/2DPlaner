@@ -4,7 +4,7 @@
 // shared-corner pattern needs for the same visual (exactly what every shipped wall/door
 // in this app's own apartment example does today, by hand).
 //
-//   element w { compose: "wallWithDoor", from: [0m,0m], to: [5m,0m], doorAt: 2m, doorWidth: 0.9m }
+//   element w { compose: "wallWithDoor" from: [0m,0m] to: [5m,0m] doorAt: 2m doorWidth: 0.9m }
 //
 // First validated as Prototypes/17-module-composition/ (rendering only, D-046); this is
 // that same expansion logic, ported into the real product, plus the drag-editability half

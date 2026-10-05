@@ -548,7 +548,8 @@
     </div>
     <!-- F-042: the one setting with a genuine on/off state today (F-014's grid is either
          present or absent in `settings`) -- see toggleGridSetting()/updateGridToggleUi()
-         below. Style presets and the always-injected AUTO_MODULES have no real off-state
+         below. Style presets and the always-loaded modules (interactivity/code-highlight)
+         have no real off-state
          to expose this same way (F-042's own noted caveat), so they're deliberately not
          offered here. A pressed/highlighted background marks the active state (matching
          Word's own Bold/Italic toggle-button convention), not a checkmark.
@@ -560,7 +561,8 @@
     <div class="menu-tab-panel ribbon-group" data-tab="view" role="tabpanel" hidden>
       <!-- D-156: a stable, hidden-by-default slot core always provides, exactly like
            #hierarchy-panel's own established shape -- interactivity-module.js finds it and
-           unhides it once loaded (it's always in AUTO_MODULES, so in practice immediately),
+           unhides it once loaded (interactivity-module.js is always loaded, so in practice
+           immediately),
            rather than the module appending its own floating button over the viewer the way
            it used to. Reset zoom/pan is this module's own concept (viewState lives there
            entirely, D-006), so core can't implement the click itself -- it only owns the
@@ -1328,22 +1330,60 @@ connection klapptisch sitzbank
 // EXAMPLES' own keys since those are also used as (stable, never user-facing) identifiers.
 const EXAMPLE_LABELS = { blank: "Blank", apartment: "Studio Apartment", utility: "Electrical Grid", campervan: "Campervan Build" };
 
-// Every plan gets these regardless of its own text — display (label/dimensions/
-// edgeLengths), interaction (drag/select/connect), and a highlighted code pane, the same
-// way core aim #1 intends, without every plan having to remember module declarations.
-// Order matters: annotations-module.js has to run first so its labels render like part of
-// the base shapes, with interactivity's own icons/scale-bar/fit-button still ending up on
-// top of them (D-039); code-highlight-module.js has to run after interactivity-module.js
-// since it reads the selectedId signal interactivity's own render pass sets.
-// grid-module.js (F-014) always inserts itself as the SVG's very first child regardless of
-// callback order, so its position in this list doesn't affect stacking.
-const AUTO_MODULES = ["grid-module.js", "annotations-module.js", "interactivity-module.js", "code-highlight-module.js"];
+// D-173: interactivity (drag/select/connect) and the highlighted code pane are the hosted
+// editor itself (D-034) — no plan property gates them, every plan gets both regardless of
+// its own text. grid/annotations/wall-with-door are different: each one only ever renders
+// something a plan's own content explicitly asked for (settings.grid, label/dimensions/
+// edgeLengths, compose:"wallWithDoor") — force-loading them for every plan regardless of use
+// made "core" pay for three modules most plans never touch (S-025). Loaded only when the
+// parsed plan actually uses what each one renders instead, via MODULE_NEEDED below.
+//
+// Order matters for the three that register an onRendered callback: annotations-module.js
+// has to run first so its labels render like part of the base shapes, with interactivity's
+// own icons/scale-bar/fit-button still ending up on top of them (D-039); code-highlight-
+// module.js has to run after interactivity-module.js since it reads the selectedId signal
+// interactivity's own render pass sets. grid-module.js (F-014) always inserts itself as the
+// SVG's very first child regardless of callback order, so its position here is free.
+// wall-with-door-module.js runs via registerBeforeRender, not onRendered — its own ordering
+// relative to the others here doesn't matter, only that it's loaded before expandTree() runs.
+const ORDERED_MODULES = ["grid-module.js", "annotations-module.js", "interactivity-module.js", "code-highlight-module.js"];
 
-// hierarchy-module.js is trusted the same as any AUTO_MODULES entry (never prompts D-045's
+function planUsesGrid(parsed) {
+  const grid = parsed.settings && parsed.settings.grid;
+  // "none" drives grid-snapped dragging only, read directly off settings.grid.size by
+  // interactivity-module.js — grid-module.js itself has nothing to render in that case.
+  return !!grid && grid.layer !== "none";
+}
+function planUsesAnnotations(parsed) {
+  // showConnections (D-103) is annotations-module.js's own render too (the dashed
+  // .connection-line between connected elements), plan-wide and independent of any single
+  // element's own label/dimensions/edgeLengths -- missing this would silently drop
+  // connection lines for a plan that sets the flag but has no element-level annotations.
+  if (parsed.settings && (parsed.settings.edgeLengths || parsed.settings.dimensionStyle || parsed.settings.showConnections === true)) return true;
+  return Object.values(parsed.nodesById).some(
+    (n) => n.props.label != null || n.props.dimensions != null || n.props.edgeLengths != null
+  );
+}
+function planUsesWallWithDoor(parsed) {
+  return Object.values(parsed.nodesById).some((n) => n.props.compose === "wallWithDoor");
+}
+const MODULE_NEEDED = {
+  "grid-module.js": planUsesGrid,
+  "annotations-module.js": planUsesAnnotations,
+  "interactivity-module.js": () => true,
+  "code-highlight-module.js": () => true,
+};
+function detectNeededModules(parsed) {
+  const needed = ORDERED_MODULES.filter((name) => MODULE_NEEDED[name](parsed));
+  if (planUsesWallWithDoor(parsed)) needed.push("wall-with-door-module.js");
+  return needed;
+}
+
+// hierarchy-module.js is trusted the same as any entry above (never prompts D-045's
 // confirm() dialog) but isn't force-loaded on every render — it's genuinely optional,
 // purely behind the Layers header button, see setHierarchyPanelOpen below for why that
 // makes it a real candidate to load on demand instead.
-const TRUSTED_MODULES = [...AUTO_MODULES, "hierarchy-module.js"];
+const TRUSTED_MODULES = [...ORDERED_MODULES, "wall-with-door-module.js", "hierarchy-module.js"];
 
 // ---------- Built-in ("internal") module registry — none shipped by default; a plan can
 // still load its own via module "name.js" (external) or a bare internal name if one is
@@ -1653,8 +1693,9 @@ function deactivateRemovedModules(currentModuleNames) {
 
 function isUrlLike(name) { return name.includes("/") || name.endsWith(".js") || name.includes("://"); }
 
-// The modules this app ships itself (TRUSTED_MODULES — AUTO_MODULES plus
-// hierarchy-module.js, loaded on demand rather than force-injected, see
+// The modules this app ships itself (TRUSTED_MODULES — ORDERED_MODULES plus
+// wall-with-door-module.js, content-triggered the same way (see planUsesWallWithDoor), and
+// hierarchy-module.js, loaded on demand via the Layers button instead, see
 // setHierarchyPanelOpen) run with the same trust as core — a plan declaring one of these
 // by name never prompts, whether that declaration was force-injected, written out
 // explicitly, or (hierarchy-module.js) triggered by clicking its own header button.
@@ -2039,8 +2080,8 @@ function nodeDragEdits(node, parent, dx, dy, base, cornerUsers, warnings) {
 // ---------- Wire up ----------
 const sourceEl = document.getElementById("source");
 
-// F-040: restored here, on the bare textarea, before code-highlight-module.js (one of the
-// always-auto-loaded AUTO_MODULES, injected as a <script> moments from now) gets a chance
+// F-040: restored here, on the bare textarea, before code-highlight-module.js (always
+// unconditionally loaded, injected as a <script> moments from now) gets a chance
 // to run — that module moves this same textarea into its own wrapper and copies the
 // textarea's *computed* flex-basis onto it once, at that exact moment. Restoring later
 // (e.g. from the resizer's own wiring near the bottom of this file) would either miss that
@@ -2445,17 +2486,19 @@ async function rerender(opts = {}) {
   }
   try {
     const parsed = parse(sourceEl.value);
-    // D-034: every plan gets interactivity (and the other AUTO_MODULES) by default,
-    // regardless of whether its own text declares them — true on every render, not just at
-    // creation, so a plan that reached the editor any way at all (typed, pasted, loaded)
-    // gets the same guarantee. hierarchy-module.js isn't in AUTO_MODULES (D-126, loaded on
-    // demand instead — see setHierarchyPanelOpen) but once loaded stays required on every
-    // later render too: deactivateRemovedModules (below) tears down anything currently
-    // loaded that isn't in this set, so without this it would be evicted again the very
-    // next render after being opened — self-reinforcing once loadedExternal has it, a
-    // fixed point that needs no separate tracking variable.
+    // D-034/D-173: every plan gets interactivity and a highlighted code pane regardless of
+    // whether its own text declares them — true on every render, not just at creation, so a
+    // plan that reached the editor any way at all (typed, pasted, loaded) gets the same
+    // guarantee. grid/annotations/wall-with-door are only added when detectNeededModules
+    // finds the plan's own content actually uses them (see MODULE_NEEDED above). hierarchy-
+    // module.js isn't force-loaded at all (D-126, loaded on demand instead — see
+    // setHierarchyPanelOpen) but once loaded stays required on every later render too:
+    // deactivateRemovedModules (below) tears down anything currently loaded that isn't in
+    // this set, so without this it would be evicted again the very next render after being
+    // opened — self-reinforcing once loadedExternal has it, a fixed point that needs no
+    // separate tracking variable.
     const stickyLazyModules = ["hierarchy-module.js"].filter((name) => loadedExternal.has(name));
-    const requiredModules = [...new Set([...AUTO_MODULES, ...parsed.modules, ...stickyLazyModules])];
+    const requiredModules = [...new Set([...detectNeededModules(parsed), ...parsed.modules, ...stickyLazyModules])];
     deactivateRemovedModules(requiredModules);
     await ensureModulesLoaded(requiredModules);
     program = expandTree(parsed);
@@ -3241,7 +3284,7 @@ paneResizerEl.addEventListener("keydown", (e) => {
 // button only ever toggles a class + persists it. #hierarchy-panel itself is a stable,
 // always-present empty slot (see its own HTML comment) that the module fills.
 //
-// D-126: hierarchy-module.js is loaded on demand (not AUTO_MODULES) — this is the one
+// D-126: hierarchy-module.js is loaded on demand (not force-injected) — this is the one
 // place both real ways the panel can open (a click, or restoring "left open" from
 // localStorage below) already funnel through, so it's the right place to trigger the
 // load too. ensureModulesLoaded's own dedup (loadedExternal) makes the guard here just an

@@ -82,10 +82,6 @@ Reported twice, independently: once early (a screenshot, no plan source supplied
 
 **Not yet fixed.** A reasonable direction, not yet built or agreed: when the stack badge's "current" entry is the same node as an already-visible `show:"always"` annotation, skip repeating its name in that one line (keep the `❯` marker for position-in-cycle clarity, drop the redundant text) — every *other* candidate in the stack still needs its name listed, since nothing else on screen names them.
 
-## S-025 Auto-load policy is applied inconsistently across modules that share the same justification
-
-`grid-module.js` is auto-loaded specifically so `settings.grid` isn't silently inert for an author who didn't know to declare the module. `wall-with-door-module.js` is equally settings/property-driven (`compose: "wallWithDoor"`) but is *not* auto-loaded — an undeclared `compose` would presumably also silently do nothing, the exact gap the grid module's own auto-load exists to avoid.
-
 ## S-027 `wall-with-door-module.js`'s synthesized child ids have no collision check against real sibling ids
 
 `segment`'s hand-built ids (`${node.id}_wall_a`, etc.) aren't checked against existing sibling ids before use. If an author's own plan happens to declare a colliding id, this could silently corrupt drag targeting the same way F-028 describes for hand-authored duplicates — and this path is exempt from the load-time duplicate-id check, since these nodes are synthesized after parsing, not part of the parsed source. Untested edge case, not confirmed broken.
