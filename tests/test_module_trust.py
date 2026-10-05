@@ -3,10 +3,8 @@
 specifierNamesModule(). This area (D-045's untrusted-module confirm() gate) had zero prior
 test coverage.
 
-D-126: hierarchy-module.js is trusted (TRUSTED_MODULES) despite no longer being force-
-loaded on every render (AUTO_MODULES) -- it's loaded on demand instead, but must still
-never trigger the confirm() dialog, whether loaded by an explicit declaration or by
-clicking the Layers button."""
+hierarchy-module.js is trusted (TRUSTED_MODULES) and never triggers the confirm() dialog,
+whether loaded via its own unconditional force-injection (D-174) or an explicit declaration."""
 
 from helpers import load_plan
 
@@ -19,7 +17,7 @@ def test_path_qualified_auto_module_name_is_now_trusted(app_page):
     assert app_page.evaluate("isTrustedModule('modules/grid-module.js')") is True
 
 
-def test_hierarchy_module_is_trusted_despite_not_being_auto_loaded(app_page):
+def test_hierarchy_module_is_trusted(app_page):
     assert app_page.evaluate("isTrustedModule('hierarchy-module.js')") is True
 
 

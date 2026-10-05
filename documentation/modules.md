@@ -18,11 +18,12 @@ app — reuses that architecture verbatim: `docs/index.html` is core (parse/rend
 Documented here in depth: `docs/interactivity-module.js` (D-031),
 `docs/annotations-module.js` (D-039), `docs/code-highlight-module.js` (D-043),
 `docs/hierarchy-module.js` (D-112), `docs/grid-module.js` (F-014), and
-`docs/wall-with-door-module.js` (D-046/D-071) — interactivity and code-highlight
-unconditionally force-injected into every plan; grid/annotations/wall-with-door
+`docs/wall-with-door-module.js` (D-046/D-071) — interactivity, code-highlight, and hierarchy
+unconditionally force-injected into every plan (D-174: module loading is decided purely by
+the plan's own code, never by a UI interaction like a button click, so hierarchy-module.js
+no longer waits for the Layers button, D-126); grid/annotations/wall-with-door
 content-triggered instead (D-173, see below) — loaded only when the plan's own content
-actually uses what each one renders; `hierarchy-module.js` loaded on demand via a header
-button instead (D-126, see below).
+actually uses what each one renders.
 
 ## What a module can do
 
@@ -63,27 +64,32 @@ Community-published external modules (F-045) are listed at
 [planagonia.com/modules](https://www.planagonia.com/modules/) — check there for an
 existing URL before writing a new module from scratch.
 
-**`interactivity-module.js` and `code-highlight-module.js` are unconditionally force-injected
-into every plan, whether it declares them or not, on every render** — `docs/`'s own
-`rerender()` always includes both regardless of what the plan's own text says (D-034,
-extended by D-043). Neither is gated on anything a plan can write: they're the hosted editor
-itself, not a feature a plan opts into.
+**`interactivity-module.js`, `code-highlight-module.js`, and `hierarchy-module.js` are
+unconditionally force-injected into every plan, whether it declares them or not, on every
+render** — `docs/`'s own `rerender()` always includes all three regardless of what the
+plan's own text says (D-034, extended by D-043; `hierarchy-module.js` joined this set in
+D-174, replacing its own earlier click-triggered load, D-126 — see below). None of the three
+is gated on anything a plan can write: they're the hosted editor itself, not a feature a plan
+opts into, and (D-174's own governing rule) **module loading is decided purely by the plan's
+own code — never by a UI interaction like a button click** — so a module with no plan-content
+signal to gate on is either always loaded or it isn't gated by this mechanism at all.
 
 **`grid-module.js`, `annotations-module.js`, and `wall-with-door-module.js` are
 content-triggered instead (D-173): loaded automatically, but only when the plan's own parsed
 content actually uses what that module renders** — `settings.grid` (grid), any element's
-`label`/`dimensions`/`edgeLengths` or the plan-wide `settings.edgeLengths`/
-`settings.dimensionStyle` (annotations), or any element's `compose: "wallWithDoor"`
-(wall-with-door) — via `detectNeededModules()`/`MODULE_NEEDED` in `docs/index.html`. This
-replaces an earlier, blanket version of this idea (grid and annotations force-injected into
-*every* plan regardless of use, the same as interactivity/code-highlight above) that made
-"core" pay for two modules most plans never touch, and fixes an inconsistency the earlier
-version created on its own terms: `wall-with-door-module.js` is just as settings/property-
-driven as grid, but previously needed an explicit `module` declaration instead, with nothing
-warning an author if `compose: "wallWithDoor"` was used without one (the exact gap the old
-blanket force-injection existed to avoid for grid — tracked as S-025, now closed). D-020's
-own loading mechanism stays opt-in-by-declaration per plan regardless; this three-way split
-(unconditional / content-triggered / on-demand) is `docs/`'s own convenience layered on top
+`label`/`dimensions`/`edgeLengths`, or the plan-wide `settings.edgeLengths`/
+`settings.dimensionStyle`/`settings.showConnections` (annotations), or any element's
+`compose: "wallWithDoor"` (wall-with-door) — via `detectNeededModules()`/`MODULE_NEEDED` in
+`docs/index.html`. This replaces an earlier, blanket version of this idea (grid and
+annotations force-injected into *every* plan regardless of use, the same as
+interactivity/code-highlight above) that made "core" pay for two modules most plans never
+touch, and fixes an inconsistency the earlier version created on its own terms:
+`wall-with-door-module.js` is just as settings/property-driven as grid, but previously needed
+an explicit `module` declaration instead, with nothing warning an author if
+`compose: "wallWithDoor"` was used without one (the exact gap the old blanket force-injection
+existed to avoid for grid — tracked as S-025, now closed). D-020's own loading mechanism
+stays opt-in-by-declaration per plan regardless; this split (unconditional / content-
+triggered) is `docs/`'s own convenience layered on top
 of it, not a change to how modules work generally. The order grid/annotations load in when
 needed is still deliberate, not alphabetical: annotations has to finish registering its
 `onRendered` callback before interactivity does, so its labels land in the SVG *before*
@@ -97,12 +103,17 @@ to be `withAutoModules()`'s whole job, removed once it became clear the lines it
 purely decorative, since neither force-injection nor content-detection ever depended on them
 being present).
 
-**`hierarchy-module.js` ships but is deliberately not force-loaded or content-triggered
-(D-112, D-126)** — it's driven by UI state (is the Layers panel open), not plan content,
-which content-detection can't express. `docs/`'s own header "Layers" button loads it the
-first time the panel is opened — or immediately, if a plan's own text happens to declare it
-explicitly, exactly like any other module. It's still trusted the same as every module
-above (`TRUSTED_MODULES`, below) — it just isn't auto-loaded by any mechanism.
+**`hierarchy-module.js` (D-112) is unconditionally force-injected alongside interactivity and
+code-highlight, above — D-126's original click-triggered load (behind the header's "Layers"
+button) was reversed by D-174** once it became clear that rule conflicted with "only the
+plan's own code decides what loads": there's no plan-content signal for "this plan wants a
+layers panel" the way grid/annotations/wall-with-door each have one (any plan with more than
+one element can use it), so the two choices left were force-injecting it like
+interactivity/code-highlight, or gating it on a UI action — and the latter is exactly what
+D-174 rules out. The Layers button itself is unchanged in what it does for the person using
+the app: it still only ever toggles `#hierarchy-panel`'s visibility (a `localStorage`-backed
+session preference, not plan content) — it just no longer also triggers a module fetch,
+since the module is already loaded by the time anyone could click it.
 
 ## Trust model
 
