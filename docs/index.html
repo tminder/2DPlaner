@@ -2475,25 +2475,34 @@ async function rerender(opts = {}) {
   }
 }
 
-// F-048/D-157/D-172: a module can now add its own simple, single-click button to the
-// header, landing in a dedicated "Modules" tab (hidden until the first one registers --
-// see the HTML's own comment on #menu-tab-modules/the matching panel). Deliberately
-// stateless beyond creation/removal: no isActive callback, no re-render bookkeeping here
-// -- a module that needs to keep its own button in sync already has core.onRendered for
-// that, the same way Grid/Snap/Units already update their own UI from inside rerender()
-// one level up, just module-side instead of core-side. DOM lookups happen fresh on every
-// call rather than once at script-init time, so this doesn't care whether it's ever
-// called before or after the tab elements exist in the DOM (they always do by the time
-// any module's own async-loaded script can possibly run, but there's no reason to rely on
-// that ordering when a fresh lookup costs nothing here).
-function registerHeaderAction({ id, label, title, onClick }) {
+// F-048/D-157/D-172: a module can add its own simple, single-click button to the header.
+// Defaults to a dedicated "Modules" tab (hidden until the first one registers -- see the
+// HTML's own comment on #menu-tab-modules/the matching panel), but `tab` lets a module
+// land its button in an existing File/Edit/View panel instead, and `position` controls
+// where within that panel's row. `.module-action`'s own plain-text, no-icon styling
+// (applied below, unconditionally) is what actually answers "how do you tell a module
+// button from a native one" -- it was never the dedicated tab alone doing that job, so
+// mixing into an existing tab doesn't weaken D-172's own trust reasoning (no gate beyond
+// D-045's confirm() dialog -- a loaded module already has full DOM access either way).
+// Deliberately stateless beyond creation/removal: no isActive callback, no re-render
+// bookkeeping here -- a module that needs to keep its own button in sync already has
+// core.onRendered for that, the same way Grid/Snap/Units already update their own UI from
+// inside rerender() one level up, just module-side instead of core-side. DOM lookups
+// happen fresh on every call rather than once at script-init time, so this doesn't care
+// whether it's ever called before or after the tab elements exist in the DOM (they always
+// do by the time any module's own async-loaded script can possibly run, but there's no
+// reason to rely on that ordering when a fresh lookup costs nothing here).
+function registerHeaderAction({ id, label, title, onClick, tab = "modules", position = "end" }) {
   const existing = document.getElementById(id);
   if (existing) {
     console.warn(`registerHeaderAction: '${id}' is already registered -- returning the existing button instead of creating a duplicate.`);
     return { el: existing, unregister: () => {} };
   }
-  const tabBtn = document.getElementById("menu-tab-modules");
-  const panelEl = document.querySelector('.menu-tab-panel[data-tab="modules"]');
+  if (!["file", "edit", "view", "modules"].includes(tab)) {
+    console.warn(`registerHeaderAction: unrecognized tab '${tab}' -- using 'modules' instead.`);
+    tab = "modules";
+  }
+  const panelEl = document.querySelector(`.menu-tab-panel[data-tab="${tab}"]`);
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "ribbon-btn module-action";
@@ -2501,13 +2510,27 @@ function registerHeaderAction({ id, label, title, onClick }) {
   if (title) btn.title = title;
   btn.innerHTML = `<span class="ribbon-label">${escapeHtml(label)}</span>`;
   btn.addEventListener("click", onClick);
-  panelEl.appendChild(btn);
-  tabBtn.hidden = false;
+
+  const refId = position && typeof position === "object" ? (position.after ?? position.before) : null;
+  const refEl = refId ? panelEl.querySelector(`#${CSS.escape(refId)}`) : null;
+  if (refId && !refEl) {
+    console.warn(`registerHeaderAction: '${refId}' not found in the '${tab}' tab -- appending '${id}' at the end instead.`);
+  }
+  if (refEl && position.after) refEl.insertAdjacentElement("afterend", btn);
+  else if (refEl && position.before) refEl.insertAdjacentElement("beforebegin", btn);
+  else if (position === "start") panelEl.insertBefore(btn, panelEl.firstChild);
+  else panelEl.appendChild(btn);
+
+  const modulesTabBtn = document.getElementById("menu-tab-modules");
+  if (tab === "modules") modulesTabBtn.hidden = false;
+
   return {
     el: btn,
     unregister() {
       btn.remove();
-      if (!panelEl.children.length) tabBtn.hidden = true;
+      if (tab === "modules" && !document.querySelector('.menu-tab-panel[data-tab="modules"]').children.length) {
+        modulesTabBtn.hidden = true;
+      }
     },
   };
 }
