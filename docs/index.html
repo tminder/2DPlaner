@@ -93,6 +93,13 @@
      ribbon shows Bold/Italic as "on" — not a checkmark glyph. */
   .ribbon-btn.active { background: var(--amber-soft); border-color: var(--amber); color: var(--ink); }
   .ribbon-btn.danger { color: #a11; }
+  /* F-048/D-157/D-172: a module-registered header action -- single-line text, no icon,
+     auto width instead of every native button's fixed 62px icon-on-top column. Visually
+     distinct from core chrome by construction (every native action pairs an icon with a
+     label; this is the one kind of button here that never does), not a style worth
+     "fixing" to match the rest -- that mismatch is the whole point. */
+  .ribbon-btn.module-action { flex-direction: row; width: auto; padding: 6px 10px; font-size: 12px; }
+  .ribbon-btn.module-action .ribbon-label { font-size: 12px; }
   /* The cloud sign-in/out buttons are shown/hidden via the plain `hidden` attribute
      (updateCloudUi(), unchanged) -- `.ribbon-btn`'s own `display: flex` would otherwise
      silently override the UA stylesheet's own `[hidden] { display: none }` and show every
@@ -451,6 +458,11 @@
     <div class="menu-tab-strip" role="tablist">
       <button class="menu-tab-btn" id="menu-tab-edit" data-tab="edit" role="tab">Edit</button>
       <button class="menu-tab-btn" id="menu-tab-view" data-tab="view" role="tab">View</button>
+      <!-- F-048/D-157/D-172: hidden until a loaded module actually registers a header
+           action (core.registerHeaderAction) -- same "core provides a stable hidden slot"
+           pattern #header-fit-btn/#new-element-btn already established, just for a whole
+           tab instead of one button this time. -->
+      <button class="menu-tab-btn" id="menu-tab-modules" data-tab="modules" role="tab" hidden>Modules</button>
     </div>
     <div class="spacer"></div>
     <!-- Account, permanently visible, outside the tab system -- see CSS comment. -->
@@ -650,6 +662,14 @@
         <svg class="ribbon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z" /><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12" /><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17" /></svg><span class="ribbon-label">Layers</span>
       </button>
     </div>
+    <!-- F-048/D-157/D-172: empty, hidden until core.registerHeaderAction() appends a
+         module's own button into it and unhides the tab button above -- deliberately plain
+         text buttons (.module-action below), not icon+label like every native action, so a
+         module-registered action is visually distinguishable from core chrome by
+         construction rather than by a trust gate (see D-172's own reasoning: a loaded
+         module already has unsandboxed DOM access regardless, so gating this one API
+         specifically wouldn't be real protection). -->
+    <div class="menu-tab-panel ribbon-group" data-tab="modules" role="tabpanel" hidden></div>
   </div>
   <input type="file" id="file-input" accept=".planagon,.2dplan,.txt,text/plain">
 </header>
@@ -2455,6 +2475,43 @@ async function rerender(opts = {}) {
   }
 }
 
+// F-048/D-157/D-172: a module can now add its own simple, single-click button to the
+// header, landing in a dedicated "Modules" tab (hidden until the first one registers --
+// see the HTML's own comment on #menu-tab-modules/the matching panel). Deliberately
+// stateless beyond creation/removal: no isActive callback, no re-render bookkeeping here
+// -- a module that needs to keep its own button in sync already has core.onRendered for
+// that, the same way Grid/Snap/Units already update their own UI from inside rerender()
+// one level up, just module-side instead of core-side. DOM lookups happen fresh on every
+// call rather than once at script-init time, so this doesn't care whether it's ever
+// called before or after the tab elements exist in the DOM (they always do by the time
+// any module's own async-loaded script can possibly run, but there's no reason to rely on
+// that ordering when a fresh lookup costs nothing here).
+function registerHeaderAction({ id, label, title, onClick }) {
+  const existing = document.getElementById(id);
+  if (existing) {
+    console.warn(`registerHeaderAction: '${id}' is already registered -- returning the existing button instead of creating a duplicate.`);
+    return { el: existing, unregister: () => {} };
+  }
+  const tabBtn = document.getElementById("menu-tab-modules");
+  const panelEl = document.querySelector('.menu-tab-panel[data-tab="modules"]');
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "ribbon-btn module-action";
+  btn.id = id;
+  if (title) btn.title = title;
+  btn.innerHTML = `<span class="ribbon-label">${escapeHtml(label)}</span>`;
+  btn.addEventListener("click", onClick);
+  panelEl.appendChild(btn);
+  tabBtn.hidden = false;
+  return {
+    el: btn,
+    unregister() {
+      btn.remove();
+      if (!panelEl.children.length) tabBtn.hidden = true;
+    },
+  };
+}
+
 window.PlanCore = {
   parse, parseExpanded, render, tokenize,
   numOf, isEditable, formatNumber, formatMeasurement, getDisplayUnit, FT_TO_M,
@@ -2464,6 +2521,7 @@ window.PlanCore = {
   M,
   rerender,
   registerBeforeRender,
+  registerHeaderAction,
   commitUndoStep,
   onRendered: (cb) => {
     renderedCallbacks.push(cb);
