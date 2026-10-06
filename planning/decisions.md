@@ -2354,3 +2354,24 @@ Reported again, directly, right after D-175 shipped: "modules tab wird immer noc
 **Verified live:** before the fix, `getComputedStyle(#menu-tab-modules).display` read `"flex"` with `hidden === true` on both the local file and the production site; after, it correctly reads `"none"` while hidden and `"flex"` once a header action actually registers.
 
 **Status: built, verified live in a real browser, deployed** via `scripts/deploy.sh --target=docs` (byte-verified), `.deploy-state` committed.
+
+## D-177 `settings.units` (F-058): a plan-wide notation choice, not a unit conversion — elements write bare numbers, D-005 untouched
+
+Requested directly, queued as a follow-up ("danach: vorlagen aktualisieren (z.b. units global definieren)") — F-058 had just been recorded from the same request. Two genuinely different implementations were possible and a real fork: (A) `settings.units` purely controls *notation* — values always mean meters internally (D-005 unchanged), bare numbers already work as meters today, this only affects whether the app's own synthesized literals carry an explicit `m` suffix; (B) `settings.units: "ft"` genuinely reinterprets a bare number as feet, converted on every read — invasive, touching core render math, drag math, annotations, grid, every `core.numOf()` call site across every module, and a direct reversal of D-005/D-160's own "the plan language stays metric, forever" position. **Asked directly before building anything; (A) chosen.**
+
+**What `settings.units` actually does: nothing semantic at all.** `"m"` (the default, same as absent) or `"none"` — the *only* difference is what a **brand-new** literal the app itself synthesizes looks like when written back into source text. Editing an *existing* literal (a drag, any `nodeDragEdits`/`composeDragEdits` call) already preserved whatever unit that literal originally had via its own remembered `.unit` field — confirmed by reading the code, not assumed, and needed zero changes. The actual gap was narrower: three places that synthesize a **fresh** literal with no prior token to copy a unit from, each hardcoding `"m"`:
+
+1. **`newLiteralUnit(settings)`** (`docs/index.html`, next to `formatNumber`): `settings?.units === "none" ? "" : "m"` — the one shared rule, exported on `window.PlanCore` so `interactivity-module.js` can reuse it rather than reimplementing the same check.
+2. **`setGridSize`/`setSnapSize`** (`docs/index.html`): now pass `newLiteralUnit(program?.settings)` instead of a hardcoded `"m"`.
+3. **`presetElementText`** (`interactivity-module.js`, the New Element flyout's Line/Rectangle/Circle/Polygon presets): gained a `unit` parameter, threaded through from `insertStandardElement`'s own `base.settings` via `core.newLiteralUnit`.
+4. **The reparent-with-no-prior-position fallback** (`interactivity-module.js`, `reparentElement`'s own synthesized `position: [...]` line for a node that had none): same treatment, via `strippedBase.settings`.
+
+**`"ft"` is deliberately not offered as a value** — under this chosen scope it would be actively misleading (a number still meaning meters, printed with a label implying feet); real feet support is option (B) above, not attempted here, and would need its own separate decision if ever pursued.
+
+**The four shipped examples updated to match, since "vorlagen aktualisieren" was the explicit ask:** `apartment`/`utility`/`campervan` each gained `units: "m"` in their own `settings` block, and every `m`-suffixed literal throughout all three (`size`/`position`/`points`/`radius` — confirmed via grep that none use `cm`, so this was a safe, pure text strip, not a value conversion) was rewritten bare. `blank` was left untouched — no literals to strip, and D-171 already fixed it as deliberately, completely empty; adding a `units` declaration with nothing to apply it to would be noise against that same intent.
+
+**Tests:** new `tests/test_units_setting.py` (4 cases) — default/absent `settings.units` still writes `"m"`-suffixed new preset elements (unchanged behavior); `"none"` writes new preset elements and a grid-size-field edit bare; an existing bare literal is never retroactively given a suffix when dragged. Full suite green (244/244, up from 240).
+
+**Verified live:** a plan with `settings.units: "none"` — inserting a new rect preset wrote `size: [1, 1]`/`position: [0.3, 0.3]` (no suffix); setting the grid size via the flyout input wrote `size: 0.5` (no suffix); zero console errors. All four shipped examples re-verified rendering identically (same shape counts, same pixels) with their literals now bare.
+
+**Status: built, verified live in a real browser, deployed** via `scripts/deploy.sh --target=docs` (byte-verified), `.deploy-state` committed.
