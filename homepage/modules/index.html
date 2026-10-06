@@ -166,7 +166,7 @@
   <main>
     <p class="eyebrow">Modules</p>
     <h1 class="page-title">Modules</h1>
-    <p class="lede">A <a href="/docs/#settings-modules">module</a> extends a plan with new rendering, new interactivity, or a reusable higher-level building block — loaded straight from a URL with <code>module "&lt;url&gt;"</code>. Some of the app's own editor tooling (drag-and-drop, labels, syntax highlighting, the grid, the Layers panel) is itself built as a module, but it's always active and never something you load yourself, so it isn't listed here. Below: the modules Planagonia ships that activate on request — triggered by something you actually put in the plan, not always-on — marked <span class="badge">Built-in</span>, plus anything the community has published since.</p>
+    <p class="lede">A <a href="/docs/#settings-modules">module</a> extends a plan with new rendering, new interactivity, or a reusable higher-level building block — loaded straight from a URL with <code>module "&lt;url&gt;"</code>. Some of the app's own editor tooling (drag-and-drop, syntax highlighting, the Layers panel) is itself built as a module, but it's always active and never something you load yourself, so it isn't listed here. Below: the modules Planagonia ships that you actually declare to use — each one has a matching toggle in the app's own header that writes the declaration for you, or add it to the code pane by hand — marked <span class="badge">Built-in</span>, plus anything the community has published since.</p>
 
     <div class="callout">
       <strong>Anything without the Built-in badge is third-party code — read it before you trust it</strong>
@@ -175,9 +175,21 @@
 
     <div class="module-list">
       <div class="module-card">
+        <h2>Grid <span class="badge">Built-in</span></h2>
+        <p class="desc">A checkered or line background, a scale reference for the plan — also drives grid-snapped dragging.</p>
+        <p class="note">The app's own Grid button (View tab) declares and enables it together. By hand: <code>module "https://www.planagonia.com/app/grid-module.js"</code></p>
+        <p class="author">grid-module.js</p>
+      </div>
+      <div class="module-card">
+        <h2>Labels &amp; dimensions <span class="badge">Built-in</span></h2>
+        <p class="desc">Renders an element's own <code>label</code>, computed width/height/diameter, and per-edge lengths — plain text or arrow-tipped dimension lines.</p>
+        <p class="note">The app's own Connections/Dimensions buttons (View tab) declare it automatically; any element using <code>label</code>/<code>dimensions</code>/<code>edgeLengths</code> needs it too. By hand: <code>module "https://www.planagonia.com/app/annotations-module.js"</code></p>
+        <p class="author">annotations-module.js</p>
+      </div>
+      <div class="module-card">
         <h2>Wall with a door <span class="badge">Built-in</span></h2>
         <p class="desc">A reusable building block — one compact element expands into a matching wall/door/wall structure.</p>
-        <p class="note">Loads automatically the moment a plan uses <code>compose: "wallWithDoor"</code> — nothing to declare, though you can still declare it explicitly if you want it loaded right away: <code>module "https://www.planagonia.com/app/wall-with-door-module.js"</code></p>
+        <p class="note">Needs an explicit declaration — nothing in the app's own UI writes this one for you: <code>module "https://www.planagonia.com/app/wall-with-door-module.js"</code></p>
         <p class="author">wall-with-door-module.js</p>
       </div>
     </div>

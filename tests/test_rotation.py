@@ -220,6 +220,8 @@ def test_dimension_labels_follow_the_rotated_corners(app_page):
         load_plan(
             app_page,
             f"""
+module "annotations-module.js"
+
 element room {{ shape: "rect" size: [6m, 4m] position: [0m, 0m] style: {{ fill: "#eee" }}
   element wall {{ shape: "rect" size: [2m, 0.3m] position: [2m, 2m] rotation: {rotation}
     style: {{ fill: "#8ab" }} edgeLengths: true }}

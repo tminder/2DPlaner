@@ -930,7 +930,9 @@ const EXAMPLES = {
 element plan {
 }
 `,
-  apartment: `settings {
+  apartment: `module "annotations-module.js"
+
+settings {
   version: 1
   allowSelfIntersectingPolygons: false
   dimensionStyle: "arrows"
@@ -1014,7 +1016,9 @@ element room {
 
 connection stove counter
 `,
-  utility: `settings {
+  utility: `module "annotations-module.js"
+
+settings {
   version: 1
   allowSelfIntersectingPolygons: false
   styles: {
@@ -1174,7 +1178,9 @@ connection hausanschluss_3 verteilkabine
   // id, and one deliberate overlap (the water tank sits directly under the bench seat, a
   // real packaging trick small campervans actually use) so hiding "Einrichtung" visibly
   // reveals something that was hidden underneath it, not just an empty gap.
-  campervan: `settings {
+  campervan: `module "annotations-module.js"
+
+settings {
   version: 1
 }
 
@@ -1330,64 +1336,52 @@ connection klapptisch sitzbank
 // EXAMPLES' own keys since those are also used as (stable, never user-facing) identifiers.
 const EXAMPLE_LABELS = { blank: "Blank", apartment: "Studio Apartment", utility: "Electrical Grid", campervan: "Campervan Build" };
 
-// D-174: only the plan's own parsed content decides what loads — never a UI interaction like
-// a button click. interactivity/code-highlight/hierarchy are core: the hosted editor itself
-// (D-034), no plan property gates them, every plan gets all three regardless of its own text
-// (hierarchy-module.js joined this set here, replacing D-126's click-triggered load — the
-// Layers button now only ever toggles visibility of an already-loaded, already-populated
-// panel, since there's no plan-content signal for "wants a layers panel" the way grid/
-// annotations/wall-with-door each have one). grid/annotations/wall-with-door are different:
-// each one only ever renders something a plan's own content explicitly asked for
-// (settings.grid, label/dimensions/edgeLengths, compose:"wallWithDoor") — force-loading them
-// for every plan regardless of use made "core" pay for three modules most plans never touch
-// (S-025). Loaded only when the parsed plan actually uses what each one renders instead, via
-// MODULE_NEEDED below.
+// D-175: a module loads if and only if the plan's own code says so -- either it's core (no
+// property, no declaration, always loaded) or the plan's own text literally declares
+// `module "<name>"`, the exact same mechanism D-020 always had for any external/internal
+// module. Reverses D-173's content-triggered detection (inferring "needed" from properties
+// like label/settings.grid/compose, with no `module "..."` line in sight) once it became
+// clear that's exactly what "a module loaded that doesn't appear in the code" meant from the
+// plan author's own point of view -- the property-inference WAS the bug, not a caching
+// artifact. interactivity/code-highlight/hierarchy stay core (D-034/D-174): the hosted
+// editor itself, no plan property or declaration gates them. grid/annotations/wall-with-door
+// go back to needing an explicit `module "..."` line, same as any other module -- including
+// S-025's own wall-with-door-module.js, no longer a special case (every one of them is
+// equally "needs the author to ask for it," not inconsistent).
 //
-// Order matters for the three that register an onRendered callback and layer onto the
-// rendered SVG itself: annotations-module.js has to run first so its labels render like part
+// Known, accepted tradeoff: `label`/`dimensions`/`edgeLengths`/`settings.grid`/
+// `compose:"wallWithDoor"` go silently inert again for a plan that uses the property without
+// declaring the module that renders it -- the exact risk D-034/D-039 originally built
+// force-injection to avoid. Explicit declaration over implicit inference was the point of
+// this change, not an oversight; the shipped EXAMPLES below declare what they need rather
+// than relying on inference.
+const CORE_MODULES = ["interactivity-module.js", "code-highlight-module.js", "hierarchy-module.js"];
+
+// Fixed relative order for modules whose own onRendered callback has to register in a
+// specific sequence: annotations-module.js has to run first so its labels render like part
 // of the base shapes, with interactivity's own icons/scale-bar/fit-button still ending up on
 // top of them (D-039); code-highlight-module.js has to run after interactivity-module.js
 // since it reads the selectedId signal interactivity's own render pass sets. grid-module.js
 // (F-014) always inserts itself as the SVG's very first child regardless of callback order,
 // and hierarchy-module.js renders into its own separate #hierarchy-panel slot entirely
-// outside the SVG — neither one's position here affects anything. wall-with-door-module.js
-// runs via registerBeforeRender, not onRendered — its own ordering relative to the others
-// here doesn't matter, only that it's loaded before expandTree() runs.
+// outside the SVG -- neither one's position here affects anything, kept only for a stable,
+// readable order. wall-with-door-module.js isn't here: it runs via registerBeforeRender, not
+// onRendered, so it has no ordering constraint relative to any of these -- see
+// requiredModulesFor below, which appends it (and any other declared module) after.
 const ORDERED_MODULES = ["grid-module.js", "annotations-module.js", "interactivity-module.js", "code-highlight-module.js", "hierarchy-module.js"];
 
-function planUsesGrid(parsed) {
-  const grid = parsed.settings && parsed.settings.grid;
-  // "none" drives grid-snapped dragging only, read directly off settings.grid.size by
-  // interactivity-module.js — grid-module.js itself has nothing to render in that case.
-  return !!grid && grid.layer !== "none";
-}
-function planUsesAnnotations(parsed) {
-  // showConnections (D-103) is annotations-module.js's own render too (the dashed
-  // .connection-line between connected elements), plan-wide and independent of any single
-  // element's own label/dimensions/edgeLengths -- missing this would silently drop
-  // connection lines for a plan that sets the flag but has no element-level annotations.
-  if (parsed.settings && (parsed.settings.edgeLengths || parsed.settings.dimensionStyle || parsed.settings.showConnections === true)) return true;
-  return Object.values(parsed.nodesById).some(
-    (n) => n.props.label != null || n.props.dimensions != null || n.props.edgeLengths != null
-  );
-}
-function planUsesWallWithDoor(parsed) {
-  return Object.values(parsed.nodesById).some((n) => n.props.compose === "wallWithDoor");
-}
-const MODULE_NEEDED = {
-  "grid-module.js": planUsesGrid,
-  "annotations-module.js": planUsesAnnotations,
-  "interactivity-module.js": () => true,
-  "code-highlight-module.js": () => true,
-  "hierarchy-module.js": () => true,
-};
-function detectNeededModules(parsed) {
-  const needed = ORDERED_MODULES.filter((name) => MODULE_NEEDED[name](parsed));
-  if (planUsesWallWithDoor(parsed)) needed.push("wall-with-door-module.js");
-  return needed;
-}
-
 const TRUSTED_MODULES = [...ORDERED_MODULES, "wall-with-door-module.js"];
+
+// Core, unconditionally, plus whatever the plan's own text declares -- ORDERED_MODULES'
+// fixed relative order applied to whichever of its own entries ended up wanted (core or
+// declared), with every other declared module (wall-with-door, any external/internal one)
+// appended after in whatever order the plan itself declared them.
+function requiredModulesFor(parsed) {
+  const wanted = new Set([...CORE_MODULES, ...parsed.modules]);
+  const ordered = ORDERED_MODULES.filter((name) => wanted.has(name));
+  const rest = parsed.modules.filter((name) => !ORDERED_MODULES.includes(name));
+  return [...ordered, ...rest];
+}
 
 // ---------- Built-in ("internal") module registry — none shipped by default; a plan can
 // still load its own via module "name.js" (external) or a bare internal name if one is
@@ -1683,6 +1677,18 @@ const loadedInternal = new Set();
 const moduleCleanups = new Map();
 const declinedExternal = new Set();
 
+// Header actions (registerHeaderAction) a module registered, keyed by that module's own
+// canonical name -- lets deactivateRemovedModules below remove them automatically when the
+// module itself is torn down, rather than relying on every module's own cleanup function to
+// remember to call each action's own unregister(). currentlyLoadingModule is set only while
+// a module's own top-level script is actually executing (see ensureModulesLoaded) -- a
+// registerHeaderAction call made at that moment is this module's own; one made later, e.g.
+// from inside an onRendered callback, isn't bracketed and has to be unregistered manually
+// (the overwhelmingly common case: a module registers its button once at load time, see
+// D-172's own "deliberately stateless" design).
+const headerActionsByModule = new Map();
+let currentlyLoadingModule = null;
+
 function deactivateRemovedModules(currentModuleNames) {
   for (const [name, cleanup] of [...moduleCleanups]) {
     if (!currentModuleNames.includes(name)) {
@@ -1691,6 +1697,11 @@ function deactivateRemovedModules(currentModuleNames) {
       loadedExternal.delete(name);
       loadedInternal.delete(name);
       declinedExternal.delete(name);
+      const actions = headerActionsByModule.get(name);
+      if (actions) {
+        for (const unregisterAction of actions) unregisterAction();
+        headerActionsByModule.delete(name);
+      }
     }
   }
 }
@@ -1698,9 +1709,9 @@ function deactivateRemovedModules(currentModuleNames) {
 function isUrlLike(name) { return name.includes("/") || name.endsWith(".js") || name.includes("://"); }
 
 // The modules this app ships itself (TRUSTED_MODULES — ORDERED_MODULES plus
-// wall-with-door-module.js, content-triggered the same way, see planUsesWallWithDoor) run
-// with the same trust as core — a plan declaring one of these by name never prompts, whether
-// that declaration was force-injected/content-triggered or written out explicitly.
+// wall-with-door-module.js) run with the same trust as core — a plan declaring one of these
+// by name never prompts, whether core force-injected it or the plan's own text declared it
+// explicitly.
 // Anything else URL-like is code from wherever the plan's author (often an AI, D-003) pointed it,
 // fetched and run with full page access and no sandboxing (D-020) — see project-overview.md's
 // risk #2. Not solved here (no sandbox added, none is possible without a real trust
@@ -1747,12 +1758,22 @@ async function ensureModulesLoaded(moduleNames) {
           declinedExternal.add(name);
           throw new Error(`Module '${name}' not loaded — declined.`);
         }
-        await loadExternalScript(name);
+        currentlyLoadingModule = name;
+        try {
+          await loadExternalScript(name);
+        } finally {
+          currentlyLoadingModule = null;
+        }
         loadedExternal.add(name);
       }
     } else if (INTERNAL_MODULES[name]) {
       if (!loadedInternal.has(name)) {
-        INTERNAL_MODULES[name]();
+        currentlyLoadingModule = name;
+        try {
+          INTERNAL_MODULES[name]();
+        } finally {
+          currentlyLoadingModule = null;
+        }
         loadedInternal.add(name);
       }
     } else {
@@ -2488,13 +2509,13 @@ async function rerender(opts = {}) {
   }
   try {
     const parsed = parse(sourceEl.value);
-    // D-034/D-173/D-174: every plan gets interactivity, a highlighted code pane, and the
+    // D-034/D-174/D-175: every plan gets interactivity, a highlighted code pane, and the
     // layers panel regardless of whether its own text declares them — true on every render,
     // not just at creation, so a plan that reached the editor any way at all (typed, pasted,
-    // loaded) gets the same guarantee. grid/annotations/wall-with-door are only added when
-    // detectNeededModules finds the plan's own content actually uses them (see MODULE_NEEDED
-    // above) — loading is decided purely by the plan's own code, never by a UI interaction.
-    const requiredModules = [...new Set([...detectNeededModules(parsed), ...parsed.modules])];
+    // loaded) gets the same guarantee. Everything else (grid/annotations/wall-with-door/any
+    // external module) loads only when the plan's own text literally declares it — see
+    // requiredModulesFor above.
+    const requiredModules = requiredModulesFor(parsed);
     deactivateRemovedModules(requiredModules);
     await ensureModulesLoaded(requiredModules);
     program = expandTree(parsed);
@@ -2531,6 +2552,12 @@ async function rerender(opts = {}) {
 // whether it's ever called before or after the tab elements exist in the DOM (they always
 // do by the time any module's own async-loaded script can possibly run, but there's no
 // reason to rely on that ordering when a fresh lookup costs nothing here).
+//
+// Auto-removed when its owning module is removed from the plan's own code, not just when
+// the module's own cleanup remembers to call unregister() itself -- registered under
+// currentlyLoadingModule (set only while that module's own top-level script is actually
+// executing, see ensureModulesLoaded) in headerActionsByModule, which
+// deactivateRemovedModules sweeps automatically once the module itself is torn down.
 function registerHeaderAction({ id, label, title, onClick, tab = "modules", position = "end" }) {
   const existing = document.getElementById(id);
   if (existing) {
@@ -2563,7 +2590,7 @@ function registerHeaderAction({ id, label, title, onClick, tab = "modules", posi
   const modulesTabBtn = document.getElementById("menu-tab-modules");
   if (tab === "modules") modulesTabBtn.hidden = false;
 
-  return {
+  const result = {
     el: btn,
     unregister() {
       btn.remove();
@@ -2572,6 +2599,11 @@ function registerHeaderAction({ id, label, title, onClick, tab = "modules", posi
       }
     },
   };
+  if (currentlyLoadingModule) {
+    if (!headerActionsByModule.has(currentlyLoadingModule)) headerActionsByModule.set(currentlyLoadingModule, new Set());
+    headerActionsByModule.get(currentlyLoadingModule).add(result.unregister);
+  }
+  return result;
 }
 
 window.PlanCore = {
@@ -2672,8 +2704,29 @@ function findSettingsKeySpan(settingsSpan, key) {
   return null;
 }
 
-function toggleSettingsFlag(key, insertLiteral) {
-  const text = sourceEl.value;
+// D-175: a settings-driven property only renders once its own module is declared (no more
+// content-triggered auto-load) -- a header toggle that writes the property has to also make
+// sure the module is actually declared, or it'd write an inert flag into the plan's own
+// text. Idempotent and additive only: already-declared (bare or path-qualified, matching
+// isTrustedModule's own specifierNamesModule check) is left untouched; never removes a
+// declaration when a flag is turned back off, since some other still-active property might
+// depend on the same module (e.g. turning off Connections shouldn't drop annotations if the
+// plan still has element labels).
+function ensureModuleDeclared(text, moduleName) {
+  const declaredRe = /^[ \t]*module\s+"([^"]*)"[ \t]*$/gm;
+  let m;
+  while ((m = declaredRe.exec(text))) {
+    if (specifierNamesModule(m[1], moduleName)) return text;
+  }
+  // Same "modules, then settings" ordering findSettingsSpan's own caller below already
+  // relies on -- insert after any existing module lines, before everything else.
+  const moduleLines = /^(?:\s*module\s+"[^"]*"\s*\n)*/;
+  const insertAt = text.match(moduleLines)[0].length;
+  return `${text.slice(0, insertAt)}module "${moduleName}"\n\n${text.slice(insertAt)}`;
+}
+
+function toggleSettingsFlag(key, insertLiteral, requiredModule) {
+  let text = sourceEl.value;
   const settingsSpan = findSettingsSpan(text);
   const keySpan = settingsSpan && findSettingsKeySpan(settingsSpan, key);
   let newText;
@@ -2688,29 +2741,33 @@ function toggleSettingsFlag(key, insertLiteral) {
     while (text[end] === " " || text[end] === "\t") end++;
     if (text[end] === "\n") end++;
     newText = text.slice(0, start) + text.slice(end);
-  } else if (settingsSpan) {
-    const insertAt = settingsSpan.start + 1;
-    newText = `${text.slice(0, insertAt)}\n  ${key}: ${insertLiteral}${text.slice(insertAt)}`;
   } else {
-    // No `settings { }` block at all yet -- insert a new one, but after any leading
-    // `module "..."` lines (the grammar requires modules, then settings, in that order).
-    const moduleLines = /^(?:\s*module\s+"[^"]*"\s*\n)*/;
-    const insertAt = text.match(moduleLines)[0].length;
-    newText = `${text.slice(0, insertAt)}settings {\n  ${key}: ${insertLiteral}\n}\n\n${text.slice(insertAt)}`;
+    if (requiredModule) text = ensureModuleDeclared(text, requiredModule);
+    const liveSettingsSpan = findSettingsSpan(text);
+    if (liveSettingsSpan) {
+      const insertAt = liveSettingsSpan.start + 1;
+      newText = `${text.slice(0, insertAt)}\n  ${key}: ${insertLiteral}${text.slice(insertAt)}`;
+    } else {
+      // No `settings { }` block at all yet -- insert a new one, but after any leading
+      // `module "..."` lines (the grammar requires modules, then settings, in that order).
+      const moduleLines = /^(?:\s*module\s+"[^"]*"\s*\n)*/;
+      const insertAt = text.match(moduleLines)[0].length;
+      newText = `${text.slice(0, insertAt)}settings {\n  ${key}: ${insertLiteral}\n}\n\n${text.slice(insertAt)}`;
+    }
   }
   sourceEl.value = newText;
   rerender();
   commitUndoStep();
 }
 
-function toggleGridSetting() { toggleSettingsFlag("grid", "{ }"); }
-function toggleShowConnectionsSetting() { toggleSettingsFlag("showConnections", "true"); }
+function toggleGridSetting() { toggleSettingsFlag("grid", "{ }", "grid-module.js"); }
+function toggleShowConnectionsSetting() { toggleSettingsFlag("showConnections", "true", "annotations-module.js"); }
 // A plan-wide, presence-based flag, the same shape as showConnections/snap -- absent (or any
 // other value) means the existing plain-text edge-length style; "arrows" switches every
 // edgeLengths annotation to an arrow-tipped dimension line (annotations-module.js). Reuses
 // toggleSettingsFlag unchanged -- inserting/removing a differently-valued key is exactly what
 // it already does, nothing new needed here.
-function toggleDimensionStyleSetting() { toggleSettingsFlag("dimensionStyle", '"arrows"'); }
+function toggleDimensionStyleSetting() { toggleSettingsFlag("dimensionStyle", '"arrows"', "annotations-module.js"); }
 // D-156: an explicit "make it so" for the grid submenu's own Off item -- unlike
 // toggleGridSetting above (a plain flip, right for the box's own click), Off must be a
 // no-op when the grid is already off rather than turning it back on.
@@ -2737,8 +2794,9 @@ function toggleSnapSetting() { toggleSettingsFlag("snap", "{ }"); }
 // D-161: generalized from grid's own original one-off (it took only "grid" itself) so the
 // new Snap flyout's own Size field can reuse this unchanged instead of a second copy --
 // only the target object's own name differs between the two callers.
-function setSettingsSubKey(objectName, key, valueLiteral) {
-  const text = sourceEl.value;
+function setSettingsSubKey(objectName, key, valueLiteral, requiredModule) {
+  let text = sourceEl.value;
+  if (requiredModule) text = ensureModuleDeclared(text, requiredModule);
   const settingsSpan = findSettingsSpan(text);
   const objSpan = settingsSpan && findNestedObjectSpan(settingsSpan, objectName);
 
@@ -2765,15 +2823,17 @@ function setSettingsSubKey(objectName, key, valueLiteral) {
   commitUndoStep();
 }
 
-function setGridType(type) { setSettingsSubKey("grid", "type", `"${type}"`); }
-function setGridSize(meters) { setSettingsSubKey("grid", "size", formatNumber(meters, "m")); }
+function setGridType(type) { setSettingsSubKey("grid", "type", `"${type}"`, "grid-module.js"); }
+function setGridSize(meters) { setSettingsSubKey("grid", "size", formatNumber(meters, "m"), "grid-module.js"); }
 // F-042: `layer`/`opacity` (F-039/D-149) were the two remaining grid sub-settings still
 // source-text-only. Same setSettingsSubKey reuse as type/size above -- a nested object is,
 // to that function, just another span to search, no new mechanism needed.
-function setGridLayer(layer) { setSettingsSubKey("grid", "layer", `"${layer}"`); }
-function setGridOpacity(opacity) { setSettingsSubKey("grid", "opacity", formatNumber(opacity, "")); }
+function setGridLayer(layer) { setSettingsSubKey("grid", "layer", `"${layer}"`, "grid-module.js"); }
+function setGridOpacity(opacity) { setSettingsSubKey("grid", "opacity", formatNumber(opacity, ""), "grid-module.js"); }
 // D-161: snap's own Size field, completely independent of grid.size -- see snapIncrement's
-// own comment (interactivity-module.js) for why the two were decoupled.
+// own comment (interactivity-module.js) for why the two were decoupled. No module requirement
+// here (unlike the grid.* setters above) -- snap is read directly by interactivity-module.js,
+// which is core and always loaded, grid-module.js has no involvement in it at all.
 function setSnapSize(meters) { setSettingsSubKey("snap", "size", formatNumber(meters, "m")); }
 
 function updateGridToggleUi() {

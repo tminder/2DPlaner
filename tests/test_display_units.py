@@ -9,6 +9,8 @@ import re
 from helpers import drag, element_center, load_plan, source_text
 
 PLAN = """
+module "annotations-module.js"
+
 element room {
   shape: "rect"
   size: [4m, 3m]
@@ -30,6 +32,8 @@ element room {
 # 0.60868m -> 23.96in -> rounds to 12.0in remainder, which must roll into the next foot
 # (2'0") rather than ever printing literally as "1' 12.0"".
 CARRY_EDGE_PLAN = """
+module "annotations-module.js"
+
 element box {
   shape: "rect"
   size: [0.60868m, 1m]

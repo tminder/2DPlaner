@@ -12,7 +12,9 @@ here."""
 
 from helpers import load_plan, source_text
 
-PLAN = """settings {
+PLAN = """module "annotations-module.js"
+
+settings {
   edgeLengths: true
 }
 

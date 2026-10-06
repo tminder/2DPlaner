@@ -21,9 +21,9 @@ element room {
 }
 """
 
-BACK_GRID_PLAN = "settings { grid: { size: 0.5 } }\n" + PLAN
-FRONT_GRID_PLAN = 'settings { grid: { size: 0.5, layer: "front", opacity: 0.3 } }\n' + PLAN
-NO_LAYER_GRID_PLAN = 'settings { grid: { size: 0.5, layer: "none" } }\n' + PLAN
+BACK_GRID_PLAN = 'module "grid-module.js"\nsettings { grid: { size: 0.5 } }\n' + PLAN
+FRONT_GRID_PLAN = 'module "grid-module.js"\nsettings { grid: { size: 0.5, layer: "front", opacity: 0.3 } }\n' + PLAN
+NO_LAYER_GRID_PLAN = 'module "grid-module.js"\nsettings { grid: { size: 0.5, layer: "none" } }\n' + PLAN
 
 
 def test_default_layer_still_renders_behind_every_shape(app_page):
@@ -76,12 +76,18 @@ def test_grid_flyout_toggle_creates_and_removes_settings_grid(app_page):
     app_page.click("#menu-tab-view")
     app_page.click("#grid-toggle-btn")
     app_page.wait_for_timeout(150)
-    assert "grid:" in source_text(app_page)
+    text = source_text(app_page)
+    assert "grid:" in text
+    assert 'module "grid-module.js"' in text  # D-175: the toggle has to declare it too
     assert app_page.locator(".plan-grid-bg").count() == 1
 
     app_page.click("#grid-toggle-btn")
     app_page.wait_for_timeout(150)
-    assert "grid" not in source_text(app_page)
+    text = source_text(app_page)
+    assert "grid:" not in text
+    # D-175: turning the setting back off deliberately leaves the module declaration alone
+    # (some other still-active property could depend on it) -- only the setting itself goes.
+    assert 'module "grid-module.js"' in text
     assert app_page.locator(".plan-grid-bg").count() == 0
 
 
@@ -224,7 +230,7 @@ def test_grid_flyout_off_button_turns_grid_off_and_reflects_active_state(app_pag
 
     app_page.click("#grid-off-btn")
     app_page.wait_for_timeout(150)
-    assert "grid" not in source_text(app_page)
+    assert "grid:" not in source_text(app_page)  # the module declaration itself stays, D-175
     assert app_page.locator(".plan-grid-bg").count() == 0
 
     app_page.hover("#grid-toggle-btn")

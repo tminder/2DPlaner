@@ -21,9 +21,11 @@ Documented here in depth: `docs/interactivity-module.js` (D-031),
 `docs/wall-with-door-module.js` (D-046/D-071) — interactivity, code-highlight, and hierarchy
 unconditionally force-injected into every plan (D-174: module loading is decided purely by
 the plan's own code, never by a UI interaction like a button click, so hierarchy-module.js
-no longer waits for the Layers button, D-126); grid/annotations/wall-with-door
-content-triggered instead (D-173, see below) — loaded only when the plan's own content
-actually uses what each one renders.
+no longer waits for the Layers button, D-126); grid/annotations/wall-with-door load only
+when the plan's own text literally declares them (D-175, see below) — the same
+`module "..."` mechanism D-020 always had for any module, now applied consistently to these
+three as well, reversing D-173's brief experiment with inferring "needed" from properties
+instead of a declaration.
 
 ## What a module can do
 
@@ -74,34 +76,41 @@ opts into, and (D-174's own governing rule) **module loading is decided purely b
 own code — never by a UI interaction like a button click** — so a module with no plan-content
 signal to gate on is either always loaded or it isn't gated by this mechanism at all.
 
-**`grid-module.js`, `annotations-module.js`, and `wall-with-door-module.js` are
-content-triggered instead (D-173): loaded automatically, but only when the plan's own parsed
-content actually uses what that module renders** — `settings.grid` (grid), any element's
-`label`/`dimensions`/`edgeLengths`, or the plan-wide `settings.edgeLengths`/
-`settings.dimensionStyle`/`settings.showConnections` (annotations), or any element's
-`compose: "wallWithDoor"` (wall-with-door) — via `detectNeededModules()`/`MODULE_NEEDED` in
-`docs/index.html`. This replaces an earlier, blanket version of this idea (grid and
-annotations force-injected into *every* plan regardless of use, the same as
-interactivity/code-highlight above) that made "core" pay for two modules most plans never
-touch, and fixes an inconsistency the earlier version created on its own terms:
-`wall-with-door-module.js` is just as settings/property-driven as grid, but previously needed
-an explicit `module` declaration instead, with nothing warning an author if
-`compose: "wallWithDoor"` was used without one (the exact gap the old blanket force-injection
-existed to avoid for grid — tracked as S-025, now closed). D-020's own loading mechanism
-stays opt-in-by-declaration per plan regardless; this split (unconditional / content-
-triggered) is `docs/`'s own convenience layered on top
-of it, not a change to how modules work generally. The order grid/annotations load in when
-needed is still deliberate, not alphabetical: annotations has to finish registering its
-`onRendered` callback before interactivity does, so its labels land in the SVG *before*
-interactivity's own icons/scale-bar/fit-button (see "The annotations module" below);
-code-highlight has to run after interactivity since it reads a signal interactivity's own
-render pass sets (see "The code-highlight module" below) — `ORDERED_MODULES` in
-`docs/index.html` encodes this fixed relative order, filtered per-render down to whichever
-entries are actually needed. `docs/`'s own plan-switcher and examples don't write a
-`module "..."` line for any of these into a plan's own text either way (D-126: doing so used
-to be `withAutoModules()`'s whole job, removed once it became clear the lines it wrote were
-purely decorative, since neither force-injection nor content-detection ever depended on them
-being present).
+**`grid-module.js`, `annotations-module.js`, and `wall-with-door-module.js` all need an
+explicit `module "..."` declaration (D-175)** — the exact same mechanism as any other module,
+no exceptions between the three. A plan using `settings.grid` without declaring
+`module "grid-module.js"`, or `label`/`dimensions`/`edgeLengths`/`settings.showConnections`
+without declaring `module "annotations-module.js"`, or `compose: "wallWithDoor"` without
+declaring `module "wall-with-door-module.js"`, gets exactly nothing rendered for that
+property — silently inert, a known and accepted tradeoff, not a bug: **D-173 had briefly
+tried inferring "needed" from a plan's own properties instead of a declaration (loading grid/
+annotations automatically whenever their own properties were used, no declaration needed at
+all), until it became clear that was exactly what "a module is loading that doesn't appear in
+the code" meant from a plan author's own point of view — the inference itself was the
+problem, not a caching artifact. D-175 reversed it**, restoring the declaration as the one
+and only trigger (besides being core, see above) and closing the inconsistency D-173 had
+found in doing so: `wall-with-door-module.js` is no longer a special case needing its own
+separate justification — every one of these three needs exactly the same thing, an explicit
+line in the plan's own text.
+
+**`docs/`'s header toggles (Grid/Connections/Dimensions) write the module declaration
+alongside the setting, not just the setting** — `ensureModuleDeclared()` in `docs/index.html`
+inserts `module "<name>"` into the plan's own preamble the first time one of these toggles a
+setting *on*, idempotent (already declared, bare or path-qualified, is left alone) and
+additive-only (turning the setting back *off* never removes the declaration, since some
+other still-active property might depend on the same module — e.g. turning off Connections
+shouldn't silently drop an element's own `label`). Every `EXAMPLES` entry that uses
+`label`/`dimensions`/`edgeLengths` declares `module "annotations-module.js"` directly in its
+own shipped source text for the same reason — these are written by hand, not run through a
+toggle, so nothing else would add the line for them.
+
+The order grid/annotations load in when declared is still deliberate, not alphabetical:
+annotations has to finish registering its `onRendered` callback before interactivity does, so
+its labels land in the SVG *before* interactivity's own icons/scale-bar/fit-button (see "The
+annotations module" below); code-highlight has to run after interactivity since it reads a
+signal interactivity's own render pass sets (see "The code-highlight module" below) —
+`ORDERED_MODULES` in `docs/index.html` encodes this fixed relative order, filtered per-render
+down to whichever entries are actually wanted (core, or declared).
 
 **`hierarchy-module.js` (D-112) is unconditionally force-injected alongside interactivity and
 code-highlight, above — D-126's original click-triggered load (behind the header's "Layers"
@@ -397,13 +406,13 @@ registration order** — the grid has to paint behind every shape unconditionall
 `annotations-module.js` (which has to run *before* `interactivity-module.js`, see above) its
 own position in `ORDERED_MODULES`'s list genuinely doesn't matter for stacking.
 
-**Content-triggered** (`planUsesGrid`, part of `MODULE_NEEDED` in `docs/index.html`, D-173):
-loaded automatically whenever `settings.grid` is present (and not `layer: "none"`, where
-this module would render nothing anyway — grid-driven snapping reads `settings.grid.size`
-directly in `interactivity-module.js`, independent of whether this module is loaded at all),
-so `settings.grid` still never goes silently inert for an author who didn't know to declare
-the module — without force-loading it for every plan regardless of use, the gap this module's
-own earlier blanket auto-load left for `wall-with-door-module.js` below (S-025, now closed).
+**Needs an explicit `module "grid-module.js"` declaration (D-175)** — `settings.grid` alone,
+with no declaration, renders nothing (grid-driven snapping is unaffected either way:
+`interactivity-module.js` reads `settings.grid.size` directly, independent of whether this
+module is loaded at all). The header's own Grid toggle button writes the declaration
+alongside the setting automatically (`ensureModuleDeclared()`, `docs/index.html`) — hand-
+editing `settings.grid` directly into the code pane still needs the `module "..."` line
+written by hand too, same as any other module.
 
 ## The wall-with-door module
 
@@ -426,12 +435,11 @@ indistinguishable from ones typed directly into the plan, drag-editable the same
 (`interactivity-module.js`'s own `composeDragEdits`, a per-composition-type backward-solve
 this module's own expansion has to stay the mirror image of).
 
-**Content-triggered** (`planUsesWallWithDoor`, part of `MODULE_NEEDED` in `docs/index.html`,
-D-173): loaded automatically whenever any element sets `compose: "wallWithDoor"`, the same
-mechanism `grid-module.js` above uses for `settings.grid` — closing the inconsistency
-tracked as S-025 (this module equally settings/property-driven, but previously the one
-built-in module that needed an explicit `module` declaration with no warning if omitted). An
-explicit declaration still works too, exactly like before; it's just no longer the only path.
+**Needs an explicit `module "wall-with-door-module.js"` declaration (D-175)** — the same as
+`grid-module.js`/`annotations-module.js` above, no exceptions between any of the three
+anymore. `compose: "wallWithDoor"` with no declaration does nothing; nothing currently warns
+an author if that happens, the same gap every one of these three now shares
+([planning/tech-debt.md](../planning/tech-debt.md) S-043).
 
 **Known limitation, self-admitted, not yet fixed:** the composite's own `position` isn't
 factored into `from`/`to` — both are treated as already being in the composite's parent's

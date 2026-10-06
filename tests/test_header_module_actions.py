@@ -2,7 +2,13 @@
 button to the header, landing in a dedicated "Modules" tab (hidden until the first one
 registers). Tested by calling the core API directly via page.evaluate, mirroring
 test_module_trust.py's own established pattern for exercising core internals without
-needing a real external module file to load."""
+needing a real external module file to load.
+
+D-175: a header action registered during a module's own load is now auto-removed when that
+module is deactivated (its declaration removed from the plan's code), even if the module's
+own cleanup forgets to call the action's own unregister() -- core's own safety net, tracked
+via currentlyLoadingModule/headerActionsByModule, not reliant on every module author's own
+hygiene."""
 
 
 def test_registering_an_action_unhides_the_modules_tab_and_creates_a_clickable_button(app_page):
@@ -169,3 +175,45 @@ def test_module_action_style_applies_regardless_of_which_tab_it_lands_in(app_pag
     }"""
     )
     assert "module-action" in cls
+
+
+def test_deactivating_the_owning_module_removes_its_header_action_automatically(app_page):
+    """D-175: even a module whose own cleanup forgets to call the action's own unregister()
+    doesn't leave an orphaned button or a stuck-visible-but-empty Modules tab -- core sweeps
+    it up itself once the module is torn down."""
+    result = app_page.evaluate(
+        """() => {
+        currentlyLoadingModule = 'test-forgetful-module.js';
+        window.PlanCore.registerHeaderAction({ id: 'test-action-12', label: 'Forgetful', onClick: () => {} });
+        currentlyLoadingModule = null;
+        window.PlanCore.registerModuleCleanup('test-forgetful-module.js', () => {}); // never calls unregister()
+
+        const before = {
+            btnExists: !!document.getElementById('test-action-12'),
+            tabHidden: document.getElementById('menu-tab-modules').hidden,
+        };
+        deactivateRemovedModules([]); // this module is no longer in the required set
+        const after = {
+            btnExists: !!document.getElementById('test-action-12'),
+            tabHidden: document.getElementById('menu-tab-modules').hidden,
+        };
+        return { before, after };
+    }"""
+    )
+    assert result["before"] == {"btnExists": True, "tabHidden": False}
+    assert result["after"] == {"btnExists": False, "tabHidden": True}
+
+
+def test_a_header_action_registered_outside_a_module_load_has_no_auto_owner(app_page):
+    """Registering with no currentlyLoadingModule set (e.g. straight from the console, or
+    from inside a module's own later onRendered callback) means there's nothing for
+    deactivateRemovedModules to automatically sweep -- the action's own unregister() is still
+    the only way to remove it, unchanged from before this safety net existed."""
+    result = app_page.evaluate(
+        """() => {
+        window.PlanCore.registerHeaderAction({ id: 'test-action-13', label: 'Orphan', onClick: () => {} });
+        deactivateRemovedModules([]);
+        return !!document.getElementById('test-action-13');
+    }"""
+    )
+    assert result is True
