@@ -44,10 +44,13 @@ built: a homepage at the root, the app under `/app`, human-facing documentation 
   Kept as a reference for a future VPS-hosted scenario — the actual deployment target
   turned out to have no Node.js runtime support at all (D-048), so this isn't what's live.
 - [planning/core-aims.md](planning/core-aims.md) — vision and core aims
-- [planning/decisions.md](planning/decisions.md) — numbered decisions (D-001...)
-- [planning/open-questions.md](planning/open-questions.md) — numbered open questions (F-001...)
-- [planning/project-overview.md](planning/project-overview.md) — point-in-time project
-  overview and independent risk assessment
+- [planning/decisions.md](planning/decisions.md) — numbered decisions (D-001...), the master
+  record
+- [planning/open-questions.md](planning/open-questions.md) — numbered open questions
+  (F-001...), the master list of what's still undesigned
+- [planning/archive/](planning/archive/) — retired point-in-time snapshots, e.g. the former
+  `project-overview.md` — superseded by decisions.md/open-questions.md as the ongoing source
+  of truth, kept here for historical reference rather than deleted
 - [planning/site-structure.md](planning/site-structure.md) — the `planagonia.com` site
   plan; all four named sections are now built, a couple of small follow-ups remain open
 - [planning/tech-debt.md](planning/tech-debt.md) — numbered technical-debt items (S-001...),

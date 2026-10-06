@@ -1,8 +1,15 @@
 # Project Overview
 
-**Snapshot as of 2026-10-05 — a point-in-time status summary, not a living document.**
-Unlike [core-aims.md](core-aims.md), [decisions.md](decisions.md), and
-[open-questions.md](open-questions.md), which are kept continuously in sync with the
+**Archived 2026-10-06 — retired, no longer maintained.** This was the last snapshot before
+the practice of periodically refreshing it was dropped: [decisions.md](../decisions.md) and
+[open-questions.md](../open-questions.md) are the project's actual master sources and always
+were (this file only ever synthesized a point-in-time view on top of them, never held unique
+information) — kept here for historical reference, not deleted, but everything below is
+stale the moment you read it; many decisions (D-172 onward) landed after this was written.
+
+**Original snapshot note, as of 2026-10-05 — a point-in-time status summary, not a living
+document.** Unlike [core-aims.md](../core-aims.md), [decisions.md](../decisions.md), and
+[open-questions.md](../open-questions.md), which are kept continuously in sync with the
 project, this file describes where things stood when it was written and will drift out of
 date. Supersedes the 2026-09-13 revision — 4 decisions (D-168 through D-171) landed since
 then, closing out that same working session; no further work has landed since.
@@ -12,7 +19,7 @@ then, closing out that same working session; no further work has landed since.
 A browser-based 2D plan generator: plans are defined in a purpose-built language as code,
 and the code and the rendered plan stay in sync — editing the code updates the plan;
 dragging the plan writes the code back (D-013, D-012). Six core aims
-([core-aims.md](core-aims.md)) — see "Core aims, checked against this window" below for
+([core-aims.md](../core-aims.md)) — see "Core aims, checked against this window" below for
 how this snapshot's own work holds up against each one.
 
 The plan's code is meant to be primarily *authored by an AI* (D-003), with a technical
