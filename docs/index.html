@@ -942,14 +942,15 @@ element plan {
 
 settings {
   version: 1
+  units: "m"
   allowSelfIntersectingPolygons: false
   dimensionStyle: "arrows"
 }
 
 element room {
   shape: "rect"
-  size: [5m, 4m]
-  position: [0m, 0m]
+  size: [5, 4]
+  position: [0, 0]
   style: { fill: "#f7f5f0", stroke: "#333", strokeWidth: 0.04 }
   childPlacement: "inside"
   edgeLengths: true
@@ -957,8 +958,8 @@ element room {
 
   element bed {
     shape: "rect"
-    size: [1.6m, 2m]
-    position: [0.3m, 0.4m]
+    size: [1.6, 2]
+    position: [0.3, 0.4]
     style: { fill: "#cfe0f5", stroke: "#4a76a8", strokeWidth: 0.02 }
     label: "Bett"
     show: "hover"
@@ -966,8 +967,8 @@ element room {
 
   element wardrobe {
     shape: "rect"
-    size: [0.6m, 1.4m]
-    position: [4.4m, 0.3m]
+    size: [0.6, 1.4]
+    position: [4.4, 0.3]
     placement: "inside"
     flush: true
     style: { fill: "#d8c7e8", stroke: "#7a5a9a", strokeWidth: 0.02 }
@@ -977,8 +978,8 @@ element room {
 
   element desk {
     shape: "rect"
-    size: [1.1m, 0.55m]
-    position: [2.6m, 2.7m]
+    size: [1.1, 0.55]
+    position: [2.6, 2.7]
     rotation: 18
     style: { fill: "#fbe3b0", stroke: "#a87a2b", strokeWidth: 0.02 }
     label: "Schreibtisch"
@@ -987,8 +988,8 @@ element room {
 
   element stove {
     shape: "rect"
-    size: [0.6m, 0.6m]
-    position: [4.1m, 2.0m]
+    size: [0.6, 0.6]
+    position: [4.1, 2.0]
     style: { fill: "#d9534f", stroke: "#8a2f2a", strokeWidth: 0.02 }
     label: "Herd"
     show: "hover"
@@ -996,8 +997,8 @@ element room {
 
   element counter {
     shape: "rect"
-    size: [0.5m, 1.2m]
-    position: [4.1m, 2.7m]
+    size: [0.5, 1.2]
+    position: [4.1, 2.7]
     style: { fill: "#e8c896", stroke: "#a9895c", strokeWidth: 0.02 }
     label: "Ablage"
     show: "hover"
@@ -1005,7 +1006,7 @@ element room {
 
   element rug {
     shape: "polygon"
-    points: [[0.9m, 2.6m], [1.8m, 2.4m], [2.2m, 3.3m], [1.5m, 3.9m], [0.7m, 3.4m]]
+    points: [[0.9, 2.6], [1.8, 2.4], [2.2, 3.3], [1.5, 3.9], [0.7, 3.4]]
     style: { fill: "#e0d5c0", stroke: "#b0a080", strokeWidth: 0.02 }
     label: "Teppich"
     show: "hover"
@@ -1013,8 +1014,8 @@ element room {
 
   element side_table {
     shape: "circle"
-    radius: 0.35m
-    position: [1.5m, 3.2m]
+    radius: 0.35
+    position: [1.5, 3.2]
     style: { fill: "#bfe3f5", stroke: "#3a7a9a", strokeWidth: 0.03 }
     label: "Tisch"
     show: "always"
@@ -1028,6 +1029,7 @@ connection stove counter
 
 settings {
   version: 1
+  units: "m"
   allowSelfIntersectingPolygons: false
   styles: {
     parcel: { fill: "#e7ecdf", stroke: "#7c8f6a", strokeWidth: 0.05 }
@@ -1038,19 +1040,19 @@ settings {
 }
 
 element stromnetz {
-  element c0 { position: [0m, 0m] }
-  element c1 { position: [8m, 0m] }
-  element c2 { position: [16m, 0m] }
-  element c3 { position: [24m, 0m] }
-  element c4 { position: [0m, 9m] }
-  element c5 { position: [8m, 9m] }
-  element c6 { position: [16m, 9m] }
-  element c7 { position: [24m, 9m] }
+  element c0 { position: [0, 0] }
+  element c1 { position: [8, 0] }
+  element c2 { position: [16, 0] }
+  element c3 { position: [24, 0] }
+  element c4 { position: [0, 9] }
+  element c5 { position: [8, 9] }
+  element c6 { position: [16, 9] }
+  element c7 { position: [24, 9] }
 
   element parzelle_1 {
     shape: "polygon"
     points: [c0, c1, c5, c4]
-    position: [0m, 0m]
+    position: [0, 0]
     style: "parcel"
     label: "Parzelle 1"
     show: "hover"
@@ -1059,8 +1061,8 @@ element stromnetz {
 
     element haus_1 {
       shape: "rect"
-      size: [4m, 4m]
-      position: [2m, 3m]
+      size: [4, 4]
+      position: [2, 3]
       style: "haus"
       label: "Haus 1"
       show: "always"
@@ -1068,7 +1070,7 @@ element stromnetz {
     }
 
     element hausanschluss_1 {
-      position: [4m, 3m]
+      position: [4, 3]
       placement: "outside"
     }
   }
@@ -1076,7 +1078,7 @@ element stromnetz {
   element parzelle_2 {
     shape: "polygon"
     points: [c1, c2, c6, c5]
-    position: [8m, 0m]
+    position: [8, 0]
     style: "parcel"
     label: "Parzelle 2"
     show: "hover"
@@ -1085,8 +1087,8 @@ element stromnetz {
 
     element haus_2 {
       shape: "rect"
-      size: [4m, 4m]
-      position: [2m, 3m]
+      size: [4, 4]
+      position: [2, 3]
       style: "haus"
       label: "Haus 2"
       show: "always"
@@ -1094,7 +1096,7 @@ element stromnetz {
     }
 
     element hausanschluss_2 {
-      position: [4m, 3m]
+      position: [4, 3]
       placement: "outside"
     }
   }
@@ -1102,7 +1104,7 @@ element stromnetz {
   element parzelle_3 {
     shape: "polygon"
     points: [c2, c3, c7, c6]
-    position: [16m, 0m]
+    position: [16, 0]
     style: "parcel"
     label: "Parzelle 3"
     show: "hover"
@@ -1111,8 +1113,8 @@ element stromnetz {
 
     element haus_3 {
       shape: "rect"
-      size: [4m, 4m]
-      position: [2m, 3m]
+      size: [4, 4]
+      position: [2, 3]
       style: "haus"
       label: "Haus 3"
       show: "always"
@@ -1120,26 +1122,26 @@ element stromnetz {
     }
 
     element hausanschluss_3 {
-      position: [4m, 3m]
+      position: [4, 3]
       placement: "outside"
     }
   }
 
   element verteilkabine {
     shape: "rect"
-    size: [1m, 1m]
-    position: [11.5m, -1.5m]
+    size: [1, 1]
+    position: [11.5, -1.5]
     style: "kabine"
     label: "Verteilkabine"
     show: "always"
     dimensions: true
 
-    element kabine_anschluss { position: [0.5m, 1m] }
+    element kabine_anschluss { position: [0.5, 1] }
 
     element sicherung_intern {
       shape: "rect"
-      size: [0.6m, 0.6m]
-      position: [0.2m, 0.2m]
+      size: [0.6, 0.6]
+      position: [0.2, 0.2]
       style: { fill: "#555555", stroke: "#222222", strokeWidth: 0.02 }
       label: "Sicherungen"
       hidden: true
@@ -1148,7 +1150,7 @@ element stromnetz {
 
   element kabel_1 {
     shape: "polyline"
-    points: [kabine_anschluss, [3m, -0.5m], hausanschluss_1]
+    points: [kabine_anschluss, [3, -0.5], hausanschluss_1]
     style: "kabel"
     label: "Hausanschluss 1"
     show: "hover"
@@ -1164,7 +1166,7 @@ element stromnetz {
 
   element kabel_3 {
     shape: "polyline"
-    points: [kabine_anschluss, [21m, -0.5m], hausanschluss_3]
+    points: [kabine_anschluss, [21, -0.5], hausanschluss_3]
     style: "kabel"
     label: "Hausanschluss 3"
     show: "hover"
@@ -1190,12 +1192,13 @@ connection hausanschluss_3 verteilkabine
 
 settings {
   version: 1
+  units: "m"
 }
 
 element camper {
   shape: "rect"
-  size: [3.6m, 1.8m]
-  position: [0m, 0m]
+  size: [3.6, 1.8]
+  position: [0, 0]
   style: { fill: "#f2f0ec", stroke: "#333", strokeWidth: 0.04 }
   label: "Camper"
 
@@ -1204,8 +1207,8 @@ element camper {
 
     element kueche {
       shape: "rect"
-      size: [0.6m, 1.2m]
-      position: [0m, 0m]
+      size: [0.6, 1.2]
+      position: [0, 0]
       style: { fill: "#e8c896", stroke: "#a9895c", strokeWidth: 0.02 }
       label: "Küche"
       show: "hover"
@@ -1213,8 +1216,8 @@ element camper {
 
     element sitzbank {
       shape: "rect"
-      size: [1m, 0.6m]
-      position: [0.8m, 0m]
+      size: [1, 0.6]
+      position: [0.8, 0]
       style: { fill: "#d8c7e8", stroke: "#7a5a9a", strokeWidth: 0.02 }
       label: "Sitzbank"
       show: "hover"
@@ -1222,8 +1225,8 @@ element camper {
 
     element klapptisch {
       shape: "rect"
-      size: [0.5m, 0.35m]
-      position: [1.55m, 0.55m]
+      size: [0.5, 0.35]
+      position: [1.55, 0.55]
       rotation: 20
       style: { fill: "#c9a876", stroke: "#8a6a42", strokeWidth: 0.02 }
       label: "Klapptisch"
@@ -1232,8 +1235,8 @@ element camper {
 
     element haengeschrank {
       shape: "rect"
-      size: [0.5m, 0.25m]
-      position: [0.9m, 1.55m]
+      size: [0.5, 0.25]
+      position: [0.9, 1.55]
       placement: "inside"
       flush: true
       style: { fill: "#cbb994", stroke: "#8a7850", strokeWidth: 0.02 }
@@ -1243,8 +1246,8 @@ element camper {
 
     element bett {
       shape: "rect"
-      size: [1.7m, 1.8m]
-      position: [1.9m, 0m]
+      size: [1.7, 1.8]
+      position: [1.9, 0]
       style: { fill: "#cfe0f5", stroke: "#4a76a8", strokeWidth: 0.02 }
       label: "Bett"
       show: "always"
@@ -1257,30 +1260,30 @@ element camper {
 
     element batterie {
       shape: "rect"
-      size: [0.3m, 0.25m]
-      position: [0.05m, 1.5m]
+      size: [0.3, 0.25]
+      position: [0.05, 1.5]
       style: { fill: "#3a3a38", stroke: "#1c1c1a", strokeWidth: 0.02 }
       label: "Batterie"
       show: "hover"
 
-      element batterie_anschluss { position: [0.3m, 0.12m] }
+      element batterie_anschluss { position: [0.3, 0.12] }
     }
 
     element sicherungskasten {
       shape: "rect"
-      size: [0.25m, 0.2m]
-      position: [1.55m, 1.55m]
+      size: [0.25, 0.2]
+      position: [1.55, 1.55]
       style: { fill: "#555555", stroke: "#222222", strokeWidth: 0.02 }
       label: "Sicherungskasten"
       show: "hover"
 
-      element sicherung_anschluss { position: [0m, 0.1m] }
+      element sicherung_anschluss { position: [0, 0.1] }
     }
 
     element leselampe {
       shape: "circle"
-      radius: 0.06m
-      position: [2.7m, 0.2m]
+      radius: 0.06
+      position: [2.7, 0.2]
       style: { fill: "#fce97a", stroke: "#a89a2a", strokeWidth: 0.02 }
       label: "Leselampe"
       show: "hover"
@@ -1296,7 +1299,7 @@ element camper {
 
     element kabel_sicherung_lampe {
       shape: "polyline"
-      points: [sicherung_anschluss, [2.7m, 1.5m], leselampe]
+      points: [sicherung_anschluss, [2.7, 1.5], leselampe]
       style: { stroke: "#c98a1c", strokeWidth: 0.03, strokeDash: "0.1,0.06" }
       label: "Kabel"
       show: "hover"
@@ -1308,8 +1311,8 @@ element camper {
 
     element wassertank {
       shape: "rect"
-      size: [0.9m, 0.5m]
-      position: [0.85m, 0.05m]
+      size: [0.9, 0.5]
+      position: [0.85, 0.05]
       style: { fill: "#8fc5e0", stroke: "#3a7a9a", strokeWidth: 0.02 }
       label: "Wassertank"
       show: "hover"
@@ -1317,14 +1320,14 @@ element camper {
 
     element pumpe {
       shape: "circle"
-      radius: 0.08m
-      position: [0.7m, 0.4m]
+      radius: 0.08
+      position: [0.7, 0.4]
       style: { fill: "#5aa0c0", stroke: "#2a5a7a", strokeWidth: 0.02 }
       label: "Pumpe"
       show: "hover"
     }
 
-    element abfluss { position: [1.75m, 0.3m] }
+    element abfluss { position: [1.75, 0.3] }
 
     element rohr {
       shape: "polyline"
@@ -1991,6 +1994,16 @@ function formatNumber(value, unit) {
   return `${rounded}${unit}`;
 }
 
+// D-177 (F-058): settings.units ("m", the default/absent case, or "none") controls only
+// whether a brand-new literal this app itself synthesizes -- not editing an existing token,
+// which always keeps whatever unit it already had, see nodeDragEdits's own x0.unit/y0.unit
+// reuse -- gets written with an explicit "m" suffix or bare. Purely a notation choice: every
+// number means meters internally either way, D-005's "the plan language stays metric,
+// forever" is completely unaffected. "ft" is deliberately not offered here -- actually
+// *interpreting* a bare number as feet would mean converting it on every read throughout
+// core/every module, a materially bigger change than this one, not attempted.
+function newLiteralUnit(settings) { return settings && settings.units === "none" ? "" : "m"; }
+
 // F-013: the *display*-facing counterpart to formatNumber above -- that one always writes
 // plan source text back in whatever unit a token was already authored in (or a synthesized
 // "m" for a brand-new literal) and must never be affected by a viewer's own display
@@ -2616,7 +2629,7 @@ function registerHeaderAction({ id, label, title, onClick, tab = "modules", posi
 
 window.PlanCore = {
   parse, parseExpanded, render, tokenize,
-  numOf, isEditable, formatNumber, formatMeasurement, getDisplayUnit, FT_TO_M,
+  numOf, isEditable, formatNumber, formatMeasurement, getDisplayUnit, FT_TO_M, newLiteralUnit,
   computePositions, computeCornerUsers, resolvePointAbs, connectedNodeIds, nodeDragEdits,
   polygonSelfIntersects, rotatedRectAABB,
   rootEl, sourceEl, dragmsgEl, modlogEl,
@@ -2832,7 +2845,7 @@ function setSettingsSubKey(objectName, key, valueLiteral, requiredModule) {
 }
 
 function setGridType(type) { setSettingsSubKey("grid", "type", `"${type}"`, "grid-module.js"); }
-function setGridSize(meters) { setSettingsSubKey("grid", "size", formatNumber(meters, "m"), "grid-module.js"); }
+function setGridSize(meters) { setSettingsSubKey("grid", "size", formatNumber(meters, newLiteralUnit(program?.settings)), "grid-module.js"); }
 // F-042: `layer`/`opacity` (F-039/D-149) were the two remaining grid sub-settings still
 // source-text-only. Same setSettingsSubKey reuse as type/size above -- a nested object is,
 // to that function, just another span to search, no new mechanism needed.
@@ -2842,7 +2855,7 @@ function setGridOpacity(opacity) { setSettingsSubKey("grid", "opacity", formatNu
 // own comment (interactivity-module.js) for why the two were decoupled. No module requirement
 // here (unlike the grid.* setters above) -- snap is read directly by interactivity-module.js,
 // which is core and always loaded, grid-module.js has no involvement in it at all.
-function setSnapSize(meters) { setSettingsSubKey("snap", "size", formatNumber(meters, "m")); }
+function setSnapSize(meters) { setSettingsSubKey("snap", "size", formatNumber(meters, newLiteralUnit(program?.settings))); }
 
 function updateGridToggleUi() {
   const btn = document.getElementById("grid-toggle-btn");

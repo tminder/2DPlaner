@@ -250,7 +250,18 @@ Connection (D-013).
 
 Positions and sizes are given in real-world units (meters/cm), not abstract numbers
 (D-005). An element's coordinates are local to its parent; the renderer is responsible for
-scaling real-world units to screen pixels.
+scaling real-world units to screen pixels. Internally, a value is always meters (`cm`
+literals are converted at parse time) — this never changes, regardless of `settings.units`
+below.
+
+**`settings.units`: `"m"` (default) or `"none"` — purely a notation choice, not a unit
+conversion (D-177).** Every element's own literal can be written with an explicit `m`
+suffix (`size: [5m, 4m]`) or bare (`size: [5, 4]`) either way; what the app itself
+*writes back* when it synthesizes a brand-new literal (a drag that needs a fresh position,
+a new element from a preset, a grid/snap size field) follows `settings.units` — `"none"`
+means it writes bare numbers, matching a plan that wants no per-value unit clutter at all.
+An existing literal is never rewritten just because this setting changed — editing it (e.g.
+dragging it) keeps whatever unit it already had.
 
 ## Expressions
 

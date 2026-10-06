@@ -1969,15 +1969,15 @@
   // (see STANDARD_ELEMENTS's own comment), so they get no separate position line at all.
   // Only writes the style keys the preset actually declares -- a polyline preset with no
   // `fill` at all must not get a synthesized empty one.
-  function presetElementText(preset, id, indent) {
+  function presetElementText(preset, id, indent, unit) {
     const inner = indent + "  ";
     const lines = [`${indent}element ${id} {`, `${inner}shape: "${preset.shape}"`];
     if (preset.shape === "rect") {
-      lines.push(`${inner}size: [${preset.size[0]}m, ${preset.size[1]}m]`, `${inner}position: [0.3m, 0.3m]`);
+      lines.push(`${inner}size: [${preset.size[0]}${unit}, ${preset.size[1]}${unit}]`, `${inner}position: [0.3${unit}, 0.3${unit}]`);
     } else if (preset.shape === "circle") {
-      lines.push(`${inner}radius: ${preset.radius}m`, `${inner}position: [0.3m, 0.3m]`);
+      lines.push(`${inner}radius: ${preset.radius}${unit}`, `${inner}position: [0.3${unit}, 0.3${unit}]`);
     } else if (preset.shape === "polygon" || preset.shape === "polyline") {
-      lines.push(`${inner}points: [${preset.points.map(([x, y]) => `[${x}m, ${y}m]`).join(", ")}]`);
+      lines.push(`${inner}points: [${preset.points.map(([x, y]) => `[${x}${unit}, ${y}${unit}]`).join(", ")}]`);
     }
     const styleParts = Object.entries(preset.style).map(([key, value]) => `${key}: ${typeof value === "string" ? `"${value}"` : value}`);
     lines.push(`${inner}style: { ${styleParts.join(", ")} }`);
@@ -1998,7 +1998,7 @@
       const usedIds = new Set(Object.keys(base.nodesById));
       const id = uniqueId(preset.idBase, usedIds);
       const indent = lineIndentAt(text, target.start) + "  ";
-      const elementText = presetElementText(preset, id, indent);
+      const elementText = presetElementText(preset, id, indent, core.newLiteralUnit(base.settings));
       const insertAt = afterOpenBrace(text, target);
       const newText = text.slice(0, insertAt) + `\n${elementText}` + text.slice(insertAt);
       commitSourceEdit(newText, `'${id}': added to '${targetId}'.`);
@@ -2338,7 +2338,7 @@
           ]
         : [{
             start: afterHeaderLine(strippedText, freshNode), end: afterHeaderLine(strippedText, freshNode),
-            text: `${lineIndentAt(strippedText, freshNode.start)}  position: [${core.formatNumber(newX, "m")}, ${core.formatNumber(newY, "m")}]\n`,
+            text: `${lineIndentAt(strippedText, freshNode.start)}  position: [${core.formatNumber(newX, core.newLiteralUnit(strippedBase.settings))}, ${core.formatNumber(newY, core.newLiteralUnit(strippedBase.settings))}]\n`,
           }];
       const localEdits = positionEdits.map((e) => ({ start: e.start - cut.start, end: e.end - cut.start, text: e.text }));
       let movedText = applyEditsDescending(strippedText.slice(cut.start, cut.end), localEdits);
