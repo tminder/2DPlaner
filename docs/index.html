@@ -137,6 +137,14 @@
     padding: 0.5rem 1rem; }
   .menu-tab-panel[hidden] { display: none; }
   .menu-tab-panel { display: flex; align-items: center; gap: 2px; }
+  /* D-172's own #menu-tab-modules is the first .menu-tab-btn ever conditionally hidden --
+     File/Edit/View are always present, so this went unnoticed until now. .menu-tab-btn's
+     own `display: flex` above is an author-stylesheet rule, which always beats the browser's
+     default UA-stylesheet `[hidden] { display: none }` regardless of specificity or source
+     order (different cascade origins, not a specificity contest) -- the element rendered
+     visible with an empty row even though its own `hidden` attribute was correctly set the
+     whole time. Needs its own explicit override in the same origin to actually win. */
+  .menu-tab-btn[hidden] { display: none; }
 
   /* D-130/D-131: Account (Sign in/Save/Sign out + status) sits outside the tab system
      entirely, reusing .ribbon-group's own plain flex-row layout -- it was never a set of

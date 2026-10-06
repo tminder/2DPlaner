@@ -8,7 +8,29 @@ D-175: a header action registered during a module's own load is now auto-removed
 module is deactivated (its declaration removed from the plan's code), even if the module's
 own cleanup forgets to call the action's own unregister() -- core's own safety net, tracked
 via currentlyLoadingModule/headerActionsByModule, not reliant on every module author's own
-hygiene."""
+hygiene.
+
+D-176: the `hidden` attribute alone isn't enough to prove a tab is actually invisible --
+.menu-tab-btn's own `display: flex` (an author-stylesheet rule) silently beat the browser's
+default `[hidden] { display: none }` (a UA-stylesheet rule), regardless of specificity or
+source order, since author rules always win over UA rules in the cascade. The element's own
+`.hidden` DOM property read `true` the whole time while it rendered visibly anyway -- caught
+only by checking actual visibility (Playwright's `is_hidden()`/computed `display`), not the
+attribute. Tests below check both now, not just the attribute, to close that exact gap."""
+
+
+def test_modules_tab_is_actually_invisible_while_hidden_not_just_attribute_true(app_page):
+    """D-176: the `hidden` property/attribute being `true` doesn't by itself prove the tab
+    is actually invisible -- a CSS rule can silently override it. Checks real rendered
+    visibility (Playwright's own is_hidden(), backed by computed style) directly."""
+    tab = app_page.locator("#menu-tab-modules")
+    assert app_page.evaluate("document.getElementById('menu-tab-modules').hidden") is True
+    assert tab.is_hidden()
+
+    app_page.evaluate(
+        """() => window.PlanCore.registerHeaderAction({ id: 'test-action-0', label: 'Visible', onClick: () => {} })"""
+    )
+    assert tab.is_visible()
 
 
 def test_registering_an_action_unhides_the_modules_tab_and_creates_a_clickable_button(app_page):
