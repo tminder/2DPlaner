@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arrow Dimensions, Cleaner Plans, and Room for Modules to Grow — Blog</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="favicon.ico">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="description" content="Dimension lines you can draw with real arrows, a plan setting that drops the unit suffix from every number, and a way for modules to add their own button to the header.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: light;
+    --paper: #f7f4ee;
+    --paper-raised: #ffffff;
+    --ink: #221f1c;
+    --ink-soft: #5b5650;
+    --line: #d8d2c6;
+    --blue: #2c5f7c;
+    --blue-deep: #1e4457;
+    --amber: #b9791f;
+    --amber-soft: #f2dfb8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --paper: #191715; --paper-raised: #221f1c; --ink: #f1ece2; --ink-soft: #b5ada0;
+      --line: #3a352c; --blue: #6fa6c4; --blue-deep: #8fbfda; --amber: #e0ab53; --amber-soft: #4a3c22;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --paper: #191715; --paper-raised: #221f1c; --ink: #f1ece2; --ink-soft: #b5ada0;
+    --line: #3a352c; --blue: #6fa6c4; --blue-deep: #8fbfda; --amber: #e0ab53; --amber-soft: #4a3c22;
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font-family: "IBM Plex Sans", system-ui, sans-serif; line-height: 1.6; }
+  h1, h2, .wordmark { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+  h1, h2 { text-wrap: balance; letter-spacing: -0.01em; }
+  a { color: var(--blue-deep); }
+  .wrap { max-width: 680px; margin: 0 auto; padding: 0 1.5rem; }
+  .wrap-chrome { max-width: 1080px; margin: 0 auto; padding: 0 1.5rem; }
+
+  header.site { display: flex; align-items: center; justify-content: space-between; padding: 1.4rem 0; }
+  .wordmark { font-size: 1.05rem; font-weight: 600; color: var(--ink); text-decoration: none; display: flex; align-items: center; gap: 0.5rem; }
+  .wordmark .dot { color: var(--amber); }
+  nav.site a { color: var(--ink-soft); text-decoration: none; font-size: 0.92rem; margin-left: 1.75rem; }
+  nav.site a:hover { color: var(--ink); }
+  .nav-toggle { display: none; }
+
+  main { padding: 1rem 0 4rem; }
+  .eyebrow {
+    font-family: "IBM Plex Mono", monospace; font-size: 0.78rem; letter-spacing: 0.09em;
+    text-transform: uppercase; color: var(--amber); margin: 0 0 0.7rem;
+  }
+  .back-link { display: inline-block; margin-bottom: 1.6rem; font-size: 0.88rem; color: var(--ink-soft); text-decoration: none; }
+  .back-link:hover { color: var(--ink); }
+  h1.post-title { font-size: clamp(1.7rem, 4vw, 2.3rem); margin: 0 0 0.6rem; line-height: 1.2; }
+  p.dateline { color: var(--ink-soft); font-size: 0.88rem; margin: 0 0 2.4rem; }
+
+  .post { font-family: "IBM Plex Serif", Georgia, serif; font-size: 1.08rem; }
+  .post p { margin: 0 0 1.3rem; }
+  .post p.lede { font-size: 1.18rem; color: var(--ink-soft); }
+  .post h2 {
+    font-family: "IBM Plex Sans", system-ui, sans-serif; font-size: 1.25rem; font-weight: 600;
+    margin: 2.4rem 0 0.8rem; letter-spacing: -0.005em;
+  }
+  .post ul { margin: 0 0 1.3rem; padding-left: 1.3rem; }
+  .post li { margin-bottom: 0.55rem; }
+  .post strong { color: var(--ink); }
+  .post code {
+    font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 0.82em;
+    background: var(--amber-soft); color: var(--ink); padding: 0.1em 0.4em; border-radius: 4px;
+  }
+
+  .callout {
+    background: var(--amber-soft); border-left: 3px solid var(--amber); border-radius: 0 8px 8px 0;
+    padding: 1rem 1.3rem; margin: 2rem 0; font-family: "IBM Plex Sans", system-ui, sans-serif;
+    font-size: 0.95rem;
+  }
+  .callout a { font-weight: 600; }
+
+  footer.site {
+    padding: 2.5rem 0 3rem; color: var(--ink-soft); font-size: 0.86rem;
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.7rem;
+  }
+  footer.site a { color: var(--ink-soft); }
+  footer.site a:hover { color: var(--ink); }
+
+  .cookie-notice {
+    position: fixed; left: 1rem; right: 1rem; bottom: 1rem; z-index: 20;
+    max-width: 640px; margin: 0 auto;
+    background: var(--paper-raised); border: 1px solid var(--line); border-radius: 12px;
+    padding: 1rem 1.2rem; box-shadow: 0 6px 24px rgba(0,0,0,0.18);
+    display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+  }
+  .cookie-notice[hidden] { display: none; }
+  .cookie-notice p { margin: 0; font-size: 0.88rem; color: var(--ink-soft); flex: 1 1 20rem; font-family: "IBM Plex Sans", system-ui, sans-serif; }
+  .cookie-notice button {
+    flex: 0 0 auto; font-family: inherit; cursor: pointer; border: none; border-radius: 7px;
+    background: var(--blue); color: #fff; padding: 0.6rem 1.1rem; font-size: 0.9rem; font-weight: 600;
+  }
+  .cookie-notice button:hover { background: var(--blue-deep); }
+
+  @media (max-width: 640px) {
+    header.site { flex-wrap: wrap; row-gap: 0.7rem; }
+    .nav-toggle {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 2.3rem; height: 2.3rem; border: 1px solid var(--line); border-radius: 7px;
+      background: var(--paper-raised); color: var(--ink); font-size: 1.15rem; cursor: pointer;
+    }
+    nav.site { display: none; flex-basis: 100%; flex-direction: column; gap: 0.9rem; }
+    nav.site.open { display: flex; }
+    nav.site a { margin-left: 0; font-size: 1rem; }
+    footer.site { flex-direction: column; align-items: flex-start; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap-chrome">
+  <header class="site">
+    <a class="wordmark" href="/"><span class="dot">▦</span> Planagonia</a>
+    <button class="nav-toggle" id="nav-toggle" aria-label="Menu" aria-expanded="false" aria-controls="site-nav">☰</button>
+    <nav class="site" id="site-nav">
+      <a href="/app/">Open the app</a>
+      <a href="/docs/">Docs</a>
+      <a href="/modules/">Modules</a>
+      <a href="/blog/">Blog</a>
+      <a href="/profile/">Profile</a>
+    </nav>
+  </header>
+</div>
+<script>
+  (function () {
+    var toggle = document.getElementById("nav-toggle");
+    var nav = document.getElementById("site-nav");
+    toggle.addEventListener("click", function () {
+      var open = nav.classList.toggle("open");
+      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+  })();
+</script>
+
+<div class="wrap">
+  <main>
+    <a class="back-link" href="/blog/">← Back to the blog</a>
+    <p class="eyebrow">Product update</p>
+    <h1 class="post-title">Arrow Dimensions, Cleaner Plans, and Room for Modules to Grow</h1>
+    <p class="dateline">October 6, 2026</p>
+
+    <div class="post">
+      <p class="lede">Three updates that each make a plan a little easier to read, a little less cluttered to write, or a little easier to build on — a real dimension-line style for measurements, a way to drop the unit suffix from every single number in your plan, and the first real way for someone else's code to add its own button to the app you're already using.</p>
+
+      <h2>Dimension lines that actually look like dimension lines</h2>
+      <p>Edge lengths have always been able to show themselves as plain text next to a shape — a small "4m" floating by a wall. That's fine for a quick glance, but it doesn't read the way an actual drawing does. There's now a second style: a proper dimension line, with witness ticks at each end and an arrow-tipped line running between them, the measurement sitting right on top. Switch a whole plan over to it with one click of the header's <strong>Dimensions</strong> button, or write it directly as <code>settings.dimensionStyle: "arrows"</code>.</p>
+      <p>It's deliberately just the line style — the editor doesn't yet try to notice that three walls happen to line up and offer to sum them into one long dimension chain with a running total the way a CAD tool might. That's a genuinely bigger feature on its own, and it's still on the list. For now it's one style switch, applied everywhere <code>edgeLengths</code> is already turned on. The Studio Apartment example in <a href="/app/">the app</a> now ships with it on, if you want to see it against a real plan before trying it on your own.</p>
+
+      <h2>A plan that doesn't repeat its own units on every line</h2>
+      <p>Every number in a plan has always needed its own unit written right on it — <code>size: [5m, 4m]</code>, <code>position: [0m, 0m]</code>, and so on for every single value in the file. It was never actually necessary: a bare number already meant meters, the suffix was only ever there for clarity. Now a plan can say that once, up front, instead of on every line:</p>
+      <ul>
+        <li><code>settings { units: "m" }</code> — the default, and the one every existing plan already behaves as.</li>
+        <li><code>settings { units: "none" }</code> — new values the editor writes for you (a shape you drag, a new element you drop in, a grid size you set from the menu) come out bare, no suffix, and your own plans read cleaner too.</li>
+      </ul>
+      <p>Worth being precise about what this isn't: it's not the <a href="/blog/new-shapes-and-independent-snapping/">feet-and-inches toggle</a> from a few weeks ago — that one only changes how numbers are *displayed* to you, in the scale bar and dimension labels, and never touches your plan's own code at all. This is the opposite kind of thing: it changes what your plan's own code actually looks like, while the numbers themselves still always mean meters underneath, exactly as they always have. Two different knobs for two different jobs — what you see, and what you write.</p>
+
+      <h2>Room for someone else's code to add its own button</h2>
+      <p>Planagonia has always let a plan load a <a href="/modules/">module</a> — someone else's code that teaches the editor to draw something new, or react to clicks in a new way. Up to now, a module could only ever change what's happening *inside* the plan itself. It had no way to add anything to the app's own header around it. Now it can: a module can register its own single-click button, which shows up either in its own dedicated "Modules" tab or tucked into an existing one, wherever makes sense for what it does.</p>
+      <p>If you're not writing your own modules, this one's invisible to you — nothing changes about how the app looks or works today. If you are, it's a real new door: a module's own feature no longer has to live entirely inside the plan's canvas to be reachable.</p>
+
+      <div class="callout">
+        Want to try any of this? <a href="/app/">Open the app</a> — everything above is already live, no update needed on your end.
+      </div>
+
+      <p>Small on their own, but each one removes a little friction from somewhere different — reading a measurement, writing a plan, or building something on top of the app itself.</p>
+    </div>
+  </main>
+</div>
+
+<div class="wrap-chrome">
+  <footer class="site">
+    <span>Planagonia — a 2D plan generator.</span>
+    <span><a href="/app/">Open the app</a> · <a href="/docs/">Docs</a> · <a href="/modules/">Modules</a> · <a href="/blog/">Blog</a> · <a href="/profile/">Profile</a> · <a href="/impressum/">Impressum</a></span>
+  </footer>
+</div>
+
+<div id="cookie-notice" class="cookie-notice" hidden>
+  <p>This site saves your plans and sign-in state using your browser's own local storage — no tracking, no third-party cookies.</p>
+  <button id="cookie-notice-dismiss">Got it</button>
+</div>
+<script>
+  (function () {
+    var KEY = "planagonia:cookieNoticeDismissed";
+    var el = document.getElementById("cookie-notice");
+    try { if (!localStorage.getItem(KEY)) el.hidden = false; } catch (e) { el.hidden = false; }
+    document.getElementById("cookie-notice-dismiss").addEventListener("click", function () {
+      el.hidden = true;
+      try { localStorage.setItem(KEY, "1"); } catch (e) { /* private mode — not fatal */ }
+    });
+  })();
+</script>
+
+</body>
+</html>
