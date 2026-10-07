@@ -2944,6 +2944,23 @@
     return [...filtered].sort((a, b) => (paintOrderRank.get(b) ?? -1) - (paintOrderRank.get(a) ?? -1));
   }
 
+  // F-057 (second use of logic D-146/handleContextMenu already had for right-click, now
+  // shared rather than duplicated, this project's own "wait for a second use" convention):
+  // whether the current selection should win over the raw topmost-at-this-pixel hit --
+  // only when it's genuinely part of a real stacked overlap here, not just coincidentally
+  // sitting at this point via an ancestor relationship. D-146's own filter, verbatim:
+  // excludes the topmost hit's own ancestors, since a plain nested child's parent almost
+  // always also covers the same point (its shape typically underlies the child's) and that
+  // was never what "stacked, needs disambiguating" meant -- a genuine overlapping *sibling*
+  // still counts, unaffected.
+  function preferSelectedAtPoint(topmostId, clientX, clientY) {
+    const candidates = resolvedCandidatesAtPoint(clientX, clientY)
+      .filter((id) => id === topmostId || !isAncestorOf(id, topmostId, program));
+    const stacked = candidates.length > 1;
+    const targetId = stacked && selectedId && candidates.includes(selectedId) ? selectedId : topmostId;
+    return { targetId, stacked, candidates };
+  }
+
   // F-021: run continuously from handlePointerMove (not just once on element-entry) — a
   // single sample at hover-*entry* missed a real case, reported directly: entering a large
   // element through its own non-overlapping region shows nothing, correctly, but then moving
@@ -3213,14 +3230,21 @@
       return;
     }
 
-    // Which element a click actually targets: normally whatever's topmost at this pixel
-    // (el.dataset.id, same as before) — unless this click lands within tolerance of the
-    // *previous* plain click's own point, in which case it steps to whatever was one layer
-    // further down that same stack last time, wrapping back to the top once exhausted.
+    // Which element a click/drag actually targets: normally whatever's topmost at this
+    // pixel (el.dataset.id) -- F-057: *unless* the current selection is genuinely part of a
+    // real stacked overlap at this exact point, in which case the selection wins, the same
+    // tie-break handleContextMenu's own targetId already uses (D-146's own ancestor filter
+    // reused verbatim here too -- an ancestor's shape coincidentally underlying the topmost
+    // hit is near-universal and was never what "stacked" meant, only a genuine overlapping
+    // *sibling* counts). Click-cycling (below) still overrides this afterward exactly as
+    // before -- this only changes the *first* click/drag-start at a fresh point, not the
+    // cycling behavior once already engaged, and deliberately doesn't touch *every* point
+    // inside the selection's own bounding box (that would be a real, separate behavior
+    // change to z-order-driven selection generally, not what was asked for here).
+    let chosenId = preferSelectedAtPoint(el.dataset.id, e.clientX, e.clientY).targetId;
     // Recomputed fresh on every click (S-005) — resolvedCandidatesAtPoint is now sourced
     // from paintOrderRank, immune to bringToFront's own DOM reordering, so there's no more
     // need to freeze a snapshot at cycle-start the way this used to.
-    let chosenId = el.dataset.id;
     const cycleCandidates = resolvedCandidatesAtPoint(e.clientX, e.clientY);
     if (clickCycle && Math.hypot(e.clientX - clickCycle.x, e.clientY - clickCycle.y) <= CLICK_CYCLE_TOLERANCE_PX) {
       const idx = cycleCandidates.indexOf(clickCycle.lastId);
@@ -3305,23 +3329,9 @@
     // covered element (already reached and selected via a left-click cycle) could never be
     // right-clicked directly at all: only the element currently on top of it, needing an
     // indirect "select the wrong one and send IT to back" workaround instead of directly
-    // acting on the one actually intended. Prefers the current selection whenever it's
-    // still genuinely part of the stack at this exact point — a stale selection from
-    // somewhere else in the plan is never substituted in for an unrelated right-click.
-    // D-146: a real bug, found live -- resolvedCandidatesAtPoint includes every element
-    // whose shape covers this point, and a plain nested child's own *parent* almost always
-    // does too (its shape typically underlies the child's), so "stacked" was true for
-    // nearly every ordinary click, not just genuine sibling overlap -- silently skipping
-    // the auto-select branch below for almost any right-click. Filtered to exclude the
-    // topmost hit's own ancestors: an ancestor coincidentally underlying this point was
-    // never what "stacked, needs disambiguating" meant here (that's what D-077's own
-    // click-cycling is for on the left-click side); a genuine overlapping *sibling* still
-    // counts, unaffected.
-    const candidates = resolvedCandidatesAtPoint(e.clientX, e.clientY)
-      .filter((id) => id === el.dataset.id || !isAncestorOf(id, el.dataset.id, program));
-    const stacked = candidates.length > 1;
-    const targetId = stacked && selectedId && candidates.includes(selectedId)
-      ? selectedId : el.dataset.id;
+    // acting on the one actually intended. preferSelectedAtPoint (F-057) now shares this
+    // exact logic with handlePointerDown's own click/drag-start resolution.
+    const { targetId, stacked } = preferSelectedAtPoint(el.dataset.id, e.clientX, e.clientY);
     // Outside a stacked point, right-clicking a different element also selects it — the
     // menu then visibly acts on whatever the selection indicator itself is now
     // highlighting, instead of leaving it pointed at something else entirely. Left off
