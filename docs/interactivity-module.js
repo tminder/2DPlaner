@@ -56,6 +56,12 @@
          the same selection affordance rather than a separate, unrelated control. */
       svg .resize-handle { fill: #fff; stroke: #7c3aed; stroke-width: 1.5px; cursor: pointer; }
       svg .resize-handle:hover { fill: #7c3aed; }
+      /* F-059: a lighter-weight variant for the "insert a point here" edge-midpoint handles
+         -- same purple family as every other handle, but visibly less prominent (semi-
+         transparent fill, thinner stroke, smaller radius already set per-element) so it
+         reads as a secondary, optional action next to the solid per-vertex handles. */
+      svg .resize-handle.insert-vertex { fill: rgba(124, 58, 237, 0.35); stroke-width: 1px; }
+      svg .resize-handle.insert-vertex:hover { fill: #7c3aed; }
       #plan-root:not(.dragging) .anchor-hit:hover { fill: #e33; opacity: 0.7; }
       /* Live feedback for the Ctrl/Cmd-drag relate gesture: whichever other element is
          currently under the cursor while the source itself stays put — a distinct color
@@ -2170,6 +2176,22 @@
     return text.slice(start, pos).match(/^[ \t]*/)[0];
   }
 
+  // F-059: the exact source span of one `points` array entry -- a corner reference
+  // (`pt.ast.start`/`.end`, already carried on the parsed function, see fn.ast in the
+  // parser) or a literal `[x, y]` pair. For a literal pair, the enclosing brackets are
+  // found by scanning out from the two numbers themselves rather than assumed adjacent --
+  // safe specifically because a coordinate pair never has further nested brackets between
+  // its own two numbers, so the nearest `[` before x's own start and `]` after y's own end
+  // can only ever belong to this one pair.
+  function pointEntryStart(text, pt) {
+    if (typeof pt === "function" && pt.ast) return pt.ast.start;
+    return text.lastIndexOf("[", pt[0].start);
+  }
+  function pointEntryEnd(text, pt) {
+    if (typeof pt === "function" && pt.ast) return pt.ast.end;
+    return text.indexOf("]", pt[1].end) + 1;
+  }
+
   // Right after the node's own opening `element id {` line — where every shipped example
   // already puts its first property. Assumes a fresh line exists to land on (true for
   // every multi-line-formatted element, which is every shipped example) -- falls back to
@@ -2608,6 +2630,26 @@
     contextMenuEl.style.left = `${clampMenuCoord(x, window.innerWidth, extent, 8)}px`;
     contextMenuEl.style.top = `${clampMenuCoord(y, window.innerHeight, extent, 8)}px`;
     contextMenuEl.hidden = false;
+  }
+
+  // F-059: a minimal one-item menu through the exact same showRadialMenu component the
+  // element menu already uses, not a new UI mechanism -- a single button rendered directly
+  // above the click point (ringAngle's own behavior for a count of 1). Disabled, not
+  // hidden, once the shape is at its own structural minimum (2 points for a polyline, 3 for
+  // a polygon) -- consistent with every other disabled item in this menu (e.g. Placement's
+  // own checked/disabled rows), rather than silently doing nothing or vanishing outright.
+  function openVertexDeleteMenu(nodeId, pointIndex, x, y) {
+    contextMenuItems = [];
+    const node = program.nodesById[nodeId];
+    const points = node?.props.points;
+    if (!points) return;
+    const minPoints = node.props.shape === "polygon" ? 3 : 2;
+    contextMenuItems.push({
+      label: "Delete Point", icon: "trash", danger: true,
+      disabled: points.length <= minPoints,
+      action: () => deletePolyPoint(nodeId, pointIndex),
+    });
+    showRadialMenu([{ i: 0 }], x, y);
   }
 
   function openContextMenu(nodeId, x, y) {
@@ -3134,6 +3176,10 @@
           } else {
             core.dragmsgEl.textContent = `'${nodeId}': this point is an expression, can't drag it directly — edit it in the editor`;
           }
+        } else if (corner === "insert-vertex") {
+          // F-059: a plain click-and-done action, not a gesture -- no drag state, nothing
+          // for handlePointerMove/Up below to continue.
+          insertPolyPoint(nodeId, Number(handle.dataset.edgeIndex));
         } else if (corner.startsWith("scale-")) {
           // D-143: proportional scale from the shape's own bounding-box corner, generalizing
           // resizeDrag's own rect-corner algorithm from one point to N. Reparsed fresh every
@@ -3339,6 +3385,16 @@
       cancelConnectPick();
       return;
     }
+    // F-059: right-clicking an existing per-vertex handle offers Delete Point instead of
+    // the ordinary element menu -- checked first, since a handle is a direct SVG sibling of
+    // its own shape (appended by drawResizeHandles), never a descendant of a [data-id]
+    // element, so e.target.closest("[data-id]") below would never find it anyway.
+    const vertexHandle = e.target.closest('.resize-handle[data-corner="vertex"]');
+    if (vertexHandle) {
+      e.preventDefault();
+      openVertexDeleteMenu(vertexHandle.dataset.nodeId, Number(vertexHandle.dataset.pointIndex), e.clientX, e.clientY);
+      return;
+    }
     const el = e.target.closest("[data-id]");
     if (!el || !program) return;
     e.preventDefault();
@@ -3487,15 +3543,34 @@
       // others silently not. What a given handle actually *does* when dragged differs (see
       // handlePointerDown's own "vertex" case) but its rendering here is uniform.
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      node.props.points.forEach((pt, i) => {
-        let p;
-        try { p = core.resolvePointAbs(pt, abs, positions); } catch (e) { return; } // unresolved corner ref — skip
+      const resolvedPts = node.props.points.map((pt) => {
+        try { return core.resolvePointAbs(pt, abs, positions); } catch (e) { return null; } // unresolved corner ref
+      });
+      resolvedPts.forEach((p, i) => {
+        if (!p) return;
         minX = Math.min(minX, p[0]); maxX = Math.max(maxX, p[0]);
         minY = Math.min(minY, p[1]); maxY = Math.max(maxY, p[1]);
         svgEl.insertAdjacentHTML("beforeend",
           `<circle class="resize-handle" data-node-id="${selectedId}" data-corner="vertex" data-point-index="${i}" ` +
           `cx="${p[0] * core.M}" cy="${p[1] * core.M}" r="${HANDLE_HALF}" />`);
       });
+
+      // F-059: a smaller "insert a point here" handle at each edge's own midpoint, the same
+      // family as the per-vertex handles above but visually lighter-weight (smaller, lower
+      // opacity, see .resize-handle.insert-vertex) -- a deliberately different affordance
+      // for a deliberately different action. A polyline has points.length-1 edges (no
+      // wrap); a polygon closes, points.length-1 is the its own wrap-around edge back to
+      // point 0. Skipped wherever either endpoint didn't resolve, same as the vertex
+      // handles above -- nothing meaningful to insert along an edge with an unknown end.
+      const edgeCount = node.props.shape === "polygon" ? resolvedPts.length : resolvedPts.length - 1;
+      for (let i = 0; i < edgeCount; i++) {
+        const a = resolvedPts[i], b = resolvedPts[(i + 1) % resolvedPts.length];
+        if (!a || !b) continue;
+        const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+        svgEl.insertAdjacentHTML("beforeend",
+          `<circle class="resize-handle insert-vertex" data-node-id="${selectedId}" data-corner="insert-vertex" data-edge-index="${i}" ` +
+          `cx="${mx * core.M}" cy="${my * core.M}" r="${HANDLE_HALF * 0.65}" />`);
+      }
 
       // D-143: proportional scale, from the shape's own bounding box — offered only when
       // every corner-ref point this shape uses is exclusive to it (canScale). A shared
@@ -3884,6 +3959,68 @@
     ];
     core.sourceEl.value = applyEditsDescending(vertexDrag.baseText, edits);
     core.rerender({ preserveViewBox: true });
+  }
+
+  // F-059: a single click-and-done action, not a gesture -- unlike every *Drag function
+  // above, this reparses once and commits immediately rather than running per pointermove.
+  // The new point is always a literal [x, y] pair, never a corner reference (D-018) -- it
+  // has no reason to be shared with anything else yet, and nothing stops an author from
+  // hand-promoting it to a shared corner later. edgeIndex === points.length - 1 on a
+  // polygon is its own wrap-around edge (last point back to the first); "insert right after
+  // the edge's own first point" already handles that correctly with no special-casing,
+  // since appending after the true last point is exactly what extending the array means.
+  function insertPolyPoint(nodeId, edgeIndex) {
+    withParsedSource((text, base) => {
+      const node = base.nodesById[nodeId];
+      const points = node?.props.points;
+      if (!points) return;
+      const a = points[edgeIndex], b = points[(edgeIndex + 1) % points.length];
+      const positions = {};
+      core.computePositions(base.root, null, [0, 0], positions);
+      const ownAbs = positions[node.id];
+      let worldA, worldB;
+      try { worldA = core.resolvePointAbs(a, ownAbs, positions); worldB = core.resolvePointAbs(b, ownAbs, positions); }
+      catch (e) { return; } // an unresolved corner ref -- nothing to midpoint between
+      const localX = (worldA[0] + worldB[0]) / 2 - ownAbs[0];
+      const localY = (worldA[1] + worldB[1]) / 2 - ownAbs[1];
+      const unit = core.newLiteralUnit(base.settings);
+      const insertAt = pointEntryEnd(text, a);
+      const newText = `${text.slice(0, insertAt)}, [${core.formatNumber(localX, unit)}, ${core.formatNumber(localY, unit)}]${text.slice(insertAt)}`;
+      commitSourceEdit(newText, `'${nodeId}': point added.`);
+    });
+  }
+
+  // F-059: removes exactly one entry from this shape's own `points` array -- never the
+  // referenced corner element itself when the point being deleted is a corner reference
+  // (D-018), which is what correctly leaves every *other* element's own reference to that
+  // same corner untouched; the corner node is simply never touched. Eats one adjacent comma
+  // (trailing if anything follows, otherwise the leading one) so this never leaves a
+  // dangling `, ,` or a trailing `[a, b, ]` behind, the same "don't leave orphaned
+  // punctuation" shape toggleSettingsFlag's own key-removal branch already established.
+  function deletePolyPoint(nodeId, pointIndex) {
+    withParsedSource((text, base) => {
+      const node = base.nodesById[nodeId];
+      const points = node?.props.points;
+      const pt = points?.[pointIndex];
+      if (!pt) return;
+      const minPoints = node.props.shape === "polygon" ? 3 : 2;
+      if (points.length <= minPoints) return;
+      let start = pointEntryStart(text, pt);
+      let end = pointEntryEnd(text, pt);
+      if (pointIndex < points.length - 1) {
+        // Eat the trailing ", " (or just "," with no space) before the next entry.
+        while (text[end] === " ") end++;
+        if (text[end] === ",") end++;
+        while (text[end] === " ") end++;
+      } else {
+        // Last entry: eat the leading ", " before *this* one instead -- there's no
+        // trailing comma to consume after the final point.
+        while (text[start - 1] === " ") start--;
+        if (text[start - 1] === ",") start--;
+      }
+      const newText = text.slice(0, start) + text.slice(end);
+      commitSourceEdit(newText, `'${nodeId}': point removed.`);
+    });
   }
 
   // D-143: dragging one of a polygon/polyline's 4 bounding-box scale handles. Same
