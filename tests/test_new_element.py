@@ -2,7 +2,11 @@
 inserts one of the language's own generic shape primitives (Line/Rectangle/Circle/Polygon)
 into the current plan, instead of hand-typing an `element { ... }` block. Reported directly
 that D-162's original furniture presets (Bed/Desk/...) didn't belong in the app's own
-general-purpose chrome -- see interactivity-module.js's own STANDARD_ELEMENTS comment."""
+general-purpose chrome -- see interactivity-module.js's own STANDARD_ELEMENTS comment.
+
+F-050 (D-185): a selection with no unambiguous "inside" (anything but rect/polygon) isn't a
+sensible container -- inserting lands the new element as a *sibling* instead, one level up
+into the selection's own parent."""
 
 from helpers import element_center, load_plan, source_text
 
@@ -18,6 +22,23 @@ element room {
     size: [1.6m, 2m]
     position: [0.3m, 0.4m]
     style: { fill: "#cfe0f5" }
+  }
+}
+"""
+
+NON_CONTAINER_PLAN = """
+element root {
+  element c0 { position: [0,0] }
+  element wall {
+    shape: "polyline"
+    points: [[0,0], [3,0]]
+    style: { stroke: "#444", strokeWidth: 0.1 }
+  }
+  element bulb {
+    shape: "circle"
+    radius: 0.2m
+    position: [1m, 1m]
+    style: { fill: "yellow" }
   }
 }
 """
@@ -100,3 +121,56 @@ def test_every_preset_produces_valid_parseable_output(app_page):
     text = source_text(app_page)
     for preset_id in ["line", "rect", "circle", "polygon"]:
         assert f"element {preset_id} {{" in text
+
+
+def test_selecting_a_polyline_inserts_as_a_sibling_not_nested_inside(app_page):
+    load_plan(app_page, NON_CONTAINER_PLAN)
+    x, y = element_center(app_page, "wall")
+    app_page.mouse.click(x, y)
+    app_page.wait_for_timeout(150)
+
+    open_new_element_flyout(app_page)
+    pick_preset(app_page, "rect")
+
+    text = source_text(app_page)
+    wall_open = text.index("element wall {")
+    wall_close = text.index("\n  }", wall_open)
+    rect_at = text.index("element rect {")
+    assert not (wall_open < rect_at < wall_close)  # not nested inside wall
+    root_open = text.index("element root {")
+    assert root_open < rect_at  # landed one level up, inside wall's own parent (root)
+
+
+def test_selecting_a_circle_inserts_as_a_sibling_not_nested_inside(app_page):
+    load_plan(app_page, NON_CONTAINER_PLAN)
+    x, y = element_center(app_page, "bulb")
+    app_page.mouse.click(x, y)
+    app_page.wait_for_timeout(150)
+
+    open_new_element_flyout(app_page)
+    pick_preset(app_page, "polygon")
+
+    text = source_text(app_page)
+    bulb_open = text.index("element bulb {")
+    bulb_close = text.index("\n  }", bulb_open)
+    polygon_at = text.index("element polygon {")
+    assert not (bulb_open < polygon_at < bulb_close)  # not nested inside bulb
+
+
+def test_selecting_a_shapeless_corner_inserts_as_a_sibling_not_nested_inside(app_page):
+    load_plan(app_page, NON_CONTAINER_PLAN)
+    x, y = element_center(app_page, "c0")
+    app_page.mouse.click(x, y)
+    app_page.wait_for_timeout(150)
+
+    open_new_element_flyout(app_page)
+    pick_preset(app_page, "circle")
+
+    text = source_text(app_page)
+    c0_line = [l for l in text.split("\n") if "element c0 {" in l][0]
+    assert "element circle {" not in c0_line  # c0 is a one-liner with no children to nest into
+    root_open = text.index("element root {")
+    circle_at = text.index("element circle {")
+    assert root_open < circle_at  # landed one level up, inside c0's own parent (root)
+
+

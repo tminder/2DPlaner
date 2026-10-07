@@ -2037,23 +2037,37 @@
     return lines.join("\n");
   }
 
-  // Inserted as the current selection's own first child if anything's selected, else the
-  // plan root's -- "add this into whatever I'm looking at" is the lowest-surprise default.
-  // No validation that the target is a sensible container: this language doesn't restrict
-  // nesting by shape today, matching reparentElement's own already-accepted looseness one
-  // level up. afterOpenBrace is the exact same "insert a child right after the target's
-  // own `{`" helper reparentElement (D-150) already uses -- reused as-is, no new helper.
+  // F-050: the only two shapes with an unambiguous "inside" -- the exact distinction
+  // parentBoundaryPolygon (above) already draws in its own comment for containment/
+  // placement checks, reused here rather than inventing a second notion of "container".
+  const CONTAINER_SHAPES = ["rect", "polygon"];
+
+  // Inserted as the current selection's own first child if it's a sensible container
+  // (CONTAINER_SHAPES, or the plan's own root regardless of its shape -- it's the
+  // top-level grouping node, typically shapeless, and has nowhere to redirect to anyway);
+  // otherwise as a sibling, one level up into the selection's own parent -- a `circle`/
+  // `polyline`/shapeless selection (e.g. a bare D-018 corner node) has no meaningful
+  // "inside" to nest into. Falls back to the plan root if nothing is selected. Only one
+  // level up, never walked further: F-050 scoped this to a single redirect, not a search
+  // for the nearest container ancestor. afterOpenBrace is the exact same "insert a child
+  // right after the target's own `{`" helper reparentElement (D-150) already uses --
+  // reused as-is, no new helper. Deliberately not applied to D-150's own drag-driven
+  // reparenting: dragging is already an explicit placement choice, this heuristic exists
+  // only to guess a sensible default when the system is choosing with no input at all.
   function insertStandardElement(preset) {
     withParsedSource((text, base) => {
-      const targetId = selectedId && base.nodesById[selectedId] ? selectedId : base.root.id;
-      const target = base.nodesById[targetId];
+      const selected = selectedId && base.nodesById[selectedId] ? base.nodesById[selectedId] : null;
+      const target = !selected ? base.root
+        : (!selected.parentId || CONTAINER_SHAPES.includes(selected.props.shape))
+          ? selected
+          : base.nodesById[selected.parentId];
       const usedIds = new Set(Object.keys(base.nodesById));
       const id = uniqueId(preset.idBase, usedIds);
       const indent = lineIndentAt(text, target.start) + "  ";
       const elementText = presetElementText(preset, id, indent, core.newLiteralUnit(base.settings));
       const insertAt = afterOpenBrace(text, target);
       const newText = text.slice(0, insertAt) + `\n${elementText}` + text.slice(insertAt);
-      commitSourceEdit(newText, `'${id}': added to '${targetId}'.`);
+      commitSourceEdit(newText, `'${id}': added to '${target.id}'.`);
     });
   }
 
