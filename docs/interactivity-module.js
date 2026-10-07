@@ -2273,6 +2273,60 @@
     });
   }
 
+  // Escapes just the one character this grammar's own STRING token actually recognizes an
+  // escape for (`"(?:[^"\\]|\\.)*"`, docs/index.html's TOKEN_RE) -- enough to keep a label
+  // containing a literal quote from breaking the surrounding string, not a claim that this
+  // language round-trips escape sequences in general (it doesn't un-escape on read either,
+  // a separate, pre-existing quirk this isn't attempting to fix).
+  function escapePlanString(s) {
+    return s.replace(/"/g, '\\"');
+  }
+
+  // F-055: renames the element's own display-facing `label`, not its `id` -- the id is a
+  // structural reference other `points`/`connection` lines may depend on throughout the
+  // plan, a materially bigger and riskier rename than anything F-055 itself asked for.
+  // Empty input clears the label entirely (toLineSpan's whole-line removal, same shape
+  // toggleFlush's own turning-off branch already uses) rather than writing `label: ""`.
+  function renameElement(nodeId) {
+    withParsedSource((text, base) => {
+      const node = base.nodesById[nodeId];
+      if (!node) return;
+      const current = typeof node.props.label === "string" ? node.props.label : "";
+      const name = prompt("Rename element:", current);
+      if (name == null) return; // cancelled
+      const trimmed = name.trim();
+      const existing = findOwnPropertyLine(text, node, "label");
+      let newText;
+      if (!trimmed) {
+        if (!existing) return; // nothing to clear
+        const span = toLineSpan(text, existing.start, existing.end);
+        newText = text.slice(0, span.start) + text.slice(span.end);
+      } else if (existing) {
+        newText = text.slice(0, existing.start) + `${existing.indent}label: "${escapePlanString(trimmed)}"` + text.slice(existing.end);
+      } else {
+        newText = text.slice(0, afterHeaderLine(text, node)) + `${lineIndentAt(text, node.start)}  label: "${escapePlanString(trimmed)}"\n` + text.slice(afterHeaderLine(text, node));
+      }
+      commitSourceEdit(newText, `'${nodeId}': renamed.`);
+    });
+  }
+
+  // F-056: scoped to presets already declared in settings.styles -- picking one writes
+  // `style: "presetName"`, the same string-valued form a hand-authored plan already uses
+  // (core.resolveStyle, docs/index.html). Not a free-form color/style editor -- that's the
+  // materially bigger, still-undesigned half of F-056, left for later.
+  function setElementStylePreset(nodeId, presetName) {
+    withParsedSource((text, base) => {
+      const node = base.nodesById[nodeId];
+      if (!node) return;
+      const literal = `"${escapePlanString(presetName)}"`;
+      const existing = findOwnPropertyLine(text, node, "style");
+      const newText = existing
+        ? text.slice(0, existing.start) + `${existing.indent}style: ${literal}` + text.slice(existing.end)
+        : text.slice(0, afterHeaderLine(text, node)) + `${lineIndentAt(text, node.start)}  style: ${literal}\n` + text.slice(afterHeaderLine(text, node));
+      commitSourceEdit(newText, `'${nodeId}': style set to "${presetName}".`);
+    });
+  }
+
   // D-148/D-150/S-039: the drag-driven reparent (arbitrary target) generalizes what "No
   // placement (moves freely)" needs (a target that's always specifically the grandparent) --
   // same two-pass strip-placement-then-reparse-then-splice mechanic, same editable/missing/
@@ -2437,6 +2491,9 @@
     link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>',
     unlink: '<path d="m18.84 12.25 1.72-1.71a5.004 5.004 0 0 0-.12-7.07 5.006 5.006 0 0 0-6.95 0l-1.72 1.71"></path><path d="m5.17 11.75-1.71 1.71a5.004 5.004 0 0 0 .12 7.07 5.006 5.006 0 0 0 6.95 0l1.71-1.71"></path><line x1="8" y1="2" x2="8" y2="5"></line><line x1="2" y1="8" x2="5" y2="8"></line><line x1="16" y1="19" x2="16" y2="22"></line><line x1="19" y1="16" x2="22" y2="16"></line>',
     "external-link": '<path d="M15 3h6v6"></path><path d="M10 14 21 3"></path><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>',
+    "edit-3": '<path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"></path>',
+    type: '<polyline points="4 7 4 4 20 4 20 7"></polyline><line x1="9" y1="20" x2="15" y2="20"></line><line x1="12" y1="4" x2="12" y2="20"></line>',
+    palette: '<circle cx="13.5" cy="6.5" r=".5"></circle><circle cx="17.5" cy="10.5" r=".5"></circle><circle cx="8.5" cy="7.5" r=".5"></circle><circle cx="6.5" cy="12.5" r=".5"></circle><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"></path>',
   };
 
   // First ring (top-level actions/groups) and second ring (a group's own children,
@@ -2563,16 +2620,40 @@
     // detecting an actual overlap at this exact pixel (found not to be intuitive: an author
     // may want to set stacking order pre-emptively, or the one-point sample simply might not
     // land where two siblings currently overlap even though they do elsewhere). Each item
-    // still hides itself once it would be a no-op (already first/last). Grouped under one
-    // "Order" submenu (was two flat top-level items) as part of the top-level cap below.
+    // still hides itself once it would be a no-op (already first/last).
     const node = program.nodesById[nodeId];
     const parent = node?.parentId ? program.nodesById[node.parentId] : null;
-    if (parent && parent.children.length > 1) {
-      const idx = parent.children.indexOf(node);
-      const orderItems = [];
-      if (idx < parent.children.length - 1) orderItems.push({ i: push({ label: "Bring to Front", icon: "chevrons-up", action: () => reorderSibling(nodeId, true) }) });
-      if (idx > 0) orderItems.push({ i: push({ label: "Send to Back", icon: "chevrons-down", action: () => reorderSibling(nodeId, false) }) });
-      renderItems.push({ label: "Order", icon: "layers", group: orderItems });
+    // F-055/F-056: Rename and Change Style both needed a top-level slot with none of the
+    // existing groups (Order/Placement/Connections) a natural fit for either — rather than
+    // bust D-144's 5-item cap with two more flat/grouped entries, both fold into one new
+    // "Edit" group alongside Order's own Bring to Front/Send to Back (the smallest existing
+    // group, and the closest thing to "general element editing" already here) — net zero
+    // change to the top-level count. User-confirmed approach, not assumed.
+    if (!groupTargets) {
+      const editItems = [
+        { i: push({ label: "Rename", icon: "type", action: () => renameElement(nodeId) }) },
+      ];
+      // Only offered when the plan actually declares at least one preset -- same "don't
+      // offer a no-op" convention Order's own visibility below already follows. Scoped to
+      // presets only (not a free-form color/style editor) -- the materially bigger half of
+      // F-056, left undesigned/unbuilt per its own text. Flat rows, not a further-nested
+      // "Change Style" submenu: the radial menu only ever supports one level of grouping
+      // (a top-level group's own children must be leaves, see renderRadialMenu/
+      // radialButtonHtml below, which index contextMenuItems by a flat .i with no recursion)
+      // -- each row names the preset directly instead, same shape Connections' own flat
+      // "Disconnect from X" rows already use for the identical reason.
+      const presetNames = program.settings?.styles ? Object.keys(program.settings.styles) : [];
+      for (const name of presetNames) {
+        editItems.push({
+          i: push({ label: `Style: ${name}`, icon: "palette", action: () => setElementStylePreset(nodeId, name), checked: node.props.style === name }),
+        });
+      }
+      if (parent && parent.children.length > 1) {
+        const idx = parent.children.indexOf(node);
+        if (idx < parent.children.length - 1) editItems.push({ i: push({ label: "Bring to Front", icon: "chevrons-up", action: () => reorderSibling(nodeId, true) }) });
+        if (idx > 0) editItems.push({ i: push({ label: "Send to Back", icon: "chevrons-down", action: () => reorderSibling(nodeId, false) }) });
+      }
+      renderItems.push({ label: "Edit", icon: "edit-3", group: editItems });
     }
     // F-035: setting placement/flush directly, instead of hand-typing the exact property
     // names into the source, grouped under one "Placement" submenu naming the actual

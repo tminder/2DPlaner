@@ -38,13 +38,15 @@ element room {
 
 
 def test_top_level_menu_is_capped_at_five_items(app_page):
+    # F-055/F-056: "Order" (Bring to Front/Send to Back) folded into a new "Edit" group
+    # alongside Rename/Change Style -- same top-level count (5), not a 6th item.
     load_plan(app_page, ROOM_WITH_TWO_CHILDREN)
     sx, sy = element_center(app_page, "sofa")
     open_context_menu(app_page, sx, sy)
     assert top_level_menu_labels(app_page) == [
         "Duplicate",
         "Delete Element",
-        "Order",
+        "Edit",
         "Placement",
         "Connections",
     ]

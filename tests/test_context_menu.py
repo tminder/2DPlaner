@@ -1,14 +1,59 @@
 """D-030/D-074/D-089/D-090: the right-click context menu's structural actions --
-Duplicate, Delete, and the persistent Bring to Front/Send to Back reorder."""
+Duplicate, Delete, and the persistent Bring to Front/Send to Back reorder.
+
+F-055/F-056: Rename and Change Style, both folded into one new "Edit" group alongside
+Bring to Front/Send to Back (moved out of the old standalone "Order" group) to stay within
+D-144's 5-top-level-item cap -- user-confirmed approach, see planning/decisions.md D-179."""
 
 from helpers import (
     click_menu_item,
     element_center,
     load_plan,
+    menu_item_state,
     menu_items,
     open_context_menu,
     source_text,
 )
+
+ELEMENT_WITH_PRESET_STYLES = """
+settings {
+  styles: {
+    box: { fill: "#8ab", stroke: "#333" }
+    alt: { fill: "#f90", stroke: "#111" }
+  }
+}
+
+element room {
+  shape: "rect"
+  size: [3m, 3m]
+  position: [0m, 0m]
+  style: { fill: "#eee" }
+
+  element a {
+    shape: "rect"
+    size: [1m, 1m]
+    position: [0.5m, 0.5m]
+    style: "box"
+    label: "Box A"
+  }
+}
+"""
+
+NO_PRESETS_DECLARED = """
+element room {
+  shape: "rect"
+  size: [3m, 3m]
+  position: [0m, 0m]
+  style: { fill: "#eee" }
+
+  element a {
+    shape: "rect"
+    size: [1m, 1m]
+    position: [0.5m, 0.5m]
+    style: { fill: "#8ab" }
+  }
+}
+"""
 
 TWO_SIBLINGS = """
 element room {
@@ -115,3 +160,57 @@ def test_right_click_targets_current_selection_over_dom_topmost(app_page):
     # be offered, proving the menu targeted sofa (the selection), not just whatever the
     # raw DOM hit-test would have returned.
     assert "Bring to Front" in items
+
+
+def test_rename_writes_the_label_property(app_page):
+    load_plan(app_page, NO_PRESETS_DECLARED)
+    app_page.on("dialog", lambda d: d.accept("Renamed Box"))
+    cx, cy = element_center(app_page, "a")
+    open_context_menu(app_page, cx, cy)
+    click_menu_item(app_page, "Rename")
+    assert 'label: "Renamed Box"' in source_text(app_page)
+
+
+def test_rename_with_empty_input_clears_an_existing_label(app_page):
+    load_plan(app_page, ELEMENT_WITH_PRESET_STYLES)  # "a" already has label: "Box A"
+    app_page.on("dialog", lambda d: d.accept(""))
+    cx, cy = element_center(app_page, "a")
+    open_context_menu(app_page, cx, cy)
+    click_menu_item(app_page, "Rename")
+    assert "label:" not in source_text(app_page)
+
+
+def test_rename_cancelled_leaves_the_source_untouched(app_page):
+    load_plan(app_page, NO_PRESETS_DECLARED)
+    app_page.on("dialog", lambda d: d.dismiss())
+    before = source_text(app_page)
+    cx, cy = element_center(app_page, "a")
+    open_context_menu(app_page, cx, cy)
+    click_menu_item(app_page, "Rename")
+    assert source_text(app_page) == before
+
+
+def test_change_style_is_absent_when_no_presets_are_declared(app_page):
+    load_plan(app_page, NO_PRESETS_DECLARED)
+    cx, cy = element_center(app_page, "a")
+    open_context_menu(app_page, cx, cy)
+    assert not any(item.startswith("Style:") for item in menu_items(app_page))
+
+
+def test_change_style_lists_every_declared_preset_and_writes_the_chosen_one(app_page):
+    load_plan(app_page, ELEMENT_WITH_PRESET_STYLES)
+    cx, cy = element_center(app_page, "a")
+    open_context_menu(app_page, cx, cy)
+    items = menu_items(app_page)
+    assert "Style: box" in items
+    assert "Style: alt" in items
+    click_menu_item(app_page, "Style: alt")
+    assert 'style: "alt"' in source_text(app_page)
+
+
+def test_the_currently_applied_preset_shows_as_checked(app_page):
+    load_plan(app_page, ELEMENT_WITH_PRESET_STYLES)  # "a" already uses style: "box"
+    cx, cy = element_center(app_page, "a")
+    open_context_menu(app_page, cx, cy)
+    assert menu_item_state(app_page, "Style: box")["checked"] is True
+    assert menu_item_state(app_page, "Style: alt")["checked"] is False
