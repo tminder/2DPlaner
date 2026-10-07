@@ -1133,6 +1133,39 @@
     }
   }
 
+  // S-043: D-175 made grid/annotations/wall-with-door all require an explicit `module "..."`
+  // declaration rather than loading from property-inference -- a deliberate tradeoff, not an
+  // oversight, but it reintroduces exactly the silent-inert risk D-034/D-039 originally built
+  // force-injection to avoid: settings.grid/label/dimensions/edgeLengths/compose:
+  // "wallWithDoor" each render nothing without the matching module declared, with nothing
+  // anywhere to say why. This surfaces exactly that, the same "warn, don't fail silently"
+  // pattern D-015 already established for an unsolvable drag. `label` gets its own, softer
+  // wording -- unlike the other three, hierarchy-module.js/the stack-hint badge (both core,
+  // D-034/D-174) already read it regardless, so it's never *fully* inert, just missing the
+  // on-shape annotation specifically.
+  function checkMissingModuleDeclarations(base, violations) {
+    const declared = new Set(base.modules);
+    if (base.settings?.grid && !declared.has("grid-module.js")) {
+      violations.push({ type: "missing-module", message: `settings.grid is set but "grid-module.js" isn't declared -- the grid won't render until it is`, spans: [] });
+    }
+    for (const node of collectAllNodes(base.root, [])) {
+      if (!declared.has("annotations-module.js")) {
+        if (node.props.label != null) {
+          violations.push({ type: "missing-module", message: `'${node.id}': "label" is set but "annotations-module.js" isn't declared -- it'll show in the hierarchy panel, but not as an on-shape label, until it is`, spans: keySpan(node, "label") });
+        }
+        if (node.props.dimensions === true) {
+          violations.push({ type: "missing-module", message: `'${node.id}': "dimensions" is set but "annotations-module.js" isn't declared -- it won't render until it is`, spans: keySpan(node, "dimensions") });
+        }
+        if (typeof node.props.edgeLengths === "boolean") {
+          violations.push({ type: "missing-module", message: `'${node.id}': "edgeLengths" is set but "annotations-module.js" isn't declared -- it won't render until it is`, spans: keySpan(node, "edgeLengths") });
+        }
+      }
+      if (node.props.compose === "wallWithDoor" && !declared.has("wall-with-door-module.js")) {
+        violations.push({ type: "missing-module", message: `'${node.id}': compose: "wallWithDoor" is set but "wall-with-door-module.js" isn't declared -- it won't render until it is`, spans: keySpan(node, "compose") });
+      }
+    }
+  }
+
   function checkPlanValidity(base, positions) {
     const violations = [];
     checkDuplicateIds(base, violations);
@@ -1141,6 +1174,7 @@
     checkUnrecognizedShapes(base, violations);
     checkUnsupportedProperties(base, violations);
     checkFlushPlacement(base, violations);
+    checkMissingModuleDeclarations(base, violations);
     return violations;
   }
 
