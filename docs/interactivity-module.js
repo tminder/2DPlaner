@@ -3180,6 +3180,9 @@
           // F-059: a plain click-and-done action, not a gesture -- no drag state, nothing
           // for handlePointerMove/Up below to continue.
           insertPolyPoint(nodeId, Number(handle.dataset.edgeIndex));
+        } else if (corner === "extend-start" || corner === "extend-end") {
+          // F-051: same shape as insert-vertex above -- click-and-done, no gesture.
+          extendPolyline(nodeId, corner === "extend-start");
         } else if (corner.startsWith("scale-")) {
           // D-143: proportional scale from the shape's own bounding-box corner, generalizing
           // resizeDrag's own rect-corner algorithm from one point to N. Reparsed fresh every
@@ -3487,6 +3490,12 @@
   // (the exact bug D-112 hit once already). No manual removal of last render's handles
   // needed: core.rerender() already replaces #plan-root's whole innerHTML every time.
   const HANDLE_HALF = 7; // viewBox units — a touch-usable ~14x14 square/circle at 1x zoom
+  // F-051: continues the segment from `from` to `to`, past `to`, by that same segment's own
+  // length and direction -- a parameter-free "extend the line" default, used both for where
+  // an extend handle renders and for the actual new point extendPolyline writes.
+  function extensionPoint(from, to) {
+    return [to[0] + (to[0] - from[0]), to[1] + (to[1] - from[1])];
+  }
   // D-136: reported directly -- with several elements selected, the resize handles (below)
   // were more visually obvious than the actual multi-selection, and since they only ever
   // mark the one primary element (resize itself stays single-element only, F-029/D-124),
@@ -3570,6 +3579,27 @@
         svgEl.insertAdjacentHTML("beforeend",
           `<circle class="resize-handle insert-vertex" data-node-id="${selectedId}" data-corner="insert-vertex" data-edge-index="${i}" ` +
           `cx="${mx * core.M}" cy="${my * core.M}" r="${HANDLE_HALF * 0.65}" />`);
+      }
+
+      // F-051: a polyline's own two open ends each get an "extend the line" handle too --
+      // a polygon has none, it already wraps, there's no open end to extend from. Rendered
+      // exactly where clicking it would place the new point (continuing the adjacent
+      // segment's own direction and length, see extensionPoint) so the handle is WYSIWYG,
+      // not a surprise. Reuses .insert-vertex's own visual family unchanged -- one handle
+      // style continues to mean "click to add a point here" wherever it appears, whether
+      // that's between two points (F-059) or past an open end (here).
+      if (node.props.shape === "polyline" && resolvedPts.length >= 2 && resolvedPts[0] && resolvedPts[1]) {
+        const [sx, sy] = extensionPoint(resolvedPts[1], resolvedPts[0]);
+        svgEl.insertAdjacentHTML("beforeend",
+          `<circle class="resize-handle insert-vertex" data-node-id="${selectedId}" data-corner="extend-start" ` +
+          `cx="${sx * core.M}" cy="${sy * core.M}" r="${HANDLE_HALF * 0.65}" />`);
+      }
+      const lastIdx = resolvedPts.length - 1;
+      if (node.props.shape === "polyline" && lastIdx >= 1 && resolvedPts[lastIdx] && resolvedPts[lastIdx - 1]) {
+        const [ex, ey] = extensionPoint(resolvedPts[lastIdx - 1], resolvedPts[lastIdx]);
+        svgEl.insertAdjacentHTML("beforeend",
+          `<circle class="resize-handle insert-vertex" data-node-id="${selectedId}" data-corner="extend-end" ` +
+          `cx="${ex * core.M}" cy="${ey * core.M}" r="${HANDLE_HALF * 0.65}" />`);
       }
 
       // D-143: proportional scale, from the shape's own bounding box — offered only when
@@ -3987,6 +4017,41 @@
       const insertAt = pointEntryEnd(text, a);
       const newText = `${text.slice(0, insertAt)}, [${core.formatNumber(localX, unit)}, ${core.formatNumber(localY, unit)}]${text.slice(insertAt)}`;
       commitSourceEdit(newText, `'${nodeId}': point added.`);
+    });
+  }
+
+  // F-051: grows an open polyline from either end -- a literal point continuing the
+  // adjacent segment's own direction and length (extensionPoint), prepended/appended to
+  // this same element's own `points` array, never a separate connected element. Extending
+  // from an end that's currently a shared corner reference (D-018) never touches that
+  // reference -- the new literal point is simply added next to it, the same "never write to
+  // what's being extended from" guarantee insertPolyPoint/deletePolyPoint already give.
+  function extendPolyline(nodeId, atStart) {
+    withParsedSource((text, base) => {
+      const node = base.nodesById[nodeId];
+      const points = node?.props.points;
+      if (!points || points.length < 2) return;
+      const i = atStart ? 0 : points.length - 1;
+      const j = atStart ? 1 : points.length - 2;
+      const positions = {};
+      core.computePositions(base.root, null, [0, 0], positions);
+      const ownAbs = positions[node.id];
+      let worldAnchor, worldNext;
+      try { worldAnchor = core.resolvePointAbs(points[i], ownAbs, positions); worldNext = core.resolvePointAbs(points[j], ownAbs, positions); }
+      catch (e) { return; } // an unresolved corner ref -- nothing to extend from
+      const [worldX, worldY] = extensionPoint(worldNext, worldAnchor);
+      const localX = worldX - ownAbs[0], localY = worldY - ownAbs[1];
+      const unit = core.newLiteralUnit(base.settings);
+      const literal = `[${core.formatNumber(localX, unit)}, ${core.formatNumber(localY, unit)}]`;
+      let newText;
+      if (atStart) {
+        const insertAt = pointEntryStart(text, points[0]);
+        newText = `${text.slice(0, insertAt)}${literal}, ${text.slice(insertAt)}`;
+      } else {
+        const insertAt = pointEntryEnd(text, points[points.length - 1]);
+        newText = `${text.slice(0, insertAt)}, ${literal}${text.slice(insertAt)}`;
+      }
+      commitSourceEdit(newText, `'${nodeId}': line extended.`);
     });
   }
 

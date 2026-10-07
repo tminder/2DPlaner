@@ -3,9 +3,14 @@ point here" handle at each edge's own midpoint (clicking it inserts a literal [x
 there), and right-clicking an existing per-vertex handle (D-139) offers Delete Point instead
 of the ordinary element menu. A deleted point only ever removes that one entry from this
 shape's own `points` array -- never the referenced corner element itself (D-018), so any
-other element's own reference to that same corner is always left untouched."""
+other element's own reference to that same corner is always left untouched.
 
-from helpers import element_center, load_plan, source_text
+F-051: a polyline's own two open ends each get an "extend the line" handle too (a polygon
+has none, it already wraps) -- clicking one continues the adjacent segment's own direction
+and length, appending/prepending a literal point. Reuses the same .insert-vertex visual
+family and click-and-done model as the mid-edge handles above."""
+
+from helpers import drag, element_center, load_plan, source_text
 
 QUAD = """
 element quad {
@@ -46,6 +51,66 @@ element root {
 }
 """
 
+# F-051's own test plans deliberately give the auto-fit viewBox extra margin around the
+# polyline being extended -- a line with no other content auto-fits tightly to its own
+# extent, so an extend handle (continuing a segment by its own full length) reliably lands
+# outside that tight view or under the fixed header toolbar at the top of the page. Neither
+# is a logic bug (confirmed live: dispatching the click event directly onto an off-screen
+# handle still produces the correct source edit) -- it's a narrow, accepted UX edge case of
+# the "extend by the same length as the adjacent segment" default, documented in D-183
+# rather than special-cased away. These plans just give enough surrounding frame that a
+# plain mouse click lands on the handle normally, like a real user's would.
+FRAME_LINE = """
+element root {
+  element frame {
+    shape: "polygon"
+    points: [[0,0], [12,0], [12,8], [0,8]]
+    style: { fill: "#eef" }
+  }
+  element wall {
+    shape: "polyline"
+    points: [[4,4], [8,4]]
+    style: { stroke: "#444", strokeWidth: 0.1 }
+  }
+}
+"""
+
+FRAME_QUAD = """
+element root {
+  element frame {
+    shape: "polygon"
+    points: [[0,0], [12,0], [12,8], [0,8]]
+    style: { fill: "#eef" }
+  }
+  element quad {
+    shape: "polygon"
+    points: [[4,4], [8,4], [8,6], [4,6]]
+    style: { stroke: "#444", strokeWidth: 0.1, fill: "none" }
+  }
+}
+"""
+
+FRAME_SHARED_JUNCTION = """
+element root {
+  element frame {
+    shape: "polygon"
+    points: [[0,0], [12,0], [12,8], [0,8]]
+    style: { fill: "#eef" }
+  }
+  element junction { position: [4,4] }
+  element pipe {
+    shape: "polyline"
+    points: [junction, [8,4]]
+    style: { stroke: "#c33", strokeWidth: 0.1 }
+  }
+  element pipe2 {
+    shape: "polyline"
+    points: [junction, [4,7]]
+    style: { stroke: "#393", strokeWidth: 0.1 }
+  }
+}
+"""
+
 
 def select(page, node_id):
     cx, cy = element_center(page, node_id)
@@ -59,6 +124,10 @@ def insert_handle(page, edge_index):
 
 def vertex_handle(page, point_index):
     return page.locator(f'.resize-handle[data-corner="vertex"][data-point-index="{point_index}"]')
+
+
+def extend_handle(page, which):
+    return page.locator(f'.resize-handle[data-corner="extend-{which}"]')
 
 
 def click_center(page, locator):
@@ -196,3 +265,85 @@ def test_a_plain_shape_right_click_still_opens_the_ordinary_element_menu(app_pag
     )
     assert "Duplicate" in labels
     assert "Delete Point" not in labels
+
+
+def test_extend_handles_appear_only_for_an_open_polyline(app_page):
+    load_plan(app_page, FRAME_LINE)
+    select(app_page, "wall")
+    assert extend_handle(app_page, "start").count() == 1
+    assert extend_handle(app_page, "end").count() == 1
+
+    load_plan(app_page, FRAME_QUAD)
+    select(app_page, "quad")
+    assert extend_handle(app_page, "start").count() == 0
+    assert extend_handle(app_page, "end").count() == 0
+
+
+def handle_svg_point(page, corner):
+    """The handle's own cx/cy, in the plan's SVG user-space units (world coordinates *
+    core.M) -- exact and independent of screen pixels/circle radius, unlike a bounding box."""
+    return page.evaluate(
+        """(corner) => {
+            const h = document.querySelector(`.resize-handle[data-corner="${corner}"]`);
+            return [Number(h.getAttribute('cx')), Number(h.getAttribute('cy'))];
+        }""",
+        corner,
+    )
+
+
+def test_extend_handles_render_at_the_computed_continuation_point(app_page):
+    # wall: [4,4] -> [8,4], a flat segment along y=4. Continuing it by its own length
+    # puts extend-start at [0,4] and extend-end at [12,4] -- frame's own left/right edges
+    # at that height, so the computed position doubles as a geometry check.
+    load_plan(app_page, FRAME_LINE)
+    select(app_page, "wall")
+    m = app_page.evaluate("window.PlanCore.M")  # world-unit -> SVG-user-space scale
+    start_x, start_y = handle_svg_point(app_page, "extend-start")
+    end_x, end_y = handle_svg_point(app_page, "extend-end")
+    assert start_x == 0 and end_x == 12 * m  # exactly one segment-length beyond either end
+    assert start_y == end_y == 4 * m  # both stay on the flat segment's own line
+
+
+def test_clicking_the_end_handle_appends_a_continuing_literal_point(app_page):
+    load_plan(app_page, FRAME_LINE)
+    select(app_page, "wall")
+    click_center(app_page, extend_handle(app_page, "end"))
+    text = source_text(app_page)
+    points_line = [l for l in text.split("\n") if l.strip().startswith("points: [[4,4]")][0]
+    assert points_line.strip() == 'points: [[4,4], [8,4], [12m, 4m]]'
+
+
+def test_clicking_the_start_handle_prepends_a_continuing_literal_point(app_page):
+    load_plan(app_page, FRAME_LINE)
+    select(app_page, "wall")
+    click_center(app_page, extend_handle(app_page, "start"))
+    text = source_text(app_page)
+    points_line = [l for l in text.split("\n") if "4,4" in l and "8,4" in l][0]
+    assert points_line.strip() == 'points: [[0m, 4m], [4,4], [8,4]]'
+
+
+def test_a_newly_extended_point_is_draggable_afterward(app_page):
+    load_plan(app_page, FRAME_LINE)
+    select(app_page, "wall")
+    click_center(app_page, extend_handle(app_page, "end"))
+    app_page.wait_for_timeout(150)
+    select(app_page, "wall")
+    handle = vertex_handle(app_page, 2)  # the new point just appended
+    box = handle.bounding_box()
+    drag(app_page, box["x"] + box["width"] / 2, box["y"] + box["height"] / 2, box["x"] + 40, box["y"] + 20)
+    text = source_text(app_page)
+    points_line = [l for l in text.split("\n") if l.strip().startswith("points: [[4,4]")][0]
+    assert "[12m, 4m]" not in points_line  # the point moved from where extend placed it
+
+
+def test_extending_from_a_shared_corner_reference_leaves_it_untouched(app_page):
+    load_plan(app_page, FRAME_SHARED_JUNCTION)
+    select(app_page, "pipe")
+    click_center(app_page, extend_handle(app_page, "start"))  # pipe's start is `junction`
+    text = source_text(app_page)
+    assert "element junction { position: [4,4] }" in text  # the corner itself is untouched
+    pipe_line = [l for l in text.split("\n") if l.strip().startswith("points: [")
+                 and "junction" in l and "pipe2" not in l][0]
+    assert pipe_line.strip().startswith("points: [[") and "junction" in pipe_line  # new literal prepended, junction kept
+    pipe2_line = [l for l in text.split("\n") if l.strip() == "points: [junction, [4,7]]"]
+    assert pipe2_line  # pipe2's own reference to the same corner is unaffected

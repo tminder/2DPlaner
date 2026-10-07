@@ -200,7 +200,8 @@ def test_no_handles_once_a_second_element_joins_the_selection(app_page):
 
     select(app_page, "wall")  # polyline: D-139 gives it one vertex handle per point
     # F-059: plus one "insert a point here" handle per edge (a 2-point line has exactly 1).
-    assert resize_handle_count(app_page) == 3
+    # F-051: plus two "extend the line" handles, one per open end.
+    assert resize_handle_count(app_page) == 5
 
 
 def test_a_styleless_rect_gets_no_handles_either(app_page):
@@ -314,7 +315,8 @@ def test_polygon_and_polyline_get_one_vertex_handle_per_point(app_page):
 
     select(app_page, "wall")
     # F-059: plus one "insert a point here" handle per edge (a 2-point line has exactly 1).
-    assert resize_handle_count(app_page) == 3
+    # F-051: plus two "extend the line" handles, one per open end.
+    assert resize_handle_count(app_page) == 5
 
 
 def test_dragging_a_polygon_vertex_edits_only_that_point(app_page):
