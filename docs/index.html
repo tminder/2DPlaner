@@ -694,6 +694,14 @@
   </div>
   <div class="picker-body" id="picker-body"></div>
 </div>
+<!-- F-054: one shared floating menu for any "My plans" card's own long-press/right-click,
+     repositioned and re-targeted (data-plan-id) per use -- the same "one DOM node, moved
+     around" shape the radial context menu and every header flyout already use, reusing
+     .submenu's own existing fixed-position/floating styling rather than inventing a new one. -->
+<ul class="submenu" id="picker-card-menu" role="menu" hidden style="position: fixed;">
+  <li><button type="button" id="picker-card-duplicate-btn" role="menuitem">Duplicate</button></li>
+  <li><button type="button" id="picker-card-delete-btn" role="menuitem">Delete</button></li>
+</ul>
 <div class="mobile-tabs">
   <button class="tab-btn" id="tab-code" data-tab="code">Code</button>
   <button class="tab-btn active" id="tab-viewer" data-tab="viewer">Viewer</button>
@@ -2223,6 +2231,40 @@ function createPlan(name, text) {
   return plan;
 }
 
+// F-054: generalizes delete-btn's own logic (confirm, fall back to the next-most-recent
+// plan or a fresh default if nothing's left) to an arbitrary plan id, not just the active
+// one -- the plan-picker card menu below needs to delete a card without switching to it
+// first, which the header's own Rename…/Delete (always activePlan()-scoped) can't do.
+// Returns true if the plan was actually deleted (false if the user cancelled the confirm),
+// so a caller can decide whether its own UI still needs refreshing.
+function deletePlanById(id) {
+  const p = plans.find((x) => x.id === id);
+  if (!p) return false;
+  if (!confirm(`Delete "${p.name}"? This can't be undone.`)) return false;
+  plans = plans.filter((x) => x.id !== id);
+  savePlansList();
+  if (id === activePlanId) {
+    if (plans.length) {
+      const next = [...plans].sort((a, b) => b.updatedAt - a.updatedAt)[0];
+      switchToPlan(next.id);
+    } else {
+      const fresh = createPlan(EXAMPLE_LABELS.apartment, EXAMPLES.apartment);
+      switchToPlan(fresh.id);
+    }
+  }
+  return true;
+}
+
+// F-054: a saved plan's own text, copied into a new plan under a uniquified name
+// (createPlan's own uniquePlanName already handles "X" -> "X (2)") -- deliberately doesn't
+// switch to the new plan, since the whole point of duplicating from the picker card menu is
+// acting on a card without navigating away from whatever's currently open.
+function duplicatePlanById(id) {
+  const p = plans.find((x) => x.id === id);
+  if (!p) return null;
+  return createPlan(p.name, p.text);
+}
+
 function switchToPlan(id) {
   const p = plans.find((x) => x.id === id);
   if (!p) return;
@@ -2984,6 +3026,7 @@ const pickerTitleEl = document.getElementById("picker-title");
 // wholesale on every open (and, for Open mode, again once the Cloud fetch resolves), so a
 // per-card listener would just be discarded and re-added every time for no benefit.
 pickerBodyEl.addEventListener("click", (e) => {
+  if (pickerCardSuppressNextClick) { pickerCardSuppressNextClick = false; return; }
   const card = e.target.closest(".picker-card[data-action]");
   if (!card) return;
   const { action } = card.dataset;
@@ -2991,6 +3034,77 @@ pickerBodyEl.addEventListener("click", (e) => {
   else if (action.startsWith("plan:")) switchToPlan(action.slice(5));
   else if (action.startsWith("cloud:")) openCloudPlan(action.slice(6));
   closePlanPicker();
+});
+
+// F-054: right-click (long-press on touch) a "My plans" card opens Duplicate/Delete,
+// acting on *that* card's own plan without switching to it first. Local plans only --
+// Cloud cards (a separate section, D-113) would need real storage-service-php calls to
+// delete/duplicate remotely, a materially bigger piece of work, not attempted here.
+const pickerCardMenuEl = document.getElementById("picker-card-menu");
+let pickerCardMenuTargetId = null;
+let pickerCardLongPressTimer = null;
+const PICKER_CARD_LONG_PRESS_MS = 500; // matches interactivity-module.js's own LONG_PRESS_MS
+
+function openPickerCardMenu(planId, clientX, clientY) {
+  pickerCardMenuTargetId = planId;
+  pickerCardMenuEl.style.left = `${clientX}px`;
+  pickerCardMenuEl.style.top = `${clientY}px`;
+  pickerCardMenuEl.style.display = "block";
+  pickerCardMenuEl.hidden = false;
+}
+function closePickerCardMenu() {
+  pickerCardMenuEl.hidden = true;
+  pickerCardMenuEl.style.display = "none";
+  pickerCardMenuTargetId = null;
+}
+
+pickerBodyEl.addEventListener("contextmenu", (e) => {
+  const card = e.target.closest('.picker-card[data-action^="plan:"]');
+  if (!card) return;
+  e.preventDefault();
+  openPickerCardMenu(card.dataset.action.slice(5), e.clientX, e.clientY);
+});
+// F-036's own established pattern (interactivity-module.js): a touch long-press dispatches
+// a real synthetic "contextmenu" event rather than hand-rolling a second copy of the
+// open-menu logic -- goes through the same listener right-click already uses, so a future
+// change there never has to be separately re-applied here. pickerCardSuppressNextClick
+// guards against the browser's own synthetic click that still follows a long-press-then-
+// release on touch (unlike the canvas's own drag-state machine, a plain <button> card has
+// no in-flight gesture object to cancel) -- without it, releasing after the menu opens
+// would also fire the ordinary click handler above and switch to the plan.
+let pickerCardSuppressNextClick = false;
+pickerBodyEl.addEventListener("pointerdown", (e) => {
+  const card = e.target.closest('.picker-card[data-action^="plan:"]');
+  if (!card || e.pointerType !== "touch") return;
+  const { clientX, clientY } = e;
+  pickerCardLongPressTimer = setTimeout(() => {
+    pickerCardLongPressTimer = null;
+    pickerCardSuppressNextClick = true;
+    card.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX, clientY }));
+  }, PICKER_CARD_LONG_PRESS_MS);
+});
+pickerBodyEl.addEventListener("pointerup", () => { clearTimeout(pickerCardLongPressTimer); pickerCardLongPressTimer = null; });
+pickerBodyEl.addEventListener("pointermove", () => { clearTimeout(pickerCardLongPressTimer); pickerCardLongPressTimer = null; });
+
+document.getElementById("picker-card-duplicate-btn").addEventListener("click", () => {
+  if (!pickerCardMenuTargetId) return;
+  duplicatePlanById(pickerCardMenuTargetId);
+  closePickerCardMenu();
+  renderOpenPickerBody();
+});
+document.getElementById("picker-card-delete-btn").addEventListener("click", () => {
+  if (!pickerCardMenuTargetId) return;
+  const deleted = deletePlanById(pickerCardMenuTargetId);
+  closePickerCardMenu();
+  if (deleted) renderOpenPickerBody();
+});
+document.addEventListener("pointerdown", (e) => {
+  if (pickerCardMenuEl.hidden) return;
+  if (pickerCardMenuEl.contains(e.target)) return;
+  closePickerCardMenu();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !pickerCardMenuEl.hidden) closePickerCardMenu();
 });
 
 function renderNewPickerBody() {
@@ -3054,6 +3168,11 @@ document.addEventListener("pointerdown", (e) => {
   if (pickerPanelEl.hidden) return;
   if (pickerPanelEl.contains(e.target)) return;
   if (e.target.closest("#plan-open-btn, #plan-new-btn")) return; // their own click handlers toggle it
+  // F-054: the card menu is a sibling of the panel, not a child of it (same reason every
+  // other floating flyout in this app lives outside whatever it's anchored to) -- without
+  // this, clicking Duplicate/Delete would also closePlanPicker() out from under it before
+  // its own click handler ever got to act on pickerCardMenuTargetId.
+  if (e.target.closest("#picker-card-menu")) return;
   closePlanPicker();
 });
 document.addEventListener("keydown", (e) => {
@@ -3122,17 +3241,7 @@ document.getElementById("dimension-style-toggle-btn").addEventListener("click", 
 
 document.getElementById("delete-btn").addEventListener("click", () => {
   const p = activePlan();
-  if (!p) return;
-  if (!confirm(`Delete "${p.name}"? This can't be undone.`)) return;
-  plans = plans.filter((x) => x.id !== p.id);
-  savePlansList();
-  if (plans.length) {
-    const next = [...plans].sort((a, b) => b.updatedAt - a.updatedAt)[0];
-    switchToPlan(next.id);
-  } else {
-    const fresh = createPlan(EXAMPLE_LABELS.apartment, EXAMPLES.apartment);
-    switchToPlan(fresh.id);
-  }
+  if (p) deletePlanById(p.id);
 });
 
 // Shared by save-btn below and exportFilename (F-033) so the disallowed-filename-character
