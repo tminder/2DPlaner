@@ -212,11 +212,23 @@
   // on every render so a stationary click-cycle click, which never re-fires pointerover,
   // still shows the newly-selected line correctly.
   let stackHintCandidates = null;
+  // S-042: reported as doubled labels ("Tisch Tisch") — not a data-level duplicate (exactly
+  // one real annotation node ever exists), two independently-correct features visually
+  // colliding. The badge's own "current" line sits directly at the cursor, exactly where
+  // that same element's already-visible, persistent show:"always" label/dimensions
+  // annotation renders (annotations-module.js) -- repeating its name there is pure noise.
+  // Scoped to the *current* line only: every other candidate in the stack still needs its
+  // name shown, since nothing else on screen names them, and a non-current element's own
+  // persistent annotation (if any) sits at *its* own anchor, not at the cursor, so there's
+  // nothing for it to visually collide with here.
   function stackHintMarkup(ids) {
     const currentId = selectedId && ids.includes(selectedId) ? selectedId : ids[0];
     return ids.map((id) => {
-      const label = program.nodesById[id]?.props.label ?? id;
+      const node = program.nodesById[id];
       const isCurrent = id === currentId;
+      const alreadyShownHere = isCurrent && node?.props.show === "always"
+        && (node.props.label != null || node.props.dimensions === true);
+      const label = alreadyShownHere ? "" : (node?.props.label ?? id);
       return `<div class="stack-line${isCurrent ? " current" : ""}"><span class="stack-marker">${isCurrent ? "❯" : ""}</span><span>${escapeHtml(label)}</span></div>`;
     }).join("");
   }
@@ -2970,12 +2982,18 @@
   function updateStackedHint(clientX, clientY, withinViewer) {
     const nonRootTrigger = withinViewer ? candidateIdsAtPoint(clientX, clientY).filter((id) => id !== program.root.id) : [];
     if (nonRootTrigger.length > 1) {
-      // The badge's own list shows every reachable candidate, root included — unlike the
-      // trigger check just above, which stays root-excluded (so hovering an ordinary
-      // element still doesn't fire the hint on every element in the plan). Excluding root
-      // from the list too would let click-cycling (which never excludes it) land on
-      // something this list doesn't even mention, leaving the ">" marker with nothing to
-      // point at — a real bug, found by testing selecting the root via a full cycle.
+      // The badge's own list shows every reachable candidate, root (and any other ancestor)
+      // included — unlike the trigger check just above, which stays root-excluded (so
+      // hovering an ordinary element still doesn't fire the hint on every element in the
+      // plan). Excluding root from the list too would let click-cycling (which never
+      // excludes it) land on something this list doesn't even mention, leaving the ">"
+      // marker with nothing to point at — a real bug, found by testing selecting the root
+      // via a full cycle. S-042 re-confirmed this is deliberate, not drift: the ancestor
+      // showing up here (e.g. a plan's own root alongside a genuinely stacked child) reads
+      // as a real, if mildly noisy, candidate, never as a *duplicate* of anything else in
+      // this same list -- only stackHintMarkup's own "current" line can visually collide
+      // with something already on screen (that element's own persistent annotation), which
+      // is what's actually fixed there, not this list's own composition.
       const resolved = resolvedCandidatesAtPoint(clientX, clientY);
       // Every element in the group dims together, not just whichever one is literally under
       // the cursor — requested directly: seeing the whole layering at once (each one

@@ -2,7 +2,11 @@
 exclusion -- the most fragile subsystem per the tech-debt audit (S-006), having needed
 four same-day bug-fix rounds (D-086, D-088, D-090, D-091) before settling. D-164 later
 replaced D-086's own bringToFront (a DOM reorder on selection) with dimming whatever
-currently occludes the selection instead -- covered near the bottom of this file."""
+currently occludes the selection instead -- covered near the bottom of this file.
+
+S-042: a persistent show:"always" label/dimensions annotation and the stack-hint badge's
+own "current" line used to both name the same element at once, reading as doubled text
+("Tisch Tisch") in a screenshot -- fixed in stackHintMarkup, covered near the bottom too."""
 
 from helpers import (
     click_menu_item,
@@ -330,3 +334,85 @@ def test_click_cycling_still_reaches_every_element_after_a_mid_cycle_reorder(app
     # self-correcting, one-off consequence of always recomputing fresh rather than a bug.
     assert set(seen) == {"zimmer", "sofa", "bett"}
     assert seen[-1] == seen[0]
+
+
+STACK_WITH_PERSISTENT_LABEL = """
+element zimmer {
+  shape: "rect"
+  size: [3m, 2m]
+  position: [0m, 0m]
+  style: { fill: "#eee" }
+
+  element teppich {
+    shape: "rect"
+    size: [1.5m, 1m]
+    position: [0.5m, 0.5m]
+    style: { fill: "#ccc" }
+    label: "Teppich"
+  }
+  element tisch {
+    shape: "circle"
+    radius: 0.35m
+    position: [1.2m, 1m]
+    style: { fill: "#cde" }
+    label: "Tisch"
+    show: "always"
+  }
+}
+"""
+
+
+def test_the_current_lines_own_redundant_name_is_suppressed_when_already_shown_persistently(app_page):
+    """S-042: "tisch" has a persistent show:"always" label already rendered at its own
+    anchor -- the badge's own "current" line (at the cursor, exactly over tisch) must not
+    repeat it a second time. The non-current "teppich" line still needs its name, since
+    nothing else on screen names it."""
+    load_plan(app_page, STACK_WITH_PERSISTENT_LABEL)
+    cx, cy = element_center(app_page, "tisch")
+    app_page.mouse.move(cx, cy)
+    app_page.wait_for_timeout(200)
+
+    lines = stack_badge_lines(app_page)
+    current = [t for t, is_current in lines if is_current]
+    non_current = [t for t, is_current in lines if not is_current]
+    assert current == [""]  # marker only, no redundant "Tisch" text
+    assert "Teppich" in non_current
+
+
+def test_a_non_current_candidates_own_name_still_shows_even_if_it_also_has_a_persistent_label(app_page):
+    """The suppression is scoped to the *current* line only -- a persistent label elsewhere
+    in the stack (not at the cursor) has nothing to collide with, so its name still belongs
+    in the badge like any other candidate."""
+    plan = """
+element zimmer {
+  shape: "rect"
+  size: [3m, 2m]
+  position: [0m, 0m]
+  style: { fill: "#eee" }
+
+  element teppich {
+    shape: "rect"
+    size: [1.5m, 1m]
+    position: [0.5m, 0.5m]
+    style: { fill: "#ccc" }
+    label: "Teppich"
+    show: "always"
+  }
+  element tisch {
+    shape: "circle"
+    radius: 0.35m
+    position: [1.2m, 1m]
+    style: { fill: "#cde" }
+    label: "Tisch"
+  }
+}
+"""
+    load_plan(app_page, plan)
+    cx, cy = element_center(app_page, "tisch")  # tisch paints on top -> current
+    app_page.mouse.move(cx, cy)
+    app_page.wait_for_timeout(200)
+
+    lines = stack_badge_lines(app_page)
+    non_current = [t for t, is_current in lines if not is_current]
+    assert "Teppich" in non_current  # teppich's own persistent label is elsewhere on screen,
+    # not at the cursor -- nothing for its own badge line to collide with
