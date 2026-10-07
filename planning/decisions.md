@@ -2506,3 +2506,19 @@ Picked up directly after closing F-051 (D-183). D-175 made `grid-module.js`/`ann
 **Verified live:** a plan combining `settings.grid`, `label`, `dimensions`, and an undeclared module — all three expected warnings appeared; declaring the modules made them disappear with no other change; a separate `compose: "wallWithDoor"` plan without its module warned correctly too.
 
 **Status: built, verified live in a real browser, deployed** via `scripts/deploy.sh --target=docs` (byte-verified), `.deploy-state` committed.
+
+## D-185 F-050 fixed: "New Element" lands beside a non-container selection, not inside it
+
+Picked up directly after closing S-043 (D-184). `insertStandardElement` always landed a newly inserted Line/Rectangle/Circle/Polygon (D-163) as the *first child* of whatever was selected, with no check on whether that selection was actually a sensible parent — selecting a `circle`, a `polyline`, or a shapeless corner node (D-018) and inserting nested the new shape *inside* it, which this language has no concept of ("inside a line" isn't meaningful) and nothing caught.
+
+**One real fork confirmed directly before planning further — which heuristic decides "container" vs "not":** shape-based. `rect`/`polygon` are the only two shapes with an unambiguous "inside" — the exact distinction `parentBoundaryPolygon` already draws in its own comment for containment/placement checks, reused here rather than inventing a second notion of "container." Rejected alternatives: has-children (the very first child of an empty room would never land inside it) and bounding-box-fit (reacts to geometry instead of shape type, more computation for a less predictable result).
+
+**Design decision made by reasoning, not asked:** scoped to `insertStandardElement` only — D-150's own drag-driven reparenting is untouched. Dragging is already an explicit placement choice; this heuristic exists only to guess a sensible default when the system is choosing *for* the user with no placement input at all, which doesn't describe a drag.
+
+**`docs/interactivity-module.js`:** new `CONTAINER_SHAPES = ["rect", "polygon"]`. `insertStandardElement`'s own target resolution: nothing selected → the plan root, same as before; selected has no parent (it *is* the root, regardless of its own shape) or its shape is in `CONTAINER_SHAPES` → the selection itself, same as before; otherwise → the selection's own parent, one level up only, never walked further. Every other line in the function (id generation, indentation, `presetElementText`, `afterOpenBrace`, the commit) is unchanged — only how `target` is chosen changes.
+
+**Tests:** extended `tests/test_new_element.py` (+3 cases) — selecting a `polyline`, a `circle`, or a shapeless corner node and inserting all land the new element as a sibling, not nested inside; the two existing tests (selecting a `rect`, selecting nothing) already cover the unchanged container/root paths and needed no changes. Full suite green.
+
+**Verified live:** selecting a `rect` room and inserting a circle still nests it inside, unchanged; selecting a `polyline` wall or a bare corner node and inserting a rectangle both land it as a sibling in the enclosing group, not nested inside the line/corner.
+
+**Status: built, verified live in a real browser, deployed** via `scripts/deploy.sh --target=docs` (byte-verified), `.deploy-state` committed.
