@@ -2465,3 +2465,30 @@ Picked up directly as the next step after closing S-042 (D-181). Today a corner'
 **Verified live, including touch:** `utility`'s `parzelle_1` (a corner-reference-built polygon) — inserted a point on an edge without disturbing the shared corners, deleted a shared corner reference and confirmed `parzelle_2`'s own reference to the same corner was unaffected; confirmed the smaller insert handles are still comfortably touch-hittable (~20×20px at this zoom) under mobile emulation.
 
 **Status: built, verified live in a real browser, deployed** via `scripts/deploy.sh --target=docs` (byte-verified), `.deploy-state` committed.
+
+## D-183 F-051: a polyline's own open ends become extendable from the canvas
+
+Picked up directly as the next step after closing F-059 (D-182) — the natural counterpart: F-059 added points *between* two existing points, F-051 adds one *beyond* either open end, the way many drawing tools let you keep clicking to lay down a connected path.
+
+**One real fork confirmed directly before planning further:** a small handle at each open end, reusing D-182's own `.insert-vertex` handle family as-is — clicking it immediately adds a new point there, draggable afterward via the existing D-139 vertex handle, not a continuous "keep clicking to place more points" mode. Keeps this a single, predictable click-and-done action, matching F-059's own interaction model rather than introducing a new modal gesture.
+
+**Design decisions made by reasoning, direct extensions of F-059's own precedent, not asked:**
+- Only `shape: "polyline"` gets extend handles — a `polygon` has no open end to extend from, it already wraps.
+- The new point's position is computed, not arbitrary: continues the line's own adjacent segment (the last two points for the end handle, the first two for the start) at that *same length* — a parameter-free default, and the handle itself renders exactly there, so clicking it is WYSIWYG.
+- The new point is always a literal `[x, y]` pair, prepended/appended to the *same* element's own `points` array — never a separate connected element. Matches F-059's own "a fresh point has no reason to be shared yet" reasoning.
+- Extending from an end that's currently a shared corner reference (D-018) never touches that reference — the corner node is simply never written to, the same "never touch what's being extended from" guarantee F-059's own delete already established.
+- Visually reuses `.resize-handle.insert-vertex` unchanged, differentiated purely by *position* (beyond an end, not between two points) — one handle style continues to mean "click to add a point here" everywhere.
+
+**`docs/interactivity-module.js`:**
+- **`extensionPoint(from, to)`**: returns `to + (to - from)` — the same segment length and direction, continued past `to`. Shared by both the handle-rendering position and `extendPolyline`'s own new-point math, so what's clicked is exactly what gets written.
+- Rendering, alongside D-182's own edge-midpoint loop: for a selected `polyline` with 2+ resolved points, two more `.insert-vertex`-classed handles (`data-corner="extend-start"`/`"extend-end"`) at the computed continuation points either side.
+- `handlePointerDown`'s existing `insert-vertex` branch gets a sibling: `corner === "extend-start" || corner === "extend-end"` calls **`extendPolyline(nodeId, atStart)`** — a plain click-and-commit action, no drag state, the same shape as `insertPolyPoint`.
+- **`extendPolyline`**: reparses fresh, resolves the relevant end-adjacent pair of points to world coordinates via `core.resolvePointAbs` (works unchanged whether either point is a literal or a corner reference), computes the new point, converts to local space, formats with `core.newLiteralUnit`, and splices it in via the same `pointEntryStart`/`pointEntryEnd` helpers D-182 already built.
+
+**A narrow, accepted UX caveat, not a bug:** because the new point continues the adjacent segment by that segment's own full length, extending a line that already spans most of the current view — or one whose adjacent segment is short relative to everything else on screen — can place the handle outside the visible canvas, or (less often) directly under the fixed header toolbar at the top of the page. Confirmed live, twice, that this is purely a screen-position artifact and not a logic failure: dispatching the click event straight at an off-screen handle still produces the exact correct source edit, with any shared corner reference and every other element's own use of it left untouched. Deliberately not special-cased away (e.g. by capping the extension length or re-fitting the view) — it only affects a line that already dominates the current view, where the user can simply zoom/pan first, and doing so would add real complexity for a narrow case.
+
+**Tests:** extended `tests/test_poly_points.py` (+6 cases, 16 total) — exactly two extend handles for a selected open polyline, none for a polygon; both render at the exact computed continuation point (read via the handle's own SVG `cx`/`cy`, not screen pixels, to stay independent of the caveat above); clicking the end/start handle appends/prepends the correct literal point; the newly-added point is draggable afterward via the ordinary vertex handle; extending from a shared-corner-reference end leaves the corner's own declaration and every other element's own reference to it untouched. Full suite green.
+
+**Verified live:** an ordinary short polyline inside a larger frame — both extend handles appear at the expected continued-direction points, clicking each grows the line with a matching-length segment in both directions, and the new point is draggable afterward. A polyline extended from a shared corner reference (built from the `utility` example's own corner pattern) — the shared corner and the sibling element's own reference to it were both confirmed untouched afterward.
+
+**Status: built, verified live in a real browser, deployed** via `scripts/deploy.sh --target=docs` (byte-verified), `.deploy-state` committed.
