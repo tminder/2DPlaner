@@ -748,6 +748,10 @@
       <label for="modal-reg-password">Password</label>
       <input type="password" id="modal-reg-password" autocomplete="new-password" minlength="8" required>
       <p class="hint">At least 8 characters. No username to invent — we'll assign you one and show it on the confirmation page after you verify your email; you won't need this password again day to day, since signing in uses a separate credential generated at that point.</p>
+      <!-- Full absolute URL, not a relative /terms/ -- docs/index.html is multi-homed
+           (GitHub Pages, www.planagonia.com/app/, test.planagonia.com, D-051), and only
+           the main domain actually has a /terms/ page. -->
+      <p class="hint">By creating an account you agree to our <a href="https://www.planagonia.com/terms/" target="_blank">Terms &amp; Privacy</a>.</p>
       <button type="submit" class="btn-primary">Create account</button>
       <p id="app-register-msg" class="auth-msg" role="status"></p>
     </form>
