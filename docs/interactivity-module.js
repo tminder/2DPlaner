@@ -897,6 +897,15 @@
     return [newX - x, newY - y];
   }
 
+  // S-008: the exact "is this even in scope for containment" check -- a rect child with a
+  // size (D-032's own stated scope) -- that clampToContainment and checkContainment each
+  // used to re-derive independently (one comment even said "reuses clampToContainment's
+  // own scope exactly" while the actual condition was copy-typed twice). Shared here so the
+  // two can't silently drift apart.
+  function isContainmentScopedRect(node) {
+    return node.props.shape === "rect" && !!node.props.size;
+  }
+
   // Entry point, mirroring clampToNoCollision's shape. `container` (F-020) is whichever
   // ancestor's boundary actually applies — the immediate parent for an explicit `placement`,
   // or the nearest ancestor up the chain that set `childPlacement`, which may be several
@@ -920,7 +929,7 @@
       return [dx, dy];
     }
     const flush = node.props.flush === true;
-    if (node.props.shape !== "rect" || !node.props.size) {
+    if (!isContainmentScopedRect(node)) {
       if (typeof node.props.placement === "string") {
         warnings.push(`${node.id}: containment only checked for rect children (D-032 scope), not enforced here`);
       }
@@ -1015,8 +1024,8 @@
     }
   }
 
-  // Reuses clampToContainment's own scope exactly (rect child, D-032) rather than a looser
-  // check — an element this narrow can't clamp doesn't get flagged as "wrong" either,
+  // Shares clampToContainment's own scope via isContainmentScopedRect (S-008) rather than a
+  // looser check — an element this narrow can't clamp doesn't get flagged as "wrong" either,
   // since it was never actually enforced for it in the first place (same "not enforced
   // here" reasoning as clampToContainment's own warnings).
   function checkContainment(base, positions, violations) {
@@ -1027,7 +1036,7 @@
       // childPlacement may name an ancestor several levels up as the actual container.
       const { container, placement } = resolveContainer(node, parent, base);
       if (placement !== "inside" || !container) continue;
-      if (node.props.shape !== "rect" || !node.props.size) continue;
+      if (!isContainmentScopedRect(node)) continue;
       const containerPoly = parentBoundaryPolygon(container, positions);
       if (!containerPoly) continue;
       const childCorners = childRectCornersAt(node, 0, 0, positions);
