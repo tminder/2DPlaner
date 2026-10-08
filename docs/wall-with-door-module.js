@@ -22,10 +22,14 @@
   // indistinguishable from ones typed directly — this is the actual claim being tested,
   // not just "a module can draw something."
   //
-  // Deliberately not attempted here, same as the prototype: the composite's own
-  // `position` isn't factored into its children's coordinates (from/to are treated as
-  // already being in the composite's parent's local space) — orthogonal, solvable,
-  // left out to keep this focused.
+  // S-028, investigated and found not to be a real bug (D-190): this comment used to say
+  // the composite's own `position` "isn't factored into its children's coordinates,"
+  // self-admitted as broken for a nested, non-zero `position`. Checked live, including two
+  // levels of ancestor position stacked on top of the composite's own: it already comes
+  // out exactly right with no special-casing at all -- `from`/`to` below become the
+  // synthesized children's own literal points completely unmodified, and
+  // core.computePositions already adds back every ancestor's own position (the composite's
+  // included) when resolving them, the same as it would for any hand-written polyline.
   // S-027: `${node.id}${idSuffix}` isn't checked against any real sibling id before use --
   // in the rare case an author's own plan happens to declare one that collides, this would
   // otherwise silently corrupt nodesById's own last-writer-wins lookup, the exact risk
