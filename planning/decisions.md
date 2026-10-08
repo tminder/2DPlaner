@@ -2567,3 +2567,16 @@ Picked up directly after closing S-018 (D-188) — another concrete tech-debt fi
 **Verified live:** the identical scenario confirmed directly in a real browser — `w_wall_a2`/`w_door`/`w_wall_b`/`w_wall_a`/`root`/`w` all rendered, no console errors, the real sibling's own circle untouched.
 
 **Status: built, verified live in a real browser, deployed** via `scripts/deploy.sh --target=docs` (byte-verified), `.deploy-state` committed.
+
+
+## D-190 S-028 investigated: `wall-with-door-module.js`'s own composite already handles a non-zero `position` correctly — no bug found
+
+Picked up directly after closing S-027 (D-189), in the same file. The module's own comment self-admittedly claimed the composite's `position` "isn't factored into its children's coordinates," warning that a `wallWithDoor` element nested somewhere with a non-zero `position` would "likely place its segments wrong." Investigated directly rather than assumed — a real test, not a guess, same discipline S-041's own investigation (D-168) already established for a claim that turns out not to hold up.
+
+**Checked live, in increasing depth, before concluding anything:** a composite with `position: [3,4]` set directly on it — its synthesized segments' world-space points came out exactly `position`-shifted (`from: [0,0]` → world `[3,4]`), not doubled, not ignored. Nested two levels deep (an intermediate group with its own `position: [10,0]`, the composite itself at `position: [3,4]` inside it) — the segments resolved to exactly `[13,4]`, the correct sum of both ancestors' own positions plus `from`. Zero special-casing anywhere in `expandWallWithDoor` makes this work: `from`/`to` become each synthesized child's own literal points completely unmodified, and `core.computePositions` already walks the tree adding back every ancestor's own position (the composite's included) when resolving a plain literal point — exactly the same mechanism any hand-written polyline nested under a positioned parent already relies on. There was never anything composite-specific to get right here.
+
+**A real fix was attempted and reverted before concluding this:** subtracting the composite's own `position` back out of `from`/`to` before storing them (reasoning, incorrectly, that `computePositions` would "double count" it) — live-tested immediately, and found to make `position` a complete geometric no-op instead (every point resolved to the same absolute location regardless of what `position` was set to, confirmed by comparing world-space output with it unset vs. `[3,4]`). Reverted before being committed; the mistake was in the diagnosis, not needing a fix at all.
+
+**`docs/wall-with-door-module.js`:** no logic change. The misleading comment is replaced with one stating plainly what was actually confirmed, referencing this decision, so a future reader doesn't re-raise the same already-investigated concern.
+
+**Status: investigated, found not to be a real bug, comment corrected, deployed** via `scripts/deploy.sh --target=docs` (byte-verified), `.deploy-state` committed.
