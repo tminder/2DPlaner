@@ -2893,17 +2893,16 @@
 
   // ---------- After every render, reapply the selection class. Full DOM replacement each
   // render means there's never stale overlay state to clean up first. ----------
-  function handleRendered(prog, result) {
-    program = prog;
+  function recomputeGeometry(prog) {
     const positions = {};
     core.computePositions(prog.root, null, [0, 0], positions);
     lastPositions = positions;
     lastBboxes = {};
     computeBboxes(prog.root, positions, lastBboxes);
+    return positions;
+  }
 
-    const svgEl = core.rootEl.querySelector("svg");
-    if (!svgEl) return;
-
+  function reappendOverlayElements(svgEl, prog, positions) {
     // S-005: the one moment `svgEl`'s own child order is exactly core's "true" declared
     // paint order (shapes then anchors, pre-order — see capturePaintOrderRank's own
     // comment) is right here, before bringToFront (below) re-appends the selected subtree
@@ -2923,7 +2922,9 @@
     core.rootEl.appendChild(scaleBarEl);
     core.rootEl.appendChild(validationPanelEl);
     renderValidationPanel(checkPlanValidity(prog, positions));
+  }
 
+  function restoreViewBox(svgEl) {
     // core just replaced #plan-root's innerHTML, so svgEl's viewBox is core's own fresh
     // fit-to-content box, not yet touched by any zoom/pan — capture it before applying
     // viewState over it. If it differs from last time, core actually re-fit the content
@@ -2942,7 +2943,9 @@
       svgEl.setAttribute("viewBox", `${viewState.x} ${viewState.y} ${viewState.width} ${viewState.height}`);
     }
     updateScaleBar();
+  }
 
+  function applySelectionVisuals(svgEl, prog, positions) {
     // A loose, optional signal for any other module that wants to react to selection —
     // e.g. highlighting the selected element's own source span — without this module
     // needing to know such a thing exists. Set here (already recomputed every render)
@@ -2965,7 +2968,9 @@
     // F-016: resize handles are always appended last (insertAdjacentHTML "beforeend"),
     // so they paint on top of the selected shape regardless of anything above.
     renderResizeHandles(svgEl, prog, positions);
+  }
 
+  function refreshStackHintBadge() {
     // A stationary click-cycle click never re-fires pointerover (the hovered DOM node gets
     // destroyed and replaced by this same rerender, but the pointer itself never moves), so
     // the stack-hint badge's ">" marker would otherwise stay stuck on whichever line was
@@ -2981,7 +2986,25 @@
         core.rootEl.querySelector(`[data-id="${CSS.escape(id)}"]`)?.classList.add("stacked-dim");
       }
     }
+  }
 
+  // S-007: was six unrelated responsibilities inlined into one callback with no
+  // sub-function boundaries, despite its own name suggesting "reapply overlay state after
+  // a render" -- recompute geometry caches, re-append overlay DOM, restore the view box,
+  // apply selection visuals, render resize handles, and refresh the stack-hint badge, each
+  // now its own named function above, called here in the exact same order. Pure
+  // extraction: no behavior changes, nothing a test could observe differently.
+  function handleRendered(prog, result) {
+    program = prog;
+    const positions = recomputeGeometry(prog);
+
+    const svgEl = core.rootEl.querySelector("svg");
+    if (!svgEl) return;
+
+    reappendOverlayElements(svgEl, prog, positions);
+    restoreViewBox(svgEl);
+    applySelectionVisuals(svgEl, prog, positions);
+    refreshStackHintBadge();
   }
   const unregisterOnRendered = core.onRendered(handleRendered);
 
