@@ -2132,6 +2132,20 @@ function nodeDragEdits(node, parent, dx, dy, base, cornerUsers, warnings) {
 // ---------- Wire up ----------
 const sourceEl = document.getElementById("source");
 
+// S-018: one shared "this can throw" guard instead of each storage read/write below
+// independently wrapping its own ad hoc try/catch with no shared helper to remind a
+// future one it's needed (private browsing, a full quota, or storage disabled outright
+// can all throw on any of getItem/setItem/removeItem, not just setItem).
+function safeStorageGet(storage, key) {
+  try { return storage.getItem(key); } catch (e) { return null; }
+}
+function safeStorageSet(storage, key, value) {
+  try { storage.setItem(key, value); } catch (e) { /* private mode / quota — not fatal */ }
+}
+function safeStorageRemove(storage, key) {
+  try { storage.removeItem(key); } catch (e) { /* not fatal */ }
+}
+
 // F-040: restored here, on the bare textarea, before code-highlight-module.js (always
 // unconditionally loaded, injected as a <script> moments from now) gets a chance
 // to run — that module moves this same textarea into its own wrapper and copies the
@@ -2141,10 +2155,10 @@ const sourceEl = document.getElementById("source");
 // setting it here means whichever one ends up responsible for sizing already has the
 // right value by the time it matters.
 const PANE_WIDTH_KEY = "planagonia:codePaneWidth";
-try {
-  const savedWidth = Number(localStorage.getItem(PANE_WIDTH_KEY));
+{
+  const savedWidth = Number(safeStorageGet(localStorage, PANE_WIDTH_KEY));
   if (savedWidth > 0) sourceEl.style.flexBasis = `${savedWidth}px`;
-} catch (e) { /* private mode/quota — not fatal, falls back to the default 420px */ }
+}
 
 const rootEl = document.getElementById("plan-root");
 const errorEl = document.getElementById("error");
@@ -2170,29 +2184,26 @@ function genPlanId() {
 }
 
 function savePlansList() {
-  try { localStorage.setItem(PLANS_KEY, JSON.stringify(plans)); } catch (e) { /* private mode / quota — not fatal */ }
+  safeStorageSet(localStorage, PLANS_KEY, JSON.stringify(plans));
 }
 
 function loadPlansList() {
+  const raw = safeStorageGet(localStorage, PLANS_KEY);
   try {
-    const raw = localStorage.getItem(PLANS_KEY);
     if (raw) return JSON.parse(raw);
-  } catch (e) { /* corrupt/unavailable storage — fall through to a fresh list */ }
-  try {
-    const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
-    if (legacy) {
-      const migrated = [{ id: genPlanId(), name: "My plan", text: legacy, updatedAt: Date.now() }];
-      localStorage.setItem(PLANS_KEY, JSON.stringify(migrated));
-      localStorage.removeItem(LEGACY_STORAGE_KEY);
-      return migrated;
-    }
-  } catch (e) { /* private mode / quota — not fatal, just no migration */ }
+  } catch (e) { /* corrupt storage — fall through to a fresh list */ }
+  const legacy = safeStorageGet(localStorage, LEGACY_STORAGE_KEY);
+  if (legacy) {
+    const migrated = [{ id: genPlanId(), name: "My plan", text: legacy, updatedAt: Date.now() }];
+    safeStorageSet(localStorage, PLANS_KEY, JSON.stringify(migrated));
+    safeStorageRemove(localStorage, LEGACY_STORAGE_KEY);
+    return migrated;
+  }
   return [];
 }
 
 let plans = loadPlansList();
-let activePlanId = null;
-try { activePlanId = localStorage.getItem(ACTIVE_PLAN_KEY); } catch (e) { /* not fatal */ }
+let activePlanId = safeStorageGet(localStorage, ACTIVE_PLAN_KEY);
 // Set while browsing an example with no active plan of its own — merely looking at one
 // shouldn't clutter "My plans" with an entry nobody asked to keep. Turns into a real,
 // saved plan (see rerender()) the moment its text actually changes, whether typed or
@@ -2206,10 +2217,8 @@ function activePlan() {
 
 function setActivePlan(id) {
   activePlanId = id;
-  try {
-    if (id) localStorage.setItem(ACTIVE_PLAN_KEY, id);
-    else localStorage.removeItem(ACTIVE_PLAN_KEY);
-  } catch (e) { /* not fatal */ }
+  if (id) safeStorageSet(localStorage, ACTIVE_PLAN_KEY, id);
+  else safeStorageRemove(localStorage, ACTIVE_PLAN_KEY);
 }
 
 // Unique against every *other* plan's own current name — "Studio Apartment", then
@@ -2300,7 +2309,7 @@ const CLOUD_TOKEN_KEY = "planagonia:cloudToken";
 const CLOUD_USERNAME_KEY = "planagonia:cloudUsername";
 
 function cloudToken() {
-  try { return sessionStorage.getItem(CLOUD_TOKEN_KEY); } catch (e) { return null; }
+  return safeStorageGet(sessionStorage, CLOUD_TOKEN_KEY);
 }
 // Reads the real username straight out of the session token's own payload rather than
 // trusting whatever the visitor typed into the sign-in form — since that field also
@@ -2317,18 +2326,16 @@ function decodeSessionUsername(token) {
 }
 
 function setCloudSession(token) {
-  try {
-    if (token) {
-      sessionStorage.setItem(CLOUD_TOKEN_KEY, token);
-      sessionStorage.setItem(CLOUD_USERNAME_KEY, decodeSessionUsername(token) || "");
-    } else {
-      sessionStorage.removeItem(CLOUD_TOKEN_KEY);
-      sessionStorage.removeItem(CLOUD_USERNAME_KEY);
-    }
-  } catch (e) { /* private mode — cloud sign-in just won't persist across a reload */ }
+  if (token) {
+    safeStorageSet(sessionStorage, CLOUD_TOKEN_KEY, token);
+    safeStorageSet(sessionStorage, CLOUD_USERNAME_KEY, decodeSessionUsername(token) || "");
+  } else {
+    safeStorageRemove(sessionStorage, CLOUD_TOKEN_KEY);
+    safeStorageRemove(sessionStorage, CLOUD_USERNAME_KEY);
+  }
 }
 function cloudUsername() {
-  try { return sessionStorage.getItem(CLOUD_USERNAME_KEY); } catch (e) { return null; }
+  return safeStorageGet(sessionStorage, CLOUD_USERNAME_KEY);
 }
 
 function updateCloudUi() {
@@ -3436,7 +3443,7 @@ function clampPaneWidth(width) {
 function applyPaneWidth(width) {
   const clamped = clampPaneWidth(width);
   resizeTargetEl().style.flexBasis = `${clamped}px`;
-  try { localStorage.setItem(PANE_WIDTH_KEY, String(clamped)); } catch (e) { /* private mode/quota — not fatal */ }
+  safeStorageSet(localStorage, PANE_WIDTH_KEY, String(clamped));
 }
 
 let paneResizeStart = null; // { startX, startWidth } while a drag is in progress
@@ -3481,12 +3488,12 @@ const hierarchyToggleBtn = document.getElementById("hierarchy-toggle-btn");
 function setHierarchyPanelOpen(open) {
   layoutEl.classList.toggle("hierarchy-open", open);
   hierarchyToggleBtn.classList.toggle("active", open);
-  try { localStorage.setItem(HIERARCHY_PANEL_OPEN_KEY, open ? "1" : "0"); } catch (e) { /* private mode/quota — not fatal */ }
+  safeStorageSet(localStorage, HIERARCHY_PANEL_OPEN_KEY, open ? "1" : "0");
 }
 hierarchyToggleBtn.addEventListener("click", () => {
   setHierarchyPanelOpen(!layoutEl.classList.contains("hierarchy-open"));
 });
-try { setHierarchyPanelOpen(localStorage.getItem(HIERARCHY_PANEL_OPEN_KEY) === "1"); } catch (e) { /* private mode/quota — defaults closed */ }
+setHierarchyPanelOpen(safeStorageGet(localStorage, HIERARCHY_PANEL_OPEN_KEY) === "1");
 
 const tabLayersBtn = document.getElementById("tab-layers");
 if (tabLayersBtn) tabLayersBtn.addEventListener("click", () => setHierarchyPanelOpen(true));
@@ -3512,7 +3519,7 @@ function updateUnitsToggleUi() {
 }
 function setDisplayUnit(unit) {
   displayUnit = unit;
-  try { localStorage.setItem(DISPLAY_UNIT_KEY, unit); } catch (e) { /* private mode/quota — not fatal */ }
+  safeStorageSet(localStorage, DISPLAY_UNIT_KEY, unit);
   updateUnitsToggleUi();
   // Redraws the scale bar/annotation labels in the new unit without touching source text or
   // resetting the current pan/zoom -- the same established idiom undo/redo already uses.
@@ -3520,9 +3527,7 @@ function setDisplayUnit(unit) {
 }
 function toggleDisplayUnit() { setDisplayUnit(displayUnit === "imperial" ? "metric" : "imperial"); }
 unitsToggleBtn?.addEventListener("click", toggleDisplayUnit);
-try {
-  displayUnit = localStorage.getItem(DISPLAY_UNIT_KEY) === "imperial" ? "imperial" : "metric";
-} catch (e) { /* private mode/quota — defaults metric */ }
+displayUnit = safeStorageGet(localStorage, DISPLAY_UNIT_KEY) === "imperial" ? "imperial" : "metric";
 updateUnitsToggleUi();
 
 // ---------- D-132: the header's Edit/View tabs, plus the logo standing in for a File tab
@@ -3539,13 +3544,13 @@ const menuTabPanels = document.querySelectorAll(".menu-tab-panel");
 function setActiveMenuTab(tab) {
   for (const btn of menuTabBtns) btn.classList.toggle("active", btn.dataset.tab === tab);
   for (const panel of menuTabPanels) panel.hidden = panel.dataset.tab !== tab;
-  try { localStorage.setItem(MENU_TAB_KEY, tab); } catch (e) { /* private mode/quota — not fatal */ }
+  safeStorageSet(localStorage, MENU_TAB_KEY, tab);
 }
 for (const btn of menuTabBtns) {
   btn.addEventListener("mouseenter", () => setActiveMenuTab(btn.dataset.tab));
   btn.addEventListener("click", () => setActiveMenuTab(btn.dataset.tab));
 }
-try { setActiveMenuTab(localStorage.getItem(MENU_TAB_KEY) || "file"); } catch (e) { setActiveMenuTab("file"); }
+setActiveMenuTab(safeStorageGet(localStorage, MENU_TAB_KEY) || "file");
 
 // D-153: has-submenu flyouts (Export, Grid) are positioned in the viewport via JS
 // (`position: fixed`, see the .submenu rule above) instead of pure CSS (`absolute`,
