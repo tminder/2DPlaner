@@ -10,10 +10,6 @@ This file holds only *currently open* debt. An entry is removed once it's resolv
 
 Recomputes bboxes; runs the full plan validation pass; resets/manages pan-zoom `viewState`/`lastCoreFit`; updates the scale bar; toggles the selection class *and* calls `dimOccludingElements` (D-164, replacing the older `bringToFront` DOM reorder); refreshes the stack-hint badge and reapplies `stacked-dim` classes — all in one callback with no sub-function boundaries, despite its own name suggesting "reapply overlay state after a render." (Was seven — D-107 removed the connect/disconnect icon-markup responsibility outright along with the icons themselves, not just moved it elsewhere.)
 
-## S-008 Validation checkers and drag-time clamps duplicate the same scope logic independently
-
-`checkContainment` and `clampToContainment` each re-derive "rect child, D-032 scope" on their own — a comment even acknowledges "reuses `clampToContainment`'s own scope exactly" — but the actual condition is copy-typed twice, so the two can silently drift apart.
-
 ## S-035 A `hidden` subtree still has its geometry computed and validated
 
 `computePositions` and the load-time validation pass (`checkContainment`/`checkCollisions`) walk the *full* tree unconditionally — a `hidden: true` node (D-112) renders nothing, but its position is still resolved and it can still trigger a containment/collision violation naming an element that's currently invisible on screen. Deliberately deferred when `hidden` was built: fixing it means threading a "skip this subtree" check through several existing tree-walks for a case that's cosmetic today (a stray validation message), not a functional bug.

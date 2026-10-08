@@ -2522,3 +2522,13 @@ Picked up directly after closing S-043 (D-184). `insertStandardElement` always l
 **Verified live:** selecting a `rect` room and inserting a circle still nests it inside, unchanged; selecting a `polyline` wall or a bare corner node and inserting a rectangle both land it as a sibling in the enclosing group, not nested inside the line/corner.
 
 **Status: built, verified live in a real browser, deployed** via `scripts/deploy.sh --target=docs` (byte-verified), `.deploy-state` committed.
+
+## D-186 S-008 fixed: `clampToContainment` and `checkContainment` now share one "is this in scope" check
+
+Picked up directly after closing F-050 (D-185) — a pure tech-debt fix, no design fork, recommended and confirmed directly. `checkContainment`'s own comment already said it "reuses `clampToContainment`'s own scope exactly (rect child, D-032)," but the actual condition — `node.props.shape !== "rect" || !node.props.size` — was copy-typed in both places rather than shared, exactly the kind of drift risk S-008 flagged: a future change to one copy with the other forgotten.
+
+**`docs/interactivity-module.js`:** new `isContainmentScopedRect(node)` (returns `node.props.shape === "rect" && !!node.props.size`), placed right before `clampToContainment`. Both call sites now call it instead of re-deriving the condition — `clampToContainment`'s own "not a rect, not enforced here" branch, and `checkContainment`'s own scope-skip. Pure dedup: no behavior changes, nothing a test could observe differently. `checkContainment`'s own comment updated to name the shared helper instead of describing the duplication as merely conceptual.
+
+**Tests:** none added — a same-behavior refactor has nothing new to assert. The existing containment/placement suites (`test_containment_and_placement.py` and five others that touch containment indirectly) were run directly to confirm nothing shifted. Full suite green.
+
+**Status: built, verified via the existing test suite, deployed** via `scripts/deploy.sh --target=docs` (byte-verified), `.deploy-state` committed.
