@@ -2580,3 +2580,14 @@ Picked up directly after closing S-027 (D-189), in the same file. The module's o
 **`docs/wall-with-door-module.js`:** no logic change. The misleading comment is replaced with one stating plainly what was actually confirmed, referencing this decision, so a future reader doesn't re-raise the same already-investigated concern.
 
 **Status: investigated, found not to be a real bug, comment corrected, deployed** via `scripts/deploy.sh --target=docs` (byte-verified), `.deploy-state` committed.
+
+
+## D-191 F-046: trademark checked, formal registration deliberately deferred — a real Patagonia-similarity risk recorded, not dismissed
+
+Picked up directly as part of F-046's own four open sub-questions, scoped narrowly by direct request: a web check for obvious name conflicts, then a recorded decision — not an actual filing, which needs a lawyer/IP office and real fees, not something this session can execute.
+
+**Checked directly rather than assumed clear:** no existing trademark, company, or product called "Planagonia" turned up, and `planagonia.com` itself has no conflicting indexed presence. **A real, non-theoretical risk did surface, though, not invented to be cautious:** Patagonia (the outdoor apparel brand) has a documented history of trademark-enforcement action against phonetically similar names, including ones in completely unrelated categories — "Pattie Gonia" (a drag performer) and "Petrogonia" (an apparel line) were both sued. "Planagonia" ends in the same "-agonia" syllable. Shown to the user directly before recording anything, specifically because a finding with this kind of consequence shouldn't just get silently logged.
+
+**Decided: defer formal trademark registration, but record the risk explicitly rather than let it stay invisible.** No revenue or real commercial stakes exist yet to justify registration's real cost; re-evaluate specifically when either F-046's own monetization question gets answered or an actual registration becomes worth pursuing. The alternative considered — reconsidering the name itself now, before more branding accumulates — was raised directly and declined; this stays a tracked risk, not a forcing function for a rename.
+
+**Status: investigated, decision recorded — no registration filed, no code/branding changed.** Revisit alongside F-046's other three sub-questions (monetization shape, module-store ownership, Terms of Service) rather than in isolation.
