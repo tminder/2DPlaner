@@ -78,6 +78,26 @@ def test_declaring_wall_with_door_module_expands_the_composite(app_page):
     assert app_page.locator('[data-id="w_wall_b"]').count() == 1
 
 
+def test_a_synthesized_segment_id_colliding_with_a_real_sibling_is_disambiguated(app_page):
+    # S-027: `w_wall_a` is also declared as a real sibling here -- the synthesized segment
+    # must not silently collide with it (corrupting nodesById's own last-writer-wins
+    # lookup), and the real sibling must still render under its own, untouched id.
+    load_plan(
+        app_page,
+        'module "wall-with-door-module.js"\n\n'
+        'element root {\n' + WALL_WITH_DOOR_BODY + '\n'
+        '  element w_wall_a {\n'
+        '    shape: "circle"\n'
+        '    radius: 0.1m\n'
+        '    position: [3m,3m]\n'
+        '    style: { fill: "lime" }\n'
+        '  }\n'
+        '}',
+    )
+    assert app_page.locator('circle[data-id="w_wall_a"]').count() == 1  # the real sibling, untouched
+    assert app_page.locator('polyline[data-id="w_wall_a2"]').count() == 1  # the segment, disambiguated
+
+
 def test_wall_with_door_module_is_trusted_and_never_prompts(app_page):
     assert app_page.evaluate("isTrustedModule('wall-with-door-module.js')") is True
     dialogs = []

@@ -26,7 +26,16 @@
   // `position` isn't factored into its children's coordinates (from/to are treated as
   // already being in the composite's parent's local space) — orthogonal, solvable,
   // left out to keep this focused.
-  function expandWallWithDoor(node) {
+  // S-027: `${node.id}${idSuffix}` isn't checked against any real sibling id before use --
+  // in the rare case an author's own plan happens to declare one that collides, this would
+  // otherwise silently corrupt nodesById's own last-writer-wins lookup, the exact risk
+  // F-028 describes for hand-authored duplicates (and this path is exempt from the
+  // load-time duplicate-id check, since these nodes are synthesized after parsing, not
+  // part of the parsed source). Disambiguated the same way uniqueId
+  // (interactivity-module.js) already does elsewhere -- `id`, then `id2`, `id3`, ... --
+  // against `usedIds`, threaded through the whole expansion walk so one composite's own
+  // synthesized ids are visible to the next one too, not just the plan's original ids.
+  function expandWallWithDoor(node, usedIds) {
     const from = node.props.from.map(core.numOf);
     const to = node.props.to.map(core.numOf);
     const doorAt = core.numOf(node.props.doorAt);
@@ -37,10 +46,16 @@
     const doorStart = [from[0] + ux * doorAt, from[1] + uy * doorAt];
     const doorEnd = [from[0] + ux * (doorAt + doorWidth), from[1] + uy * (doorAt + doorWidth)];
 
-    const segment = (idSuffix, a, b, style, extra) => ({
-      id: `${node.id}${idSuffix}`, parentId: node.id, children: [],
-      props: { shape: "polyline", points: [a, b], style, ...extra },
-    });
+    const segment = (idSuffix, a, b, style, extra) => {
+      let id = `${node.id}${idSuffix}`;
+      if (usedIds.has(id)) {
+        let n = 2;
+        while (usedIds.has(`${id}${n}`)) n++;
+        id = `${id}${n}`;
+      }
+      usedIds.add(id);
+      return { id, parentId: node.id, children: [], props: { shape: "polyline", points: [a, b], style, ...extra } };
+    };
     node.children.push(
       segment("_wall_a", from, doorStart, { stroke: "#444", strokeWidth: 0.1 }),
       segment("_door", doorStart, doorEnd,
@@ -50,11 +65,13 @@
     );
   }
 
-  function expandComposites(node) {
-    if (node.props.compose === "wallWithDoor") expandWallWithDoor(node);
-    for (const child of node.children) expandComposites(child);
+  function expandComposites(node, usedIds) {
+    if (node.props.compose === "wallWithDoor") expandWallWithDoor(node, usedIds);
+    for (const child of node.children) expandComposites(child, usedIds);
   }
 
-  const unregister = core.registerBeforeRender((program) => expandComposites(program.root));
+  const unregister = core.registerBeforeRender((program) => {
+    expandComposites(program.root, new Set(Object.keys(program.nodesById)));
+  });
   core.registerModuleCleanup("wall-with-door-module.js", unregister);
 })();
