@@ -2543,3 +2543,14 @@ Picked up directly after closing S-008 (D-186) — another pure tech-debt fix, n
 **Tests:** none added — a same-behavior refactor has nothing new to assert. Verified live instead: selecting an element still gets the `.selected` class and its resize handles; the load-time validation panel still reports a real overlap; zooming still works with no console errors. Full suite green, same count as before.
 
 **Status: built, verified live in a real browser, deployed** via `scripts/deploy.sh --target=docs` (byte-verified), `.deploy-state` committed.
+
+
+## D-188 S-018 fixed: one shared `safeStorageGet`/`safeStorageSet`/`safeStorageRemove` for every storage access in `docs/index.html`
+
+Picked up directly after closing S-007 (D-187) — another pure tech-debt fix, no design fork, recommended and confirmed directly. Plan persistence, the active-plan pointer, cloud session tokens, the code-pane width, the hierarchy-panel open state, the display-unit toggle, and the active header tab each independently wrapped their own `localStorage`/`sessionStorage` call in an ad hoc `try { } catch (e) { }` — the same guard, copy-typed roughly a dozen times, with nothing reminding a future storage read/write elsewhere that it's needed at all.
+
+**`docs/index.html`:** three new shared helpers — `safeStorageGet(storage, key)`, `safeStorageSet(storage, key, value)`, `safeStorageRemove(storage, key)` — placed right after the "Wire up" marker, before the first call site. Every independent try/catch in the main app script now calls one of these instead; `loadPlansList`'s own JSON-parsing try/catch (genuinely about corrupt JSON, not storage access) stayed as its own separate block, now wrapping an already-safe `safeStorageGet` call rather than a raw one. Deliberately scoped to the main app script only — the cookie-notice widget (its own small, self-contained inline `<script>` block, executing before the main script even defines these helpers) keeps its own two-line guard untouched, matching the identical copy already shipped standalone on the homepage/blog pages.
+
+**Tests:** none added — a same-behavior refactor has nothing new to assert. Verified live: `setDisplayUnit`/plan persistence confirmed directly (`localStorage` ends up holding the right value); the existing test suite's own hierarchy-panel/units-toggle/header-tab coverage (each already driving the real UI through its own established hover/click sequence) confirms the rest. Full suite green, same count as before.
+
+**Status: built, verified live and via the existing test suite, deployed** via `scripts/deploy.sh --target=docs` (byte-verified), `.deploy-state` committed.

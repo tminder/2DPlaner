@@ -20,10 +20,6 @@ Found live while building D-150: `findOwnPropertyLine` (used by `setPlacementIns
 
 `evalAst` and `linearize` both walk `num`/`neg`/`bin`/`path` nodes with separate per-operator logic. Adding a new operator or AST node type requires updating both, with nothing enforcing that they stay consistent.
 
-## S-018 Storage access repeats an ad hoc try/catch shape with no shared helper
-
-`savePlansList`, `loadPlansList`, `setActivePlan`, `setCloudSession`, `cloudToken`/`cloudUsername` each independently wrap `localStorage`/`sessionStorage` calls in their own `try { } catch (e) { }`. Nothing reminds a future storage read/write elsewhere that this guard is needed.
-
 ## S-019 `render()` re-derives geometry `renderShape()` already computed, instead of one shared bbox pass
 
 `bboxes` is only populated for rects inside `renderShape`; `render()` then separately re-walks the whole tree and recomputes polyline/polygon points and circle radii a second time just to fold their extents into the fit box. Any future shape type will likely repeat the same oversight.
