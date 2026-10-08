@@ -2532,3 +2532,14 @@ Picked up directly after closing F-050 (D-185) — a pure tech-debt fix, no desi
 **Tests:** none added — a same-behavior refactor has nothing new to assert. The existing containment/placement suites (`test_containment_and_placement.py` and five others that touch containment indirectly) were run directly to confirm nothing shifted. Full suite green.
 
 **Status: built, verified via the existing test suite, deployed** via `scripts/deploy.sh --target=docs` (byte-verified), `.deploy-state` committed.
+
+
+## D-187 S-007 fixed: `handleRendered` split into six named sub-functions
+
+Picked up directly after closing S-008 (D-186) — another pure tech-debt fix, no design fork, recommended and confirmed directly. `handleRendered` had six unrelated responsibilities inlined into one callback with no sub-function boundaries, despite its own name suggesting a narrower job: recomputing geometry caches, re-appending overlay DOM, restoring the view box, applying selection visuals, rendering resize handles, and refreshing the stack-hint badge.
+
+**`docs/interactivity-module.js`:** split into `recomputeGeometry(prog)`, `reappendOverlayElements(svgEl, prog, positions)`, `restoreViewBox(svgEl)`, `applySelectionVisuals(svgEl, prog, positions)`, and `refreshStackHintBadge()`, each taking over one of the six blocks (resize-handle rendering stayed bundled into `applySelectionVisuals`, since it only ever runs as part of applying the current selection's own visuals, not a separable concern on its own). `handleRendered` itself is now five lines: compute positions, early-return if there's no `svgEl` yet, then call the five in the exact same order as before. Pure extraction — every line of code and every comment moved verbatim into whichever function now owns it, nothing rewritten, nothing reordered.
+
+**Tests:** none added — a same-behavior refactor has nothing new to assert. Verified live instead: selecting an element still gets the `.selected` class and its resize handles; the load-time validation panel still reports a real overlap; zooming still works with no console errors. Full suite green, same count as before.
+
+**Status: built, verified live in a real browser, deployed** via `scripts/deploy.sh --target=docs` (byte-verified), `.deploy-state` committed.
