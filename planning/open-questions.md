@@ -20,7 +20,7 @@ Whether a plan can ever be shown to a non-owner at all (e.g. a public share link
 
 ## F-006 Documentation may still describe a broader language than what's actually implemented
 
-A fresh AI agent given only `documentation/language.md` (no other context) produced a plan that failed to parse — wrong `connection` syntax (the doc showed an object-literal form nothing implements; the real syntax is positional), an unsupported sibling property path guessed by analogy, and a guessed (if correct) nesting syntax with no confirming example. The core, well-documented grammar came out correct on the first try — the gap is specifically in under-documented areas (connection syntax, sibling-path scope), not general ambiguity. Needs a documentation pass reconciling the spec with the current implementation; not re-checked since the language has grown substantially (placement, flush, compose, style presets, settings) since this test was run.
+A fresh AI agent given only `language-spec/language.md` (no other context) produced a plan that failed to parse — wrong `connection` syntax (the doc showed an object-literal form nothing implements; the real syntax is positional), an unsupported sibling property path guessed by analogy, and a guessed (if correct) nesting syntax with no confirming example. The core, well-documented grammar came out correct on the first try — the gap is specifically in under-documented areas (connection syntax, sibling-path scope), not general ambiguity. Needs a documentation pass reconciling the spec with the current implementation; not re-checked since the language has grown substantially (placement, flush, compose, style presets, settings) since this test was run.
 
 ## F-007 Drag performance at scale
 

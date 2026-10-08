@@ -29,8 +29,7 @@ built: a homepage at the root, the app under `/app`, human-facing documentation 
 - **[homepage/](homepage/)** — the public landing page, live at
   [www.planagonia.com](https://www.planagonia.com/) (D-054).
 - **[site-docs/](site-docs/)** — human-facing documentation, live at
-  [www.planagonia.com/docs/](https://www.planagonia.com/docs/) (D-055). Not to be
-  confused with [documentation/](documentation/) below, the AI-facing language spec.
+  [www.planagonia.com/docs/](https://www.planagonia.com/docs/) (D-055).
 - **[profile/](profile/)** — sign in, see your cloud-saved plans, live at
   [www.planagonia.com/profile/](https://www.planagonia.com/profile/) (D-055).
 - **[docs/](docs/)** — the app itself, meant to be used, not thrown away. Auto-deployed to
@@ -55,7 +54,7 @@ built: a homepage at the root, the app under `/app`, human-facing documentation 
   plan; all four named sections are now built, a couple of small follow-ups remain open
 - [planning/tech-debt.md](planning/tech-debt.md) — numbered technical-debt items (S-001...),
   tracked and paid down alongside feature work per core-aims.md's fourth aim
-- [documentation/](documentation/) — reference docs: [language.md](documentation/language.md) (the plan language), [architecture.md](documentation/architecture.md) (system components)
+- [language-spec/](language-spec/) — the AI-facing plan-language spec (S-034: renamed from `documentation/`, which read as too easily confused with `site-docs/`): [language.md](language-spec/language.md) (the plan language), [architecture.md](language-spec/architecture.md) (system components)
 - [tests/](tests/) — the committed regression suite (Python + pytest + Playwright, D-093);
   `pip install -r tests/requirements.txt && playwright install chromium`, then `pytest tests/`.
   Runs automatically on every push/PR via [GitHub Actions](.github/workflows/tests.yml) (D-108).

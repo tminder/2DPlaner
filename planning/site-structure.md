@@ -32,7 +32,7 @@ version, not attempted). No pricing/checkout section, matching that nothing in
 that's actually built.
 
 **Documentation** — exists, but written for a different audience than a website visitor.
-`documentation/language.md`/`modules.md`/`architecture.md` are the plan *language*
+`language-spec/language.md`/`modules.md`/`architecture.md` are the plan *language*
 specification, deliberately optimized for D-017's AI-authoring goal (low-ambiguity,
 token-efficient) — precise but not written to be a friendly human-facing "how to use
 Planagonia" page. **Open question: does the public site need a second, human-oriented
@@ -140,7 +140,7 @@ rejected path, not delete it once superseded.
 |---|---|---|
 | Homepage | `planagonia.com/` | **Done** — live at `www.planagonia.com/` (D-054), root `planagonia.com` pending its certificate like the App |
 | App | `planagonia.com/app` | **Done** — live at `www.planagonia.com/app/` (root `planagonia.com` still needs its own certificate, see D-053), also still mirrored at `test.planagonia.com` and GitHub Pages |
-| Documentation | `planagonia.com/docs` | **Done** — human-facing version live at `www.planagonia.com/docs/` (D-055, `site-docs/`); `documentation/` still exists separately for the AI-facing language spec, cross-referenced from the new page |
+| Documentation | `planagonia.com/docs` | **Done** — human-facing version live at `www.planagonia.com/docs/` (D-055, `site-docs/`); `language-spec/` still exists separately for the AI-facing language spec, cross-referenced from the new page |
 | Profile | `planagonia.com/profile` | **Done** — live at `www.planagonia.com/profile/` (D-055): sign-in, cloud plan list. No account management (rename/delete/rotate password) — flagged on the page itself as out of scope |
 | Storage-service API | `api.planagonia.com` | **Done** — migrated off `test.planagonia.com` (D-053), confirmed working end to end (login, CRUD, CORS for the main domain) |
 | SEO exclusion for `auth.`/`test.`(`api.`) | — | **Done** — `auth.planagonia.com` set to WordPress's own "discourage search engines" (confirmed: `noindex, nofollow` meta tag live); `test.planagonia.com` given a `Disallow: /` `robots.txt` |
@@ -151,7 +151,7 @@ rejected path, not delete it once superseded.
 ## Open questions, collected here rather than scattered across the conversation
 
 1. ~~Domain mapping~~ — **decided: B**, see above.
-2. ~~Documentation audience~~ — **decided: humans, as a second surface (D-055)**, `documentation/` stays as-is for the AI-facing spec.
+2. ~~Documentation audience~~ — **decided: humans, as a second surface (D-055)**, `language-spec/` (renamed from `documentation/`, S-034) stays as-is for the AI-facing spec.
 3. ~~What does Homepage need~~ — **built at the "explain + link" scope (D-054)**; a live embedded demo remains a possible later addition, not attempted.
 4. ~~What does Profile need~~ — **built at "who's signed in + cloud plans" (D-055)**; account management stays out of scope, deferred to WordPress's own tools.
 5. **Still open, real:** deep-linking a specific cloud plan from Profile into the App (`/app/?cloud=<id>`) isn't built — Profile can only send a visitor to the App generally, not to the exact plan they clicked. Whether `test.planagonia.com` stays a real staging environment or gets retired now that the main domain carries the real layout is also still undecided.
