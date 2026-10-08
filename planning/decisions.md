@@ -2554,3 +2554,16 @@ Picked up directly after closing S-007 (D-187) — another pure tech-debt fix, n
 **Tests:** none added — a same-behavior refactor has nothing new to assert. Verified live: `setDisplayUnit`/plan persistence confirmed directly (`localStorage` ends up holding the right value); the existing test suite's own hierarchy-panel/units-toggle/header-tab coverage (each already driving the real UI through its own established hover/click sequence) confirms the rest. Full suite green, same count as before.
 
 **Status: built, verified live and via the existing test suite, deployed** via `scripts/deploy.sh --target=docs` (byte-verified), `.deploy-state` committed.
+
+
+## D-189 S-027 fixed: a wall-with-door composite's synthesized segment ids no longer collide silently with a real sibling
+
+Picked up directly after closing S-018 (D-188) — another concrete tech-debt fix, no design fork, recommended and confirmed directly. `wall-with-door-module.js`'s `expandWallWithDoor` built each of its three synthesized segments' own ids as `${node.id}${idSuffix}` (`_wall_a`/`_door`/`_wall_b`) with no check against any id already in the plan. In the rare case an author's own plan happened to declare a real sibling with exactly that id, the collision would silently corrupt `nodesById`'s own last-writer-wins lookup — the same risk F-028 already describes for hand-authored duplicates, except this path is exempt from the load-time duplicate-id check entirely, since these nodes are synthesized after parsing, never part of the parsed source.
+
+**`docs/wall-with-door-module.js`:** `expandWallWithDoor`/`expandComposites` now both take a `usedIds` set, seeded once from `program.nodesById`'s own keys (every id already in the plan before any expansion) and threaded through the whole tree walk — so one composite's own synthesized ids are visible to the next composite too, not just the plan's original ids. Each segment's own id is checked against it and disambiguated the same way `uniqueId` (`interactivity-module.js`) already does elsewhere — `id`, then `id2`, `id3`, … — rather than silently overwriting.
+
+**Tests:** one new case in `tests/test_content_driven_modules.py` — a plan declaring a real `w_wall_a` sibling alongside a `wallWithDoor` composite named `w`: the real sibling renders untouched under its own id, the synthesized segment lands as `w_wall_a2` instead of silently colliding. Full suite green.
+
+**Verified live:** the identical scenario confirmed directly in a real browser — `w_wall_a2`/`w_door`/`w_wall_b`/`w_wall_a`/`root`/`w` all rendered, no console errors, the real sibling's own circle untouched.
+
+**Status: built, verified live in a real browser, deployed** via `scripts/deploy.sh --target=docs` (byte-verified), `.deploy-state` committed.

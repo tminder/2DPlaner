@@ -60,10 +60,6 @@ Reported directly, not yet reproduced or root-caused: the highlighted/colored ba
 
 **Next step, not guessable further from here: reproduce with a specific plan's own text, browser, zoom level, and exact click location**, or a screen recording of it happening — this entry's own three ruled-out hypotheses are recorded so the next attempt doesn't re-walk the same ground.
 
-## S-027 `wall-with-door-module.js`'s synthesized child ids have no collision check against real sibling ids
-
-`segment`'s hand-built ids (`${node.id}_wall_a`, etc.) aren't checked against existing sibling ids before use. If an author's own plan happens to declare a colliding id, this could silently corrupt drag targeting the same way F-028 describes for hand-authored duplicates — and this path is exempt from the load-time duplicate-id check, since these nodes are synthesized after parsing, not part of the parsed source. Untested edge case, not confirmed broken.
-
 ## S-036 Text-splice source-editing helpers are now duplicated across two modules
 
 `toLineSpan`/`applyEditsDescending`/`findOwnPropertyLine`-shaped helpers live privately inside both `interactivity-module.js` and (D-112) `hierarchy-module.js` — the same small "read/write a plan-text edit" primitives, copied rather than shared, since neither `window.PlanCore` nor any other cross-module channel exposes them. Accepted as the right call the first time (matching S-023's own "a module brings its own copy" tradeoff with core's geometry) but a second instance of the identical duplication is exactly the "wait for a second use, then share" signal this project's own refactor philosophy (D-095/D-096) watches for — worth hoisting onto `window.PlanCore` if a third module ever needs the same capability.
