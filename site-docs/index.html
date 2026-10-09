@@ -364,15 +364,15 @@
   points: [corner_1, corner_2]
   style: <span class="s">"wall"</span>
 }</pre>
-        <p><code>module "name.js"</code> loads extra rendering or interactivity from a file — four modules load into every plan automatically (the background grid, labels/dimensions, drag-and-drop, and the code-highlighting you're using right now if you're in the app), so you'll rarely need to write this yourself.</p>
+        <p><code>module "name.js"</code> loads extra rendering or interactivity from a file — nothing loads unless a plan's own text declares it, including the editor's own drag-and-drop, code-highlighting, and Layers panel. Every plan you start from inside the app (New, or any example below) already declares those three for you, so you'll rarely need to write them yourself; turning on Grid or Labels/Dimensions from the header writes that module's own line automatically too, the first time you use it.</p>
 
         <h3>Custom (external) modules</h3>
-        <p>A module doesn't have to be one of the three built-in ones — <code>module</code> also accepts a full URL, fetched and run alongside a plan's own three:</p>
+        <p>A module doesn't have to be one of this app's own built-in ones — <code>module</code> also accepts a full URL, fetched and run alongside whatever else a plan declares:</p>
         <pre class="code-block"><span class="k">module</span> <span class="s">"https://example.com/campervan-kit.js"</span></pre>
-        <p>A module loaded this way can add new rendering (a shape kind the core language doesn't have), new interactivity, or a reusable higher-level building block composed from ordinary elements and connections — a "wall with a door" that expands from a few parameters instead of being written out corner by corner, for example. Browse what other authors have published at <a href="/modules/">planagonia.com/modules</a>.</p>
+        <p>A module loaded this way can add new rendering (a shape kind the core language doesn't have), new interactivity, or a reusable higher-level building block composed from ordinary elements and connections — a "wall with a door" that expands from a few parameters instead of being written out corner by corner, for example (see the Studio Apartment example below). Browse what other authors have published at <a href="/modules/">planagonia.com/modules</a>.</p>
         <div class="callout">
           <strong>You'll be asked before it loads</strong>
-          The first time a plan declares a module that isn't one of the three built-in ones, the app asks whether to trust the URL before fetching and running it — module code runs with full access to the page, the same as any script you'd choose to add yourself, so only accept one from somewhere you actually trust.
+          The first time a plan declares a module that isn't one of this app's own built-in ones, the app asks whether to trust the URL before fetching and running it — module code runs with full access to the page, the same as any script you'd choose to add yourself, so only accept one from somewhere you actually trust.
         </div>
         <p>Writing your own module means working directly against the app's own JavaScript API — that's developer territory, not covered here.</p>
       </section>
@@ -394,13 +394,20 @@
 
         <div class="example-card">
           <h3>Studio Apartment</h3>
-          <p class="desc">A small room with a bed, a wardrobe flush against the wall, a desk angled into a corner, and a rug — containment keeping the furniture inside the room, a connection linking the stove to the counter beside it, and arrow-tipped dimension lines around the room's own outer edges.</p>
+          <p class="desc">A small room with a bed, a wardrobe flush against the wall, a desk angled into a corner, and a rug — containment keeping the furniture inside the room, a connection linking the stove to the counter beside it (kept permanently visible via <code>showConnections</code>), arrow-tipped dimension lines around the room's own outer edges, and an entry partition wall built with <code>wall-with-door-module.js</code> instead of being drawn corner by corner.</p>
           <details class="example-code">
             <summary>Show the code</summary>
-            <pre class="code-block"><span class="k">settings</span> {
+            <pre class="code-block"><span class="k">module</span> <span class="s">"annotations-module.js"</span>
+<span class="k">module</span> <span class="s">"interactivity-module.js"</span>
+<span class="k">module</span> <span class="s">"code-highlight-module.js"</span>
+<span class="k">module</span> <span class="s">"hierarchy-module.js"</span>
+<span class="k">module</span> <span class="s">"wall-with-door-module.js"</span>
+
+<span class="k">settings</span> {
   version: 1
   allowSelfIntersectingPolygons: false
   dimensionStyle: <span class="s">"arrows"</span>
+  showConnections: true
 }
 
 <span class="k">element</span> room {
@@ -477,6 +484,14 @@
     show: <span class="s">"always"</span>
     dimensions: true
   }
+
+  <span class="k">element</span> entry_wall {
+    compose: <span class="s">"wallWithDoor"</span>
+    from: [2.5m, 0m]
+    to: [2.5m, 1.6m]
+    doorAt: 0.8m
+    doorWidth: 0.9m
+  }
 }
 
 <span class="k">connection</span> stove counter</pre>
@@ -485,10 +500,17 @@
 
         <div class="example-card">
           <h3>Electrical Grid</h3>
-          <p class="desc">Three directly adjacent property parcels — each a <code>polygon</code> sharing its boundary corners with its neighbor — all wired to one shared distribution cabinet. Each house's own connection point declares <code>placement: "outside"</code>, and the cabinet's internal fuse panel stays <code>hidden</code> until you need it.</p>
+          <p class="desc">Three directly adjacent property parcels — each a <code>polygon</code> sharing its boundary corners with its neighbor — all wired to one shared distribution cabinet, over a declared background <code>grid</code>. Each house's own connection point declares <code>placement: "outside"</code>, and the cabinet's internal fuse panel stays <code>hidden</code> until you need it.</p>
           <details class="example-code">
             <summary>Show the code</summary>
-            <pre class="code-block"><span class="k">settings</span> {
+            <pre class="code-block"><span class="k">module</span> <span class="s">"annotations-module.js"</span>
+<span class="k">module</span> <span class="s">"interactivity-module.js"</span>
+<span class="k">module</span> <span class="s">"code-highlight-module.js"</span>
+<span class="k">module</span> <span class="s">"hierarchy-module.js"</span>
+<span class="k">module</span> <span class="s">"grid-module.js"</span>
+
+<span class="k">settings</span> {
+  grid: { size: 2 }
   styles: {
     parcel: { fill: <span class="s">"#e7ecdf"</span>, stroke: <span class="s">"#7c8f6a"</span>, strokeWidth: 0.05 }
     haus: { fill: <span class="s">"#dcdcd7"</span>, stroke: <span class="s">"#55554f"</span>, strokeWidth: 0.07 }
@@ -644,10 +666,19 @@
 
         <div class="example-card">
           <h3>Campervan Build</h3>
-          <p class="desc">A camper's interior split into three layer groups — furniture, electrics, plumbing — with the water tank tucked directly under the bench seat, a real packaging trick small campervans actually use. A fold-out table sits angled off the bench (<code>rotation</code>), a cabinet stays pinned flush against the van's own wall, and hiding the "Einrichtung" layer in the app reveals the tank underneath, exactly where an installer would need to see it.</p>
+          <p class="desc">A camper's interior split into three layer groups — furniture, electrics, plumbing — with the water tank tucked directly under the bench seat, a real packaging trick small campervans actually use. A fold-out table sits angled off the bench (<code>rotation</code>), a cabinet stays pinned flush against the van's own wall, and hiding the "Einrichtung" layer in the app reveals the tank underneath, exactly where an installer would need to see it. Collision checking is turned on plan-wide (<code>allowCollisions: false</code>) — the fold-out table itself opts back out with its own <code>allowCollisions: true</code>, since it's meant to overlap the bench it folds against.</p>
           <details class="example-code">
             <summary>Show the code</summary>
-            <pre class="code-block"><span class="k">element</span> camper {
+            <pre class="code-block"><span class="k">module</span> <span class="s">"annotations-module.js"</span>
+<span class="k">module</span> <span class="s">"interactivity-module.js"</span>
+<span class="k">module</span> <span class="s">"code-highlight-module.js"</span>
+<span class="k">module</span> <span class="s">"hierarchy-module.js"</span>
+
+<span class="k">settings</span> {
+  allowCollisions: false
+}
+
+<span class="k">element</span> camper {
   shape: <span class="s">"rect"</span>
   size: [3.6m, 1.8m]
   position: [0m, 0m]
@@ -683,6 +714,7 @@
       style: { fill: <span class="s">"#c9a876"</span>, stroke: <span class="s">"#8a6a42"</span>, strokeWidth: 0.02 }
       label: <span class="s">"Klapptisch"</span>
       show: <span class="s">"hover"</span>
+      allowCollisions: true
     }
 
     <span class="k">element</span> haengeschrank {
