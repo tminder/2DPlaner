@@ -100,13 +100,19 @@ def test_moving_before_the_long_press_fires_drags_instead(app_page):
     assert source_text(app_page) != before  # the drag itself still went through
 
 
-def test_a_second_finger_cancels_a_pending_drag_and_starts_a_pinch(app_page):
+def test_a_second_finger_no_longer_cancels_a_pending_drag(app_page):
+    """D-198: interactivity-module.js and view-module.js no longer share gesture state --
+    a second finger landing starts an independent pinch instead of cancelling whatever
+    one-touch drag was already running. The drag itself holds in place (doesn't react to
+    the 2nd finger's own movement, see handlePointerMove's own D-198 guard) rather than
+    jumping between the two fingers' positions, then resolves normally at its own last real
+    (1-finger) position once back down to one touch -- a known, accepted tradeoff, not a
+    silent behavior change."""
     load_plan(app_page, TWO_SIBLINGS)
     x, y = element_center(app_page, "sofa")
     # The second finger lands on "room" (much larger than "sofa", so a nearby offset is
     # guaranteed to still land inside the SVG regardless of the viewer pane's exact fit/scale).
     rx, ry = element_center(app_page, "room")
-    before = source_text(app_page)
     before_vb = view_box(app_page)
 
     # Once pinching, finger 2 moves 40px further away from finger 1 along their own connecting
@@ -118,13 +124,14 @@ def test_a_second_finger_cancels_a_pending_drag_and_starts_a_pinch(app_page):
     rx2, ry2 = rx + ux2 * 40, ry + uy2 * 40
 
     dispatch_pointer(app_page, "pointerdown", 1, x, y)
-    dispatch_pointer(app_page, "pointermove", 1, x + 5, y)  # a tiny move -- still "pending", not yet committed
+    dispatch_pointer(app_page, "pointermove", 1, x + 10, y + 10)  # past the 3px drag threshold
     dispatch_pointer(app_page, "pointerdown", 2, rx, ry)
     dispatch_pointer(app_page, "pointermove", 2, rx2, ry2)
     app_page.wait_for_timeout(100)
 
-    assert source_text(app_page) == before, "the cancelled drag must leave no trace in the source"
-    assert view_box(app_page)[2] < before_vb[2], "the second finger should have started a real pinch-zoom"
+    assert view_box(app_page)[2] < before_vb[2], "the second finger should still start a real pinch-zoom"
 
-    dispatch_pointer(app_page, "pointerup", 1, x + 5, y)
+    dispatch_pointer(app_page, "pointerup", 1, x + 10, y + 10)
     dispatch_pointer(app_page, "pointerup", 2, rx2, ry2)
+    app_page.wait_for_timeout(150)
+    assert "position: [0.1m, 0.1m]" not in source_text(app_page), "the drag running before the 2nd finger landed should still have been applied, not discarded"

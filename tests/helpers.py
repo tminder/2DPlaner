@@ -5,6 +5,7 @@ scratchpad scripts already used successfully throughout this project's history."
 
 CORE_TEST_MODULES = (
     'module "interactivity-module.js"\n'
+    'module "view-module.js"\n'
     'module "code-highlight-module.js"\n'
     'module "hierarchy-module.js"\n\n'
 )

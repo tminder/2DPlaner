@@ -17,13 +17,14 @@ interactivity module (D-031) and is unchanged since. [docs/](../docs/) — the a
 app — reuses that architecture verbatim: `docs/index.html` is core (parse/render only).
 Documented here in depth: `docs/interactivity-module.js` (D-031),
 `docs/annotations-module.js` (D-039), `docs/code-highlight-module.js` (D-043),
-`docs/hierarchy-module.js` (D-112), `docs/grid-module.js` (F-014), and
-`docs/wall-with-door-module.js` (D-046/D-071) — every one of them loads only when the
-plan's own text literally declares it (D-175, extended to all six by D-195, see below): the
-same `module "..."` mechanism D-020 always had for any module, with no force-injected
-exception left for any of them. Module loading is decided purely by the plan's own code,
-never by a UI interaction like a button click (D-174) and never inferred from a property
-instead of a declaration (D-173's brief experiment with the latter, reversed by D-175).
+`docs/hierarchy-module.js` (D-112), `docs/grid-module.js` (F-014),
+`docs/wall-with-door-module.js` (D-046/D-071), and `docs/view-module.js` (D-198) — every one
+of them loads only when the plan's own text literally declares it (D-175, extended to all
+six pre-D-198 modules by D-195, see below): the same `module "..."` mechanism D-020 always
+had for any module, with no force-injected exception left for any of them. Module loading is
+decided purely by the plan's own code, never by a UI interaction like a button click (D-174)
+and never inferred from a property instead of a declaration (D-173's brief experiment with
+the latter, reversed by D-175).
 
 ## Module kinds
 
@@ -34,7 +35,7 @@ directly by [planning/core-aims.md](../planning/core-aims.md)'s Aim 3:
   unconditional; never a module, never declared, never optional.
 - **Wahl (own)** — every module this app ships itself: `interactivity-module.js`,
   `code-highlight-module.js`, `hierarchy-module.js`, `grid-module.js`,
-  `annotations-module.js`, `wall-with-door-module.js`. Declared by a bare
+  `annotations-module.js`, `wall-with-door-module.js`, `view-module.js`. Declared by a bare
   `module "<name>.js"` line and run with full trust — no `confirm()` prompt
   (`TRUSTED_MODULES`, see Trust model below) — because the code is reviewed the same way
   core itself is, not fetched from anywhere untrusted.
@@ -256,9 +257,45 @@ than coming by default. It adds, entirely on top of the API above:
 - **Hover previews** — which other elements share a dragged corner, which elements a
   connection links.
 - **The right-click context menu** (D-030) — currently just Delete Element.
-- **Zoom, pan, a scale bar, and a Fit button** (D-035) — mouse-wheel zoom-to-cursor,
-  click-drag pan on empty canvas, a bottom-right scale bar recomputed on every render/zoom/
-  pan/resize, and a button to reset back to core's own auto-fit view.
+
+Zoom/pan/the scale bar/Fit (originally built here, D-035) moved to their own module,
+`view-module.js`, in D-198 — see below.
+
+## The view module
+
+`docs/view-module.js` (D-198) — split out of interactivity-module.js directly: camera/
+viewport concerns and editing concerns are different things that happened to share one file,
+not one concern that needed splitting. Adds:
+
+- **Mouse-wheel zoom-to-cursor** and **click-drag pan** on empty canvas.
+- **Pinch-to-zoom** (F-036, touch) — distance between two touches drives the zoom factor,
+  their midpoint is the anchor.
+- **A bottom-right scale bar**, recomputed on every render/zoom/pan/resize.
+- **The Fit button** (`#header-fit-btn`) — resets back to core's own auto-fit view,
+  discarding any pan/zoom.
+
+**`viewState`/`lastCoreFit` (the current pan/zoom override, and core's own last fit-to-
+content box) is the one piece of state every one of the above reads and writes — the reason
+this split is "the whole camera cluster, together" rather than, say, "just Fit."** Splitting
+any single camera gesture into its own module without moving all of them would leave two
+independent, driftable copies of "where the camera currently is," exactly what
+[planning/core-aims.md](../planning/core-aims.md)'s Aim 1 warns against. `view-module.js`
+owns this state entirely privately; any other module that needs to know the *current*
+effective viewBox (interactivity-module.js's own `clientToViewBoxPoint`, used by the
+relate-drag line and marquee selection) reads it directly off the live SVG's own `viewBox`
+attribute instead — the DOM is the single authoritative source of "what's on screen right
+now," regardless of which module last wrote it, so no cross-module state-sharing is needed
+for that.
+
+**One real, accepted behavior change, not hidden:** before this split, a second touch
+landing mid-gesture cancelled whatever one-touch drag/resize/marquee gesture
+interactivity-module.js had in progress and took over as a pinch. The two modules no longer
+share gesture state to make that handoff possible — a second finger landing now starts an
+independent pinch here, while interactivity-module.js's own gesture (if any) simply holds in
+place (ignores further movement, but isn't cancelled) until back down to one touch, then
+resolves normally at its own last real position. Confirmed directly before building, and
+tracked as [planning/open-questions.md](../planning/open-questions.md) F-055 for whether a
+dedicated cross-module coordination hook is ever worth building for this specifically.
 
 ## The annotations module
 

@@ -944,6 +944,7 @@
 // ---------- Example plans ----------
 const EXAMPLES = {
   blank: `module "interactivity-module.js"
+module "view-module.js"
 module "code-highlight-module.js"
 module "hierarchy-module.js"
 
@@ -956,6 +957,7 @@ element plan {
 `,
   apartment: `module "annotations-module.js"
 module "interactivity-module.js"
+module "view-module.js"
 module "code-highlight-module.js"
 module "hierarchy-module.js"
 module "wall-with-door-module.js"
@@ -1056,6 +1058,7 @@ connection stove counter
 `,
   utility: `module "annotations-module.js"
 module "interactivity-module.js"
+module "view-module.js"
 module "code-highlight-module.js"
 module "hierarchy-module.js"
 module "grid-module.js"
@@ -1234,6 +1237,7 @@ connection hausanschluss_3 verteilkabine
   // so that overlap was never subject to this check either way.
   campervan: `module "annotations-module.js"
 module "interactivity-module.js"
+module "view-module.js"
 module "code-highlight-module.js"
 module "hierarchy-module.js"
 
@@ -1431,7 +1435,7 @@ const EXAMPLE_LABELS = { blank: "Blank", apartment: "Studio Apartment", utility:
 // readable order. wall-with-door-module.js isn't here: it runs via registerBeforeRender, not
 // onRendered, so it has no ordering constraint relative to any of these -- see
 // requiredModulesFor below, which appends it (and any other declared module) after.
-const ORDERED_MODULES = ["grid-module.js", "annotations-module.js", "interactivity-module.js", "code-highlight-module.js", "hierarchy-module.js"];
+const ORDERED_MODULES = ["grid-module.js", "annotations-module.js", "interactivity-module.js", "view-module.js", "code-highlight-module.js", "hierarchy-module.js"];
 
 const TRUSTED_MODULES = [...ORDERED_MODULES, "wall-with-door-module.js"];
 
@@ -2060,9 +2064,9 @@ function newLiteralUnit(settings) { return settings && settings.units === "none"
 // "m" for a brand-new literal) and must never be affected by a viewer's own display
 // preference; the plan language itself stays metric-only (D-005), on purpose, forever. This
 // one is for the two places a human actually *reads* a measurement rather than the source
-// editing it (annotations-module.js's dimension/edge-length labels) -- reads the session-
-// local displayUnit preference (getDisplayUnit, set up further down near the header toggle
-// that flips it) and formats accordingly. The scale bar (interactivity-module.js) hand-rolls
+// editing it (annotations-module.js's dimension/edge-length labels) -- reads
+// `settings.displayUnit` (getDisplayUnit, set up further down near the header toggle that
+// flips it) and formats accordingly. The scale bar (interactivity-module.js) hand-rolls
 // its own compact single-unit label ("15 ft") rather than this combined "5' 6.3"" style --
 // two different display shapes for two different UI contexts, not something this one
 // function needs to also cover.
@@ -2622,12 +2626,10 @@ async function rerender(opts = {}) {
   }
   try {
     const parsed = parse(sourceEl.value);
-    // D-034/D-174/D-175: every plan gets interactivity, a highlighted code pane, and the
-    // layers panel regardless of whether its own text declares them — true on every render,
-    // not just at creation, so a plan that reached the editor any way at all (typed, pasted,
-    // loaded) gets the same guarantee. Everything else (grid/annotations/wall-with-door/any
-    // external module) loads only when the plan's own text literally declares it — see
-    // requiredModulesFor above.
+    // D-195: every module, without exception, loads only because the plan's own text
+    // literally declares it — interactivity/code-highlight/hierarchy lost their D-174
+    // force-injected exception, so there's no longer a "these always load" subset here at
+    // all. See requiredModulesFor above.
     const requiredModules = requiredModulesFor(parsed);
     deactivateRemovedModules(requiredModules);
     await ensureModulesLoaded(requiredModules);
@@ -2641,6 +2643,7 @@ async function rerender(opts = {}) {
     updateSnapToggleUi();
     updateShowConnectionsToggleUi();
     updateDimensionStyleToggleUi();
+    updateUnitsToggleUi();
     for (const cb of renderedCallbacks) cb(program, result);
     return result;
   } catch (e) {
@@ -2838,7 +2841,7 @@ function ensureModuleDeclared(text, moduleName) {
   return `${text.slice(0, insertAt)}module "${moduleName}"\n\n${text.slice(insertAt)}`;
 }
 
-function toggleSettingsFlag(key, insertLiteral, requiredModule) {
+function toggleSettingsFlag(key, insertLiteral, requiredModule, preserveViewBox) {
   let text = sourceEl.value;
   const settingsSpan = findSettingsSpan(text);
   const keySpan = settingsSpan && findSettingsKeySpan(settingsSpan, key);
@@ -2869,7 +2872,7 @@ function toggleSettingsFlag(key, insertLiteral, requiredModule) {
     }
   }
   sourceEl.value = newText;
-  rerender();
+  rerender(preserveViewBox ? { preserveViewBox: true } : undefined);
   commitUndoStep();
 }
 
@@ -2989,9 +2992,9 @@ function updateShowConnectionsToggleUi() {
   btn.classList.toggle("active", program?.settings?.showConnections === true);
 }
 
-// A real plan setting (unlike Units below), so this reads program.settings directly rather
-// than a localStorage variable -- and, like Units, the label text itself carries the current
-// state (a two-way style switch, not a plain on/off flag).
+// A real plan setting, read from program.settings directly -- the label text itself carries
+// the current state (a two-way style switch, not a plain on/off flag), the same shape Units
+// below now also uses.
 function updateDimensionStyleToggleUi() {
   const btn = document.getElementById("dimension-style-toggle-btn");
   if (!btn) return;
@@ -3541,37 +3544,33 @@ setHierarchyPanelOpen(safeStorageGet(localStorage, HIERARCHY_PANEL_OPEN_KEY) ===
 const tabLayersBtn = document.getElementById("tab-layers");
 if (tabLayersBtn) tabLayersBtn.addEventListener("click", () => setHierarchyPanelOpen(true));
 
-// ---------- F-013: metric/imperial display toggle -- a session UI preference (localStorage,
-// same shape HIERARCHY_PANEL_OPEN_KEY above already established), not plan content. This is
-// how *this viewer* wants measurements labeled, not a fact about the plan itself, unlike
-// Grid/Snap/Connections (D-156/D-159, real `settings` that travel with the plan when shared)
-// -- so it's deliberately never written into the plan's own source text. formatMeasurement
-// (next to formatNumber, above) reads displayUnit via getDisplayUnit() below; nothing else
-// in the plan-source-editing path (formatNumber itself, every drag/resize/reparent edit)
-// is affected by this at all. ----------
-const DISPLAY_UNIT_KEY = "planagonia:displayUnit";
-let displayUnit = "metric";
-function getDisplayUnit() { return displayUnit; }
+// ---------- F-013: metric/imperial display toggle. Originally a session-local
+// (localStorage) viewer preference, deliberately never written into the plan's own source --
+// requested directly to change: the numbers displayed never change either way (this has
+// always been purely a *display* conversion, D-005's "plan stays metric" invariant is
+// untouched), but which unit is shown should itself be real plan content, the same
+// `settings`-driven shape Grid/Snap/Connections/Dimensions already use (D-156/D-159),
+// rather than a separately-tracked flag -- Core Aim 1. `settings.displayUnit: "imperial"`
+// present means imperial; absent (the default) means metric, exactly mirroring
+// `dimensionStyle`'s own presence-means-"arrows" shape above. formatMeasurement (next to
+// formatNumber, above) reads it via getDisplayUnit() below; nothing in the plan-source-
+// editing path itself (formatNumber, every drag/resize/reparent edit) is affected by this
+// at all -- still purely how an already-computed number gets displayed. ----------
+function getDisplayUnit() { return program?.settings?.displayUnit === "imperial" ? "imperial" : "metric"; }
 const unitsToggleBtn = document.getElementById("units-toggle-btn");
 const unitsToggleLabel = unitsToggleBtn?.querySelector(".ribbon-label");
 function updateUnitsToggleUi() {
   if (!unitsToggleBtn) return;
-  const imperial = displayUnit === "imperial";
+  const imperial = getDisplayUnit() === "imperial";
   unitsToggleBtn.classList.toggle("active", imperial);
   if (unitsToggleLabel) unitsToggleLabel.textContent = imperial ? "Units: ft" : "Units: m";
 }
-function setDisplayUnit(unit) {
-  displayUnit = unit;
-  safeStorageSet(localStorage, DISPLAY_UNIT_KEY, unit);
-  updateUnitsToggleUi();
-  // Redraws the scale bar/annotation labels in the new unit without touching source text or
-  // resetting the current pan/zoom -- the same established idiom undo/redo already uses.
-  rerender({ preserveViewBox: true });
-}
-function toggleDisplayUnit() { setDisplayUnit(displayUnit === "imperial" ? "metric" : "imperial"); }
+// preserveViewBox: true -- unlike Grid/Connections/Dimensions, this never changes what's
+// rendered, only how an already-computed number is printed, so there's nothing to re-fit
+// the view for; the pre-settings-driven version of this toggle preserved the view for the
+// same reason, kept here on purpose rather than lost in the move to toggleSettingsFlag.
+function toggleDisplayUnit() { toggleSettingsFlag("displayUnit", '"imperial"', null, true); }
 unitsToggleBtn?.addEventListener("click", toggleDisplayUnit);
-displayUnit = safeStorageGet(localStorage, DISPLAY_UNIT_KEY) === "imperial" ? "imperial" : "metric";
-updateUnitsToggleUi();
 
 // ---------- D-132: the header's Edit/View tabs, plus the logo standing in for a File tab
 // (#header-logo, data-tab="file") -- #header-toolbar is a real, always-present second row

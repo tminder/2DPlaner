@@ -263,6 +263,19 @@ means it writes bare numbers, matching a plan that wants no per-value unit clutt
 An existing literal is never rewritten just because this setting changed — editing it (e.g.
 dragging it) keeps whatever unit it already had.
 
+**`settings.displayUnit`: unset (default, metric) or `"imperial"` (F-013) — a pure display
+conversion, not a notation choice like `units` above.** Every stored value stays meters
+either way (D-005's invariant, untouched) — this only controls how a human *reads* an
+already-computed measurement: the scale bar and `annotations-module.js`'s own
+dimension/edge-length labels convert to feet/inches for display when set, nothing about
+parsing, dragging, or what gets written back to source changes at all. Originally a
+session-local (`localStorage`) viewer preference, deliberately kept out of the plan's own
+text; moved into `settings` directly so it travels with the plan the same way
+`grid`/`snap`/`showConnections`/`dimensionStyle` already do, rather than being the one
+display toggle that drifted from [planning/core-aims.md](../planning/core-aims.md)'s own
+Aim 1. The header's own Units button writes this directly (`toggleSettingsFlag`,
+`docs/index.html`), the same mechanism Dimensions' own arrows/text toggle already uses.
+
 ## Expressions
 
 Values don't have to be literals — they can be small expressions/formulas (D-008), e.g.:

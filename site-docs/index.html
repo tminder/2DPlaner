@@ -364,7 +364,7 @@
   points: [corner_1, corner_2]
   style: <span class="s">"wall"</span>
 }</pre>
-        <p><code>module "name.js"</code> loads extra rendering or interactivity from a file — nothing loads unless a plan's own text declares it, including the editor's own drag-and-drop, code-highlighting, and Layers panel. Every plan you start from inside the app (New, or any example below) already declares those three for you, so you'll rarely need to write them yourself; turning on Grid or Labels/Dimensions from the header writes that module's own line automatically too, the first time you use it.</p>
+        <p><code>module "name.js"</code> loads extra rendering or interactivity from a file — nothing loads unless a plan's own text declares it, including the editor's own drag-and-drop, pan/zoom, code-highlighting, and Layers panel. Every plan you start from inside the app (New, or any example below) already declares those four for you, so you'll rarely need to write them yourself; turning on Grid or Labels/Dimensions from the header writes that module's own line automatically too, the first time you use it.</p>
 
         <h3>Custom (external) modules</h3>
         <p>A module doesn't have to be one of this app's own built-in ones — <code>module</code> also accepts a full URL, fetched and run alongside whatever else a plan declares:</p>
@@ -399,6 +399,7 @@
             <summary>Show the code</summary>
             <pre class="code-block"><span class="k">module</span> <span class="s">"annotations-module.js"</span>
 <span class="k">module</span> <span class="s">"interactivity-module.js"</span>
+<span class="k">module</span> <span class="s">"view-module.js"</span>
 <span class="k">module</span> <span class="s">"code-highlight-module.js"</span>
 <span class="k">module</span> <span class="s">"hierarchy-module.js"</span>
 <span class="k">module</span> <span class="s">"wall-with-door-module.js"</span>
@@ -505,6 +506,7 @@
             <summary>Show the code</summary>
             <pre class="code-block"><span class="k">module</span> <span class="s">"annotations-module.js"</span>
 <span class="k">module</span> <span class="s">"interactivity-module.js"</span>
+<span class="k">module</span> <span class="s">"view-module.js"</span>
 <span class="k">module</span> <span class="s">"code-highlight-module.js"</span>
 <span class="k">module</span> <span class="s">"hierarchy-module.js"</span>
 <span class="k">module</span> <span class="s">"grid-module.js"</span>
@@ -671,6 +673,7 @@
             <summary>Show the code</summary>
             <pre class="code-block"><span class="k">module</span> <span class="s">"annotations-module.js"</span>
 <span class="k">module</span> <span class="s">"interactivity-module.js"</span>
+<span class="k">module</span> <span class="s">"view-module.js"</span>
 <span class="k">module</span> <span class="s">"code-highlight-module.js"</span>
 <span class="k">module</span> <span class="s">"hierarchy-module.js"</span>
 

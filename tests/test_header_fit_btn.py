@@ -1,6 +1,7 @@
 """D-156: the Fit button (reset zoom/pan) moved from a floating control over the viewer
 into the header's own View tab -- #header-fit-btn is a stable slot core provides,
-unhidden by interactivity-module.js once loaded, the same shape #hierarchy-panel already
+unhidden by view-module.js once loaded (D-198: split out of interactivity-module.js
+alongside pan/zoom/pinch/the scale bar), the same shape #hierarchy-panel already
 established for a module-owned pane."""
 
 from helpers import element_center, load_plan, view_box

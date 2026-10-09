@@ -1,8 +1,12 @@
 """F-013: a metric/imperial *display* toggle -- the plan language itself stays metric-only
 forever (D-005); this only changes how measurements are shown to a human (the scale bar,
-and any element's dimension/edge-length labels), never what gets written into the plan's
-own source text. See core.formatMeasurement's own comment (docs/index.html) for the full
-split between it and formatNumber (used for every source-text round-trip, untouched here)."""
+and any element's dimension/edge-length labels), never the value of anything written into
+the plan's own source text. See core.formatMeasurement's own comment (docs/index.html) for
+the full split between it and formatNumber (used for every source-text round-trip,
+unaffected by this). `settings.displayUnit` itself *is* real plan content (requested
+directly, moved out of a session-local `localStorage` preference) -- toggling does edit the
+source, same as Grid/Connections/Dimensions already do, just never the *value* of any
+geometry literal."""
 
 import re
 
@@ -104,17 +108,34 @@ def test_scale_bar_label_changes_between_metric_and_imperial(app_page):
     assert imperial_label.endswith("ft") or imperial_label.endswith("in")
 
 
-def test_toggling_units_never_touches_source_and_drag_still_writes_metric(app_page):
+def test_toggling_units_only_writes_the_setting_drag_still_writes_metric(app_page):
     load_plan(app_page, PLAN)
     before = source_text(app_page)
 
     toggle_units(app_page)
-    assert source_text(app_page) == before  # a pure display change, no edit, no undo step
+    after_toggle = source_text(app_page)
+    assert after_toggle != before  # settings.displayUnit is real plan content now
+    assert 'displayUnit: "imperial"' in after_toggle
+    # every geometry literal is untouched -- only the settings block gained a line
+    assert "size: [4m, 3m]" in after_toggle
+    assert "radius: 0.32m" in after_toggle
 
     x, y = element_center(app_page, "lamp")
     drag(app_page, x, y, x + 40, y + 25)
     app_page.wait_for_timeout(150)
-    after = source_text(app_page)
-    assert after != before  # the drag itself did change the source...
-    m = re.search(r"element lamp.*?position: \[(-?[\d.]+)(m|cm), (-?[\d.]+)(m|cm)\]", after, re.S)
-    assert m, after  # ...but still as a plain metric literal, never feet/inches
+    after_drag = source_text(app_page)
+    assert after_drag != after_toggle  # the drag itself did change the source...
+    m = re.search(r"element lamp.*?position: \[(-?[\d.]+)(m|cm), (-?[\d.]+)(m|cm)\]", after_drag, re.S)
+    assert m, after_drag  # ...but still as a plain metric literal, never feet/inches
+
+
+def test_toggling_units_is_undoable(app_page):
+    """Real plan content now (Core Aim 1) -- unlike the old session-local toggle, this
+    participates in undo/redo like any other settings edit."""
+    load_plan(app_page, PLAN)
+    before = source_text(app_page)
+    toggle_units(app_page)
+    assert 'displayUnit: "imperial"' in source_text(app_page)
+    app_page.keyboard.press("Control+z")
+    app_page.wait_for_timeout(150)
+    assert source_text(app_page) == before

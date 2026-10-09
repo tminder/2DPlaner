@@ -271,7 +271,14 @@ def test_expression_valued_size_shows_no_handles_at_all(app_page):
     assert resize_handle_count(app_page) == 0
 
 
-def test_a_second_finger_cancels_a_pending_resize(app_page):
+def test_a_second_finger_no_longer_cancels_a_pending_resize(app_page):
+    """D-198: interactivity-module.js and view-module.js no longer share gesture state --
+    a second finger landing starts an independent pinch (view-module.js) instead of
+    cancelling whatever one-touch resize was already running here. The resize itself holds
+    in place (ignores the 2nd finger's own movement, per handlePointerMove's own D-198
+    guard) rather than jumping, then resolves normally at its own last real (1-finger)
+    position once back down to one touch -- a known, accepted tradeoff, not a silent
+    regression."""
     load_plan(app_page, PLAN)
     select(app_page, "sofa")
     before = source_text(app_page)
@@ -283,10 +290,11 @@ def test_a_second_finger_cancels_a_pending_resize(app_page):
     dispatch_pointer(app_page, "pointerdown", 2, rx, ry)
     app_page.wait_for_timeout(100)
 
-    assert source_text(app_page) == before, "the cancelled resize must leave no trace in the source"
-
     dispatch_pointer(app_page, "pointerup", 1, hx + 20, hy + 10)
     dispatch_pointer(app_page, "pointerup", 2, rx, ry)
+    app_page.wait_for_timeout(150)
+
+    assert source_text(app_page) != before, "the resize running before the 2nd finger landed should still have been applied, not discarded"
 
 
 def test_ordinary_body_drag_of_the_shape_still_works(app_page):

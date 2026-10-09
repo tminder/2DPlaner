@@ -12,11 +12,10 @@
   function injectStyles(styleEl) {
     styleEl.textContent = `
       #plan-root { position: relative; user-select: none; -webkit-user-select: none; }
-        /* also anchors the scale bar / fit button overlays; user-select is defense-in-depth
-           alongside handlePointerDown's preventDefault against a mousedown-drag starting a
-           native text selection instead of (or alongside) our own drag/pan. */
-      #plan-root svg { cursor: grab; } /* empty canvas: click-drag pans */
-      #plan-root.dragging svg { cursor: grabbing; }
+        /* also anchors view-module.js's own scale bar overlay; user-select is defense-in-
+           depth alongside handlePointerDown's preventDefault against a mousedown-drag
+           starting a native text selection instead of (or alongside) our own drag. */
+      #plan-root.dragging svg { cursor: grabbing; } /* element drag/resize/marquee/relate */
       #plan-root svg [data-id] { cursor: grab; }
       #plan-root svg [data-id]:active { cursor: grabbing; }
       /* D-144: right-click's own "Connect to…" pick-a-target mode — a crosshair over the
@@ -160,13 +159,6 @@
         transition: opacity 130ms ease-out, transform 130ms ease-out; }
       .radial-ring.expanded { opacity: 1; pointer-events: auto; transform: scale(1); }
 
-      #interactivity-scale-bar { position: absolute; right: 10px; bottom: 10px;
-        display: flex; flex-direction: column; align-items: center; pointer-events: none;
-        font-family: system-ui, sans-serif; font-size: 11px; color: #333; }
-      #interactivity-scale-bar .bar { height: 6px; border-left: 1.5px solid #333;
-        border-right: 1.5px solid #333; border-bottom: 1.5px solid #333; }
-      #interactivity-scale-bar .label { margin-top: 2px; background: rgba(255,255,255,0.85);
-        padding: 0 4px; border-radius: 2px; }
       #interactivity-validation-panel { position: absolute; left: 10px; top: 10px; z-index: 1;
         max-width: min(280px, calc(100% - 20px)); max-height: calc(100% - 20px);
         overflow-y: auto; font-family: system-ui, sans-serif;
@@ -189,7 +181,6 @@
   // from a clean slate rather than risk a duplicate if one somehow did.
   document.getElementById("interactivity-context-menu")?.remove();
   document.getElementById("interactivity-module-style")?.remove();
-  document.getElementById("interactivity-scale-bar")?.remove();
   document.getElementById("interactivity-validation-panel")?.remove();
   document.getElementById("interactivity-stack-badge")?.remove();
 
@@ -239,24 +230,12 @@
     }).join("");
   }
 
-  const scaleBarEl = document.createElement("div");
-  scaleBarEl.id = "interactivity-scale-bar";
-  scaleBarEl.innerHTML = `<div class="bar"></div><div class="label"></div>`;
-  core.rootEl.appendChild(scaleBarEl);
-  const scaleBarBarEl = scaleBarEl.querySelector(".bar");
-  const scaleBarLabelEl = scaleBarEl.querySelector(".label");
-
-  // D-156: moved into the header (View tab), reported directly -- #header-fit-btn is a
-  // stable slot core always provides (see its own comment in docs/index.html), unhidden
-  // here rather than created fresh the way this module's other floating UI still is.
-  const fitBtnEl = document.getElementById("header-fit-btn");
-  if (fitBtnEl) fitBtnEl.hidden = false;
-
-  // D-162: same "core provides a stable, hidden slot; this module unhides and wires it"
-  // shape as header-fit-btn just above -- see its own HTML comment in docs/index.html.
-  // One delegated listener on the flyout itself rather than one per <li> button: matches
-  // this module's own existing preference for delegation over many individual listeners
-  // (handleMenuClick, the radial context menu's own single click handler, does the same).
+  // D-162: "core provides a stable, hidden slot; this module unhides and wires it" -- the
+  // same shape view-module.js's own #header-fit-btn uses (D-198), see its own HTML comment
+  // in docs/index.html. One delegated listener on the flyout itself rather than one per
+  // <li> button: matches this module's own existing preference for delegation over many
+  // individual listeners (handleMenuClick, the radial context menu's own single click
+  // handler, does the same).
   const newElementBtnEl = document.getElementById("new-element-btn");
   if (newElementBtnEl) {
     newElementBtnEl.hidden = false;
@@ -336,41 +315,48 @@
   let clickCycle = null;
   const CLICK_CYCLE_TOLERANCE_PX = 4;
 
-  // ---------- Pan/zoom state ----------
-  // viewState: the viewBox {x,y,width,height} currently applied on top of whatever core
-  // just rendered, or null to mean "use core's own fit as-is". lastCoreFit: core's fit box
-  // as of the most recent render, captured *before* viewState is applied over it — needed
-  // both to detect "core just re-fit the content" (compared against the previous value, see
-  // handleRendered) and as the stable reference to clamp zoom range against.
-  let viewState = null;
-  let lastCoreFit = null;
-  let canvasDrag = null; // pointerdown on empty space: pending pan-or-click, see handlePointerDown
+  // D-198: pan/zoom/pinch/Fit/the scale bar all moved to view-module.js, the one piece of
+  // camera state (viewState/lastCoreFit) every one of them reads and writes turning out to
+  // be indivisible from any single one of them. emptyCanvasClick below is this module's own
+  // much smaller remainder of the old canvasDrag: a pointerdown on empty space still has to
+  // resolve to either "a plain click" (deselect, this module's own job) or "the start of a
+  // drag" (view-module.js's own pan, tracked entirely independently now) -- the two modules
+  // each run their own 3px-of-movement click-vs-drag detection on the same event, sharing
+  // nothing.
+  let emptyCanvasClick = null;
   // F-047: Alt+pointerdown on empty space instead starts a marquee, not a pan -- see
   // handlePointerDown. bboxes: a one-time Map<id, DOMRect> snapshot (Element.getBBox(),
   // already in viewBox units) taken at gesture start, since nothing moves during this
   // gesture -- re-querying on every pointermove would be pure waste.
   let marqueeDrag = null;
 
-  // F-036: pinch-to-zoom. activeTouches tracks every currently-down touch pointer
-  // (pointerId -> {x,y}) regardless of what other gesture, if any, is in progress — purely
-  // so a second finger landing can be detected and take over. pinch itself is only set once
-  // there are two.
+  // activeTouches tracks every currently-down touch pointer (pointerId -> {x,y}) regardless
+  // of what other gesture, if any, is in progress -- this module's own copy, independent of
+  // view-module.js's own (needed there for pinch-to-zoom, F-036). D-198's one accepted
+  // tradeoff lives here: a second finger landing no longer cancels whatever one-touch
+  // gesture below was already in progress (the two modules don't share gesture state to
+  // make that handoff possible anymore) -- it simply continues, running alongside
+  // view-module.js's own independently-started pinch. See view-module.js's own leading
+  // comment and planning/open-questions.md.
   const activeTouches = new Map();
-  let pinch = null; // {startDist, startMid: {x,y}, startView: {x,y,width,height}}
   let longPressTimer = null;
   const LONG_PRESS_MS = 500; // the common mobile long-press default
 
-  // S-011: one place for "is the pointer mid-gesture right now" — drag/canvasDrag/
-  // relateDrag are kept as three separate variables (each has its own distinct shape, and
-  // a full merge into one discriminated-union gesture object was considered and rejected:
-  // the real payoff turned out to be just this one check, not worth the much larger diff
-  // touching every read/write site across handlePointerDown/Move/Up/Over) — but the
-  // three-way OR itself was already independently duplicated twice (F-043's own keyboard
-  // guard, and handlePointerOver's), exactly the "remembering which handler runs in what
-  // order" fragility this entry warns about. A future fourth gesture, or a third guard,
-  // now has one place to update instead of a third copy to remember.
+  // S-011: one place for "is the pointer mid-gesture right now" — drag/emptyCanvasClick/
+  // relateDrag are kept as separate variables (each has its own distinct shape, and a full
+  // merge into one discriminated-union gesture object was considered and rejected: the real
+  // payoff turned out to be just this one check, not worth the much larger diff touching
+  // every read/write site across handlePointerDown/Move/Up/Over) — but the OR itself was
+  // already independently duplicated twice (F-043's own keyboard guard, and
+  // handlePointerOver's), exactly the "remembering which handler runs in what order"
+  // fragility this entry warns about. A future fourth gesture, or a third guard, now has one
+  // place to update instead of a third copy to remember. `activeTouches.size >= 2` stands in
+  // for view-module.js's own pinch here (D-198) -- this module can't see that module's
+  // `pinch` variable anymore, but it already tracks touch count for its own reasons above,
+  // and two fingers down is itself a reasonable-enough signal to suppress hover/keyboard-
+  // nudge/resize-handle-visibility by, without needing to know it's specifically a pinch.
   function isGestureActive() {
-    return !!(drag || canvasDrag || relateDrag || pinch || resizeDrag || marqueeDrag || vertexDrag || scaleDrag || connectPick);
+    return !!(drag || emptyCanvasClick || relateDrag || resizeDrag || marqueeDrag || vertexDrag || scaleDrag || connectPick) || activeTouches.size >= 2;
   }
 
   // ---------- Snap geometry ----------
@@ -1702,11 +1688,14 @@
   }
 
   // ---------- Ctrl/Cmd+drag to create a relationship — replaces the old +/- icons ----------
-  // A screen point (client pixels) converted into raw viewBox units — mirrors handleWheel's
-  // own viewBox-from-cursor math (current = viewState||lastCoreFit, scale from the SVG's
-  // actual on-screen size). The live relate-drag line (handlePointerMove) draws directly in
-  // these units; clientToPlanPoint below just divides out core.M on top for the few callers
-  // that need meters instead (bboxes/positions are meters, not raw viewBox units).
+  // A screen point (client pixels) converted into raw viewBox units — reads the SVG's own
+  // live `viewBox` attribute directly (D-198) rather than this module's own cached
+  // viewState/lastCoreFit, which moved to view-module.js along with pan/zoom -- the DOM
+  // attribute is the single authoritative "what's on screen right now" regardless of which
+  // module last set it, current with whatever pan/zoom view-module.js has applied. The live
+  // relate-drag line (handlePointerMove) draws directly in these units; clientToPlanPoint
+  // below just divides out core.M on top for the few callers that need meters instead
+  // (bboxes/positions are meters, not raw viewBox units).
   // Real bug found by testing the relate-drag line live: whenever the SVG's own on-screen
   // aspect ratio doesn't match its viewBox's (near-universal, since the viewer pane is
   // whatever size the layout gives it), the default `preserveAspectRatio="xMidYMid meet"`
@@ -1716,7 +1705,8 @@
   // in one reproduction), which is why the line's end didn't track the actual cursor.
   function clientToViewBoxPoint(clientX, clientY) {
     const svg = core.rootEl.querySelector("svg");
-    const current = viewState || lastCoreFit;
+    const vb = svg?.viewBox?.baseVal;
+    const current = vb && vb.width && vb.height ? vb : null;
     if (!svg || !current) return null;
     const rect = svg.getBoundingClientRect();
     if (!rect.width || !rect.height) return null;
@@ -2919,34 +2909,8 @@
     // they're plain children of the same container, appended once at module load, so they
     // need re-adding after every single render, not just the first. appendChild moves an
     // already-existing node rather than erroring, so this is safe to call unconditionally.
-    // D-156: fitBtnEl no longer belongs here -- it's #header-fit-btn now, a child of the
-    // header, not of core.rootEl -- appending it here would move it out of the header and
-    // into the viewer on the very next render (a real bug, caught live: the button visibly
-    // jumped from the header into the bottom-right corner of the viewer pane).
-    core.rootEl.appendChild(scaleBarEl);
     core.rootEl.appendChild(validationPanelEl);
     renderValidationPanel(checkPlanValidity(prog, positions));
-  }
-
-  function restoreViewBox(svgEl) {
-    // core just replaced #plan-root's innerHTML, so svgEl's viewBox is core's own fresh
-    // fit-to-content box, not yet touched by any zoom/pan — capture it before applying
-    // viewState over it. If it differs from last time, core actually re-fit the content
-    // (see D-034's fixedViewBox reset), so any existing zoom/pan is relative to a "home"
-    // that no longer exists — drop it and start fresh from the new fit, same as it would
-    // for a first render. If it's unchanged (e.g. a drag's preserveViewBox:true, or an edit
-    // that happened not to change the bounding box), keep whatever view the user had.
-    const vb = svgEl.viewBox.baseVal;
-    const freshFit = { x: vb.x, y: vb.y, width: vb.width, height: vb.height };
-    if (!lastCoreFit || freshFit.x !== lastCoreFit.x || freshFit.y !== lastCoreFit.y ||
-        freshFit.width !== lastCoreFit.width || freshFit.height !== lastCoreFit.height) {
-      viewState = null;
-    }
-    lastCoreFit = freshFit;
-    if (viewState) {
-      svgEl.setAttribute("viewBox", `${viewState.x} ${viewState.y} ${viewState.width} ${viewState.height}`);
-    }
-    updateScaleBar();
   }
 
   function applySelectionVisuals(svgEl, prog, positions) {
@@ -3006,7 +2970,6 @@
     if (!svgEl) return;
 
     reappendOverlayElements(svgEl, prog, positions);
-    restoreViewBox(svgEl);
     applySelectionVisuals(svgEl, prog, positions);
     refreshStackHintBadge();
   }
@@ -3188,33 +3151,15 @@
     // by testing the full flow, not just reading the code).
     if (connectPick) return;
 
-    // F-036: a second finger landing always wins over whatever the first finger alone was
-    // starting — cancels any pending single-pointer gesture cleanly and starts a pinch
-    // instead, rather than letting the two fight over the same source text.
+    // D-198: a second finger landing used to always win over whatever the first finger
+    // alone was starting -- cancelling any pending single-pointer gesture here and handing
+    // off to a pinch. view-module.js now owns pinch entirely independently, with no way to
+    // reach into this module's own gesture state to cancel it (the accepted tradeoff of the
+    // two no longer sharing gesture state) -- a 2nd+ finger landing just gets ignored here,
+    // letting whatever's already in progress keep going.
     if (e.pointerType === "touch") {
       activeTouches.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (activeTouches.size === 2) {
-        clearTimeout(longPressTimer);
-        longPressTimer = null;
-        if (drag) {
-          drag.unregisterReparentHighlight?.();
-          if (drag.reparentCandidateId) core.rootEl.querySelector(`[data-id="${CSS.escape(drag.reparentCandidateId)}"]`)?.classList.remove("reparent-candidate");
-          core.sourceEl.value = drag.baseText; drag = null; core.rerender({ preserveViewBox: true });
-        }
-        if (resizeDrag) { core.sourceEl.value = resizeDrag.baseText; resizeDrag = null; core.rerender({ preserveViewBox: true }); }
-        if (vertexDrag) { core.sourceEl.value = vertexDrag.baseText; vertexDrag = null; core.rerender({ preserveViewBox: true }); }
-        if (scaleDrag) { core.sourceEl.value = scaleDrag.baseText; scaleDrag = null; core.rerender({ preserveViewBox: true }); }
-        if (marqueeDrag) {
-          marqueeDrag.rectEl?.remove();
-          for (const id of marqueeDrag.candidateIds) core.rootEl.querySelector(`[data-id="${CSS.escape(id)}"]`)?.classList.remove("marquee-candidate");
-          marqueeDrag = null;
-        }
-        canvasDrag = null;
-        core.rootEl.classList.remove("dragging");
-        pinch = { startDist: pinchDistance(), startMid: pinchMidpoint(), startView: viewState || lastCoreFit };
-        return;
-      }
-      if (activeTouches.size > 2) return; // a third finger: stay in the existing 2-finger pinch
+      if (activeTouches.size >= 2) return;
     }
 
     // F-016: a resize handle always wins over the shape/canvas branching below — it's drawn
@@ -3335,10 +3280,11 @@
         marqueeDrag = { startClientX: e.clientX, startClientY: e.clientY, moved: false, bboxes, rectEl, candidateIds: new Set() };
         return;
       }
-      // Empty canvas: could be a plain click (deselect) or the start of a pan — decided by
-      // whether the pointer actually moves before release, see handlePointerMove/Up.
-      canvasDrag = { startClientX: e.clientX, startClientY: e.clientY, moved: false,
-        startView: viewState || lastCoreFit };
+      // Empty canvas: could be a plain click (deselect, this module's own job below) or the
+      // start of a pan (view-module.js's own job, tracked entirely independently via its
+      // own listener on this same event) — decided by whether the pointer actually moves
+      // before release, see handlePointerMove/Up.
+      emptyCanvasClick = { startClientX: e.clientX, startClientY: e.clientY, moved: false };
       return;
     }
 
@@ -3450,7 +3396,7 @@
       const cx = e.clientX, cy = e.clientY;
       longPressTimer = setTimeout(() => {
         longPressTimer = null;
-        if (!drag || drag.moved || drag.id !== heldId) return; // moved away, released, or superseded by a pinch
+        if (!drag || drag.moved || drag.id !== heldId) return; // moved away or released already
         core.sourceEl.value = drag.baseText;
         drag = null;
         core.rootEl.classList.remove("dragging");
@@ -3855,129 +3801,6 @@
     return core.M * Math.min(rect.width / vb.width, rect.height / vb.height);
   }
 
-  // "Nice" round distances (in meters) to offer on the scale bar, same idea as a map's —
-  // pick the largest one whose on-screen length still fits comfortably, rather than
-  // labelling an arbitrary, hard-to-read number of meters.
-  const SCALE_BAR_STEPS_M = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
-  // F-013: a *parallel* nice-number table in feet, not a unit-converted copy of the metric
-  // one above -- converting metric's own nice steps into feet would label the bar "3.28 ft"
-  // instead of a round number. The smallest four steps are inch-fractions-of-a-foot (so the
-  // < 1ft branch below can still label them as whole inches), then a 1-2-3-5-10 progression
-  // in feet, extended to 20000 (rather than stopping at 5000 to mirror the metric table's
-  // own count) so its dynamic range isn't accidentally ~3x short of the metric side's.
-  const SCALE_BAR_STEPS_FT = [1 / 12, 2 / 12, 3 / 12, 6 / 12, 1, 2, 3, 5, 10, 20, 30, 50, 100, 200, 300, 500, 1000, 2000, 5000, 10000, 20000];
-  const SCALE_BAR_MAX_PX = 140;
-
-  function updateScaleBar() {
-    const pxPerMeter = currentPxPerMeter();
-    if (!pxPerMeter) return;
-    // F-013: imperial reads its own step table in feet (each converted to meters via
-    // core.FT_TO_M for the same px-fit comparison) and labels in feet/inches -- a compact
-    // single-unit label ("15 ft"/"6 in"), not core.formatMeasurement's combined "5' 6.3""
-    // annotation style, which is built for a different UI context (see its own comment).
-    const imperial = core.getDisplayUnit() === "imperial";
-    const steps = imperial ? SCALE_BAR_STEPS_FT : SCALE_BAR_STEPS_M;
-    const toMeters = imperial ? (ft) => ft * core.FT_TO_M : (m) => m;
-    let step = steps[0];
-    for (const s of steps) {
-      if (toMeters(s) * pxPerMeter <= SCALE_BAR_MAX_PX) step = s; else break;
-    }
-    scaleBarBarEl.style.width = `${toMeters(step) * pxPerMeter}px`;
-    scaleBarLabelEl.textContent = imperial
-      ? (step < 1 ? `${Math.round(step * 12)} in` : `${step} ft`)
-      : (step < 1 ? `${Math.round(step * 100)} cm` : `${step} m`);
-  }
-
-  // Shared by handleWheel and the pinch handler below so the two zoom mechanisms can't
-  // silently drift to different limits (the exact duplication class D-114/S-015 just fixed
-  // elsewhere in this same file).
-  function zoomWidthBounds() {
-    return { minWidth: lastCoreFit.width / 8, maxWidth: lastCoreFit.width * 2 };
-  }
-
-  // Zoom relative to the cursor: the viewBox point currently under the pointer stays under
-  // the pointer after the zoom, matching the zoom-to-cursor behavior any map/canvas tool
-  // has trained people to expect (zooming shouldn't fling the thing you're looking at
-  // somewhere else on screen).
-  function handleWheel(e) {
-    const svg = core.rootEl.querySelector("svg");
-    if (!svg || !lastCoreFit) return;
-    e.preventDefault();
-    const current = viewState || lastCoreFit;
-    const rect = svg.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
-    const scale = Math.min(rect.width / current.width, rect.height / current.height);
-    // The same `xMidYMid meet` letterboxing offset clientToViewBoxPoint accounts for (see
-    // its own comment) — without it the point kept "under the cursor" during a zoom is
-    // actually offset from the real cursor whenever the viewer pane's aspect ratio doesn't
-    // match the viewBox's, which is close to always.
-    const offsetX = (rect.width - current.width * scale) / 2;
-    const offsetY = (rect.height - current.height * scale) / 2;
-    const cursorVbX = current.x + (e.clientX - rect.left - offsetX) / scale;
-    const cursorVbY = current.y + (e.clientY - rect.top - offsetY) / scale;
-
-    const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
-    const { minWidth, maxWidth } = zoomWidthBounds();
-    const newWidth = Math.min(maxWidth, Math.max(minWidth, current.width / factor));
-    if (newWidth === current.width) return; // already at a zoom limit
-    const ratio = newWidth / current.width;
-    const newHeight = current.height * ratio;
-    const newScale = Math.min(rect.width / newWidth, rect.height / newHeight);
-    // offsetX/offsetY stay exactly the same after a pure zoom (the aspect ratio and the
-    // constraining axis are both unchanged, so the constraining axis always exactly fills
-    // `rect` and the other axis's on-screen slack never moves) — reused directly rather
-    // than recomputed against newWidth/newHeight/newScale.
-    const newX = cursorVbX - (e.clientX - rect.left - offsetX) / newScale;
-    const newY = cursorVbY - (e.clientY - rect.top - offsetY) / newScale;
-
-    viewState = { x: newX, y: newY, width: newWidth, height: newHeight };
-    svg.setAttribute("viewBox", `${newX} ${newY} ${newWidth} ${newHeight}`);
-    updateScaleBar();
-  }
-
-  // F-036: pinch-to-zoom — touch's own equivalent of handleWheel above, driven by two
-  // fingers instead of a wheel event. Distance between the two touches drives the zoom
-  // factor; their midpoint is the anchor a map/canvas pinch is expected to zoom (and pan)
-  // around, exactly the role the cursor plays for handleWheel.
-  function pinchDistance() {
-    const [a, b] = [...activeTouches.values()];
-    return Math.hypot(a.x - b.x, a.y - b.y);
-  }
-  function pinchMidpoint() {
-    const [a, b] = [...activeTouches.values()];
-    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-  }
-
-  function handlePinchMove() {
-    const svg = core.rootEl.querySelector("svg");
-    if (!svg || !lastCoreFit || activeTouches.size < 2) return;
-    const rect = svg.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
-    const base = pinch.startView;
-    const scale0 = Math.min(rect.width / base.width, rect.height / base.height);
-    const offsetX = (rect.width - base.width * scale0) / 2;
-    const offsetY = (rect.height - base.height * scale0) / 2;
-    // The viewBox point under the pinch's own *start* midpoint — this is what stays
-    // anchored under wherever the (live, moving) midpoint currently is, the same law
-    // handleWheel applies to the cursor.
-    const anchorVbX = base.x + (pinch.startMid.x - rect.left - offsetX) / scale0;
-    const anchorVbY = base.y + (pinch.startMid.y - rect.top - offsetY) / scale0;
-
-    const factor = pinchDistance() / pinch.startDist || 1;
-    const { minWidth, maxWidth } = zoomWidthBounds();
-    const newWidth = Math.min(maxWidth, Math.max(minWidth, base.width / factor));
-    const ratio = newWidth / base.width;
-    const newHeight = base.height * ratio;
-    const newScale = Math.min(rect.width / newWidth, rect.height / newHeight);
-    const mid = pinchMidpoint();
-    const newX = anchorVbX - (mid.x - rect.left - offsetX) / newScale;
-    const newY = anchorVbY - (mid.y - rect.top - offsetY) / newScale;
-
-    viewState = { x: newX, y: newY, width: newWidth, height: newHeight };
-    svg.setAttribute("viewBox", `${newX} ${newY} ${newWidth} ${newHeight}`);
-    updateScaleBar();
-  }
-
   // F-016: dragging a resize handle. Reparses resizeDrag.baseText fresh every call — not
   // the live evolving sourceEl.value — the same reason applyDrag does: every move computes
   // an *absolute* target from the gesture's own fixed start state (anchorAbs/startAbs),
@@ -4259,7 +4082,16 @@
     if (e.pointerType === "touch" && activeTouches.has(e.pointerId)) {
       activeTouches.set(e.pointerId, { x: e.clientX, y: e.clientY });
     }
-    if (pinch) { handlePinchMove(); return; }
+    // D-198: none of this module's own single-touch gestures below (drag/resize/vertex/
+    // scale/marquee) have ever tracked *which* pointerId started them -- harmless while a
+    // pinch always short-circuited this whole function first, but now that pinch lives
+    // entirely in view-module.js with no way to do that here, a 2nd finger's own pointermove
+    // events would otherwise feed its coordinates into whatever gesture the 1st finger
+    // started, making it visibly jump between the two fingers' positions. Simplest correct
+    // fix: once a 2nd finger is down, this module stops reacting to movement at all (but
+    // does NOT cancel anything, unlike before) -- whatever gesture was in progress just
+    // holds in place until back down to one touch.
+    if (e.pointerType === "touch" && activeTouches.size >= 2) return;
     if (resizeDrag) { applyResizeDrag(e.clientX, e.clientY); return; }
     if (vertexDrag) { applyVertexDrag(e.clientX, e.clientY); return; }
     if (scaleDrag) { applyScaleDrag(e.clientX, e.clientY); return; }
@@ -4276,24 +4108,15 @@
       }
       return;
     }
-    if (canvasDrag) {
-      const svg = core.rootEl.querySelector("svg");
-      if (!svg) return;
-      const dxScreen = e.clientX - canvasDrag.startClientX;
-      const dyScreen = e.clientY - canvasDrag.startClientY;
-      if (!canvasDrag.moved && Math.hypot(dxScreen, dyScreen) > 3) {
-        canvasDrag.moved = true;
-        core.rootEl.classList.add("dragging");
+    if (emptyCanvasClick) {
+      // Movement-threshold detection only, no viewBox math -- view-module.js's own
+      // independent pointermove listener is what actually pans (D-198). This module just
+      // needs to know, by pointerup, whether to treat the gesture as a plain click.
+      if (!emptyCanvasClick.moved) {
+        const dxScreen = e.clientX - emptyCanvasClick.startClientX;
+        const dyScreen = e.clientY - emptyCanvasClick.startClientY;
+        if (Math.hypot(dxScreen, dyScreen) > 3) emptyCanvasClick.moved = true;
       }
-      if (!canvasDrag.moved) return;
-      const rect = svg.getBoundingClientRect();
-      if (!rect.width || !rect.height) return;
-      const base = canvasDrag.startView;
-      const scale = Math.min(rect.width / base.width, rect.height / base.height);
-      const newX = base.x - dxScreen / scale;
-      const newY = base.y - dyScreen / scale;
-      viewState = { x: newX, y: newY, width: base.width, height: base.height };
-      svg.setAttribute("viewBox", `${newX} ${newY} ${base.width} ${base.height}`);
       return;
     }
     if (marqueeDrag) {
@@ -4354,9 +4177,9 @@
       if (program) updateStackedHint(e.clientX, e.clientY, core.rootEl.contains(e.target));
       return;
     }
-    // Same 3px-of-slop threshold canvasDrag already uses to tell a pan from a plain click —
-    // reused here so a click-cycle (see candidateIdsAtPoint) only ever advances on a genuine
-    // click-in-place, never gets reset by the sub-pixel jitter of a real drag's first frame.
+    // Same 3px-of-slop threshold emptyCanvasClick already uses to tell a drag from a plain
+    // click — reused here so a click-cycle (see candidateIdsAtPoint) only ever advances on a
+    // genuine click-in-place, never gets reset by the sub-pixel jitter of a real drag's first frame.
     // Also doubles as the long-press cancellation signal (F-036) — real movement past this
     // same threshold means it's a drag, not a hold, no separate tolerance constant needed.
     if (!drag.moved && Math.hypot(e.clientX - drag.clientX, e.clientY - drag.clientY) > 3) {
@@ -4401,13 +4224,6 @@
     clearTimeout(longPressTimer);
     longPressTimer = null;
     if (e.pointerType === "touch") activeTouches.delete(e.pointerId);
-    if (pinch) {
-      // Ends the moment either finger lifts — deliberately not handed off into a live
-      // single-finger pan with whichever touch remains; release both and start a fresh
-      // gesture instead.
-      if (activeTouches.size < 2) pinch = null;
-      return;
-    }
     if (resizeDrag) {
       resizeDrag = null;
       core.commitUndoStep();
@@ -4463,9 +4279,9 @@
       if (candidateId) openRelateMenu(fromId, candidateId, e.clientX, e.clientY);
       return;
     }
-    if (canvasDrag) {
-      const wasClick = !canvasDrag.moved;
-      canvasDrag = null;
+    if (emptyCanvasClick) {
+      const wasClick = !emptyCanvasClick.moved;
+      emptyCanvasClick = null;
       if (wasClick) { selectedId = null; selectedIds = new Set(); core.rerender({ preserveViewBox: true }); }
       return;
     }
@@ -4476,7 +4292,7 @@
         core.rootEl.querySelector(`[data-id="${CSS.escape(id)}"]`)?.classList.remove("marquee-candidate");
       }
       // A marquee that never actually moved is just a stray Alt+click on empty canvas --
-      // deselects, matching canvasDrag's own "plain click on nothing" convention exactly,
+      // deselects, matching emptyCanvasClick's own "plain click on nothing" convention exactly,
       // rather than doing nothing (a zero-size marquee "selecting" nothing would otherwise
       // just silently leave whatever was already selected untouched, a surprising result
       // for what looks like a deliberate click).
@@ -4596,34 +4412,6 @@
     stackBadgeEl.hidden = true;
   }
 
-  // Not just "reapply the last computed fit box" (that was the whole first bug: dragging
-  // an element outside the original content bounds never touched that cached box at all,
-  // since every drag rerenders with preserveViewBox:true specifically so the camera
-  // doesn't jump mid-drag — so Fit kept resetting to a stale box that could crop out
-  // exactly what was just dragged there). core.rerender() with no opts is what an
-  // ordinary text edit already does on every keystroke: drop core's own cached
-  // fixedViewBox and recompute a fresh one from wherever every element actually sits now.
-  //
-  // Clearing viewState here too, not left to handleRendered's own "only if the box
-  // actually changed" check below — a second real bug, found by testing the plain
-  // pan-with-nothing-dragged case right after fixing the one above: if nothing moved,
-  // the freshly recomputed box is identical to the last one, that check sees no
-  // difference and leaves viewState alone, and the *old* pan/zoom gets reapplied right
-  // back onto the newly rendered SVG — Fit silently doing nothing whenever there was
-  // nothing to actually refit. Clicking Fit means "discard my zoom/pan," unconditionally,
-  // whether or not the underlying content also happens to need a bigger box this time.
-  function handleFitClick() {
-    viewState = null;
-    core.rerender();
-  }
-
-  // Resize can change the SVG's on-screen size without any render or zoom/pan action of
-  // ours (window resize, or the code pane being resized) — the scale bar (and the drag
-  // scale currentPxPerMeter reads elsewhere) both depend on that size, so both need to stay
-  // current when it changes for reasons neither of us triggered.
-  const resizeObserver = new ResizeObserver(() => updateScaleBar());
-  resizeObserver.observe(core.rootEl);
-
   core.rootEl.addEventListener("pointerdown", handlePointerDown);
   core.rootEl.addEventListener("contextmenu", handleContextMenu);
   contextMenuEl.addEventListener("click", handleMenuClick);
@@ -4634,14 +4422,11 @@
   window.addEventListener("pointerup", handlePointerUp);
   core.rootEl.addEventListener("pointerover", handlePointerOver);
   core.rootEl.addEventListener("pointerout", handlePointerOut);
-  core.rootEl.addEventListener("wheel", handleWheel, { passive: false });
-  fitBtnEl?.addEventListener("click", handleFitClick);
 
   // ---------- Teardown: undoes exactly what setup above did, so removing this module's
   // declaration from a plan actually turns interactivity off. ----------
   core.registerModuleCleanup("interactivity-module.js", () => {
     unregisterOnRendered();
-    resizeObserver.disconnect();
     core.rootEl.removeEventListener("pointerdown", handlePointerDown);
     core.rootEl.removeEventListener("contextmenu", handleContextMenu);
     contextMenuEl.removeEventListener("click", handleMenuClick);
@@ -4652,15 +4437,9 @@
     window.removeEventListener("pointerup", handlePointerUp);
     core.rootEl.removeEventListener("pointerover", handlePointerOver);
     core.rootEl.removeEventListener("pointerout", handlePointerOut);
-    core.rootEl.removeEventListener("wheel", handleWheel);
-    fitBtnEl?.removeEventListener("click", handleFitClick);
-    // D-156: hidden again, not removed -- #header-fit-btn is core's own persistent slot
-    // (docs/index.html), not this module's to delete.
-    if (fitBtnEl) fitBtnEl.hidden = true;
     core.rootEl.classList.remove("dragging");
     delete core.rootEl.dataset.selectedId;
     contextMenuEl.remove();
-    scaleBarEl.remove();
     styleEl.remove();
     // S-010: every module-owned mutable variable, not just five of thirteen — the comment
     // above says "undoes exactly what setup did," so it should actually be true, even
@@ -4676,13 +4455,10 @@
     contextMenuItems = [];
     clickCycle = null;
     stackHintCandidates = null;
-    viewState = null;
-    lastCoreFit = null;
-    canvasDrag = null;
+    emptyCanvasClick = null;
     marqueeDrag = null;
     paintOrderRank = new Map();
     activeTouches.clear();
-    pinch = null;
     clearTimeout(longPressTimer);
     longPressTimer = null;
     resizeDrag = null;
