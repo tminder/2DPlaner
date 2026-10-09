@@ -166,7 +166,7 @@
   <main>
     <p class="eyebrow">Modules</p>
     <h1 class="page-title">Modules</h1>
-    <p class="lede">A <a href="/docs/#settings-modules">module</a> extends a plan with new rendering, new interactivity, or a reusable higher-level building block — loaded straight from a URL with <code>module "&lt;url&gt;"</code>. Some of the app's own editor tooling (drag-and-drop, syntax highlighting, the Layers panel) is itself built as a module, but it's always active and never something you load yourself, so it isn't listed here. Below: the modules Planagonia ships that you actually declare to use — each one has a matching toggle in the app's own header that writes the declaration for you, or add it to the code pane by hand — marked <span class="badge">Built-in</span>, plus anything the community has published since.</p>
+    <p class="lede">A <a href="/docs/#settings-modules">module</a> extends a plan with new rendering, new interactivity, or a reusable higher-level building block — loaded straight from a URL with <code>module "&lt;url&gt;"</code>, the same mechanism for every module below, including the app's own editor tooling (drag-and-drop, syntax highlighting, the Layers panel). Below: every module Planagonia ships — a few have a matching toggle in the app's own header that writes the declaration for you, the rest (including every editor-tooling one) you add to the code pane by hand, already included by default in every shipped example — marked <span class="badge">Built-in</span>, plus anything the community has published since.</p>
 
     <div class="callout">
       <strong>Anything without the Built-in badge is third-party code — read it before you trust it</strong>
@@ -174,6 +174,24 @@
     </div>
 
     <div class="module-list">
+      <div class="module-card">
+        <h2>Interactivity <span class="badge">Built-in</span></h2>
+        <p class="desc">Click-to-select, drag-to-move, connect/disconnect, zoom/pan, and the right-click context menu — editing a plan directly in the viewer, not just in the code pane.</p>
+        <p class="note">Included by default in every shipped example. By hand: <code>module "https://www.planagonia.com/app/interactivity-module.js"</code></p>
+        <p class="author">interactivity-module.js</p>
+      </div>
+      <div class="module-card">
+        <h2>Code highlighting <span class="badge">Built-in</span></h2>
+        <p class="desc">Syntax coloring and selection highlighting in the code pane.</p>
+        <p class="note">Included by default in every shipped example. By hand: <code>module "https://www.planagonia.com/app/code-highlight-module.js"</code></p>
+        <p class="author">code-highlight-module.js</p>
+      </div>
+      <div class="module-card">
+        <h2>Layers panel <span class="badge">Built-in</span></h2>
+        <p class="desc">The full element tree, expandable, with show/hide and reorder controls.</p>
+        <p class="note">Included by default in every shipped example. By hand: <code>module "https://www.planagonia.com/app/hierarchy-module.js"</code></p>
+        <p class="author">hierarchy-module.js</p>
+      </div>
       <div class="module-card">
         <h2>Grid <span class="badge">Built-in</span></h2>
         <p class="desc">A checkered or line background, a scale reference for the plan — also drives grid-snapped dragging.</p>

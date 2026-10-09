@@ -166,9 +166,10 @@ element room {
 
 
 def test_label_without_annotations_module_declared_is_reported_but_softly_worded(app_page):
-    # label is never *fully* inert -- hierarchy-module.js/the stack-hint badge (both core)
-    # already read it regardless of annotations-module.js -- so this gets its own wording,
-    # not the same blanket "won't render" as dimensions/edgeLengths below.
+    # label is never *fully* inert while hierarchy-module.js is declared (default via
+    # load_plan()) -- it already reads label for its own tree row regardless of
+    # annotations-module.js -- so this gets its own wording, not the same blanket "won't
+    # render" as dimensions/edgeLengths below.
     load_plan(
         app_page,
         """
@@ -182,6 +183,26 @@ element room {
     )
     violations = validation_violations(app_page)
     assert any("label" in v and "annotations-module.js" in v and "hierarchy panel" in v for v in violations), violations
+
+
+def test_label_without_annotations_or_hierarchy_module_declared_is_fully_inert(app_page):
+    """D-195: the softer wording above assumed hierarchy-module.js was unconditionally
+    loaded -- no longer true, so without it declared either, label is fully inert, same as
+    dimensions/edgeLengths."""
+    load_plan(
+        app_page,
+        'module "interactivity-module.js"\n\n'
+        'element room {\n'
+        '  shape: "rect"\n'
+        '  size: [3m, 2m]\n'
+        '  label: "Living Room"\n'
+        '  style: { fill: "#eee" }\n'
+        '}\n',
+        declare_core_modules=False,
+    )
+    violations = validation_violations(app_page)
+    assert any("label" in v and "annotations-module.js" in v and "won't render" in v for v in violations), violations
+    assert not any("hierarchy panel" in v for v in violations), violations
 
 
 def test_dimensions_without_annotations_module_declared_is_reported(app_page):

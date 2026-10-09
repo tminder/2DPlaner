@@ -18,14 +18,40 @@ app — reuses that architecture verbatim: `docs/index.html` is core (parse/rend
 Documented here in depth: `docs/interactivity-module.js` (D-031),
 `docs/annotations-module.js` (D-039), `docs/code-highlight-module.js` (D-043),
 `docs/hierarchy-module.js` (D-112), `docs/grid-module.js` (F-014), and
-`docs/wall-with-door-module.js` (D-046/D-071) — interactivity, code-highlight, and hierarchy
-unconditionally force-injected into every plan (D-174: module loading is decided purely by
-the plan's own code, never by a UI interaction like a button click, so hierarchy-module.js
-no longer waits for the Layers button, D-126); grid/annotations/wall-with-door load only
-when the plan's own text literally declares them (D-175, see below) — the same
-`module "..."` mechanism D-020 always had for any module, now applied consistently to these
-three as well, reversing D-173's brief experiment with inferring "needed" from properties
-instead of a declaration.
+`docs/wall-with-door-module.js` (D-046/D-071) — every one of them loads only when the
+plan's own text literally declares it (D-175, extended to all six by D-195, see below): the
+same `module "..."` mechanism D-020 always had for any module, with no force-injected
+exception left for any of them. Module loading is decided purely by the plan's own code,
+never by a UI interaction like a button click (D-174) and never inferred from a property
+instead of a declaration (D-173's brief experiment with the latter, reversed by D-175).
+
+## Module kinds
+
+Four kinds, by who ships the code and how much scrutiny loading it gets — referenced
+directly by [planning/core-aims.md](../planning/core-aims.md)'s Aim 3:
+
+- **Core** — `docs/index.html` itself: parse and render only. The only thing that's ever
+  unconditional; never a module, never declared, never optional.
+- **Wahl (own)** — every module this app ships itself: `interactivity-module.js`,
+  `code-highlight-module.js`, `hierarchy-module.js`, `grid-module.js`,
+  `annotations-module.js`, `wall-with-door-module.js`. Declared by a bare
+  `module "<name>.js"` line and run with full trust — no `confirm()` prompt
+  (`TRUSTED_MODULES`, see Trust model below) — because the code is reviewed the same way
+  core itself is, not fetched from anywhere untrusted.
+- **Wahl community** — modules published through the future module store (F-045), still
+  declared the same way, but authored by someone other than this project — a real trust
+  boundary "own" modules don't have. **Not yet built**: `TRUSTED_MODULES`/the `confirm()`
+  gate doesn't yet distinguish "community, store-reviewed" from "arbitrary URL" — a
+  community module is, today, just another external one (next bullet) until F-045 gives it
+  its own tier.
+- **Wahl extern** — any other URL, declared with the full URL rather than a bare name.
+  Triggers the existing `confirm()` warning naming the exact URL before fetching it (Trust
+  model below) — unreviewed, run entirely at the plan author's own risk.
+
+All three "wahl" kinds load by the exact same mechanism — nothing loads unless the plan's
+own text declares it, never a UI interaction, never inferred from a property (D-175, D-195).
+The only difference between them is how much scrutiny that declaration gets before the code
+actually runs.
 
 ## What a module can do
 
@@ -66,32 +92,36 @@ Community-published external modules (F-045) are listed at
 [planagonia.com/modules](https://www.planagonia.com/modules/) — check there for an
 existing URL before writing a new module from scratch.
 
-**`interactivity-module.js`, `code-highlight-module.js`, and `hierarchy-module.js` are
-unconditionally force-injected into every plan, whether it declares them or not, on every
-render** — `docs/`'s own `rerender()` always includes all three regardless of what the
-plan's own text says (D-034, extended by D-043; `hierarchy-module.js` joined this set in
-D-174, replacing its own earlier click-triggered load, D-126 — see below). None of the three
-is gated on anything a plan can write: they're the hosted editor itself, not a feature a plan
-opts into, and (D-174's own governing rule) **module loading is decided purely by the plan's
-own code — never by a UI interaction like a button click** — so a module with no plan-content
-signal to gate on is either always loaded or it isn't gated by this mechanism at all.
+**Every module needs an explicit `module "..."` declaration (D-175, extended to the last
+three holdouts by D-195)** — the exact same mechanism, no exceptions left between any of
+them. A plan using `settings.grid` without declaring `module "grid-module.js"`, or
+`label`/`dimensions`/`edgeLengths`/`settings.showConnections` without declaring
+`module "annotations-module.js"`, or `compose: "wallWithDoor"` without declaring
+`module "wall-with-door-module.js"` — or simply never declaring
+`interactivity-module.js`/`code-highlight-module.js`/`hierarchy-module.js` at all — gets
+exactly nothing for that property or that capability: silently inert, a known and accepted
+tradeoff, not a bug.
 
-**`grid-module.js`, `annotations-module.js`, and `wall-with-door-module.js` all need an
-explicit `module "..."` declaration (D-175)** — the exact same mechanism as any other module,
-no exceptions between the three. A plan using `settings.grid` without declaring
-`module "grid-module.js"`, or `label`/`dimensions`/`edgeLengths`/`settings.showConnections`
-without declaring `module "annotations-module.js"`, or `compose: "wallWithDoor"` without
-declaring `module "wall-with-door-module.js"`, gets exactly nothing rendered for that
-property — silently inert, a known and accepted tradeoff, not a bug: **D-173 had briefly
-tried inferring "needed" from a plan's own properties instead of a declaration (loading grid/
-annotations automatically whenever their own properties were used, no declaration needed at
-all), until it became clear that was exactly what "a module is loading that doesn't appear in
-the code" meant from a plan author's own point of view — the inference itself was the
-problem, not a caching artifact. D-175 reversed it**, restoring the declaration as the one
-and only trigger (besides being core, see above) and closing the inconsistency D-173 had
-found in doing so: `wall-with-door-module.js` is no longer a special case needing its own
-separate justification — every one of these three needs exactly the same thing, an explicit
-line in the plan's own text.
+**`interactivity-module.js`, `code-highlight-module.js`, and `hierarchy-module.js` used to
+be the one standing exception — unconditionally force-injected into every plan whether it
+declared them or not (D-034, extended by D-043; `hierarchy-module.js` joined in D-174,
+replacing its own earlier click-triggered load, D-126), on the reasoning that they're the
+hosted editor itself, not a feature a plan opts into, and there was no plan-content signal to
+gate them on the way grid/annotations/wall-with-door each had one.** D-195 removed that
+exception: a bare declaration is itself a sufficient signal — no plan-content property is
+needed, the same way `wall-with-door-module.js`'s own `module "..."` line was always enough
+on its own. Every `EXAMPLES` entry in `docs/` (including `blank`) now declares all three
+directly, so the shipped experience is unchanged; a plan that deletes those lines loses
+click/drag/select, syntax highlighting, and the Layers panel, as a deliberate, informed
+choice rather than something that happens to it by accident.
+
+**D-173 had briefly tried inferring "needed" from a plan's own properties instead of a
+declaration** (loading grid/annotations automatically whenever their own properties were
+used, no declaration needed at all), until it became clear that was exactly what "a module is
+loading that doesn't appear in the code" meant from a plan author's own point of view — the
+inference itself was the problem, not a caching artifact. D-175 reversed it, restoring the
+declaration as the one and only trigger — and now (D-195) the *only* trigger, full stop,
+since "being core" is no longer an alternate path for any module.
 
 **`docs/`'s header toggles (Grid/Connections/Dimensions) write the module declaration
 alongside the setting, not just the setting** — `ensureModuleDeclared()` in `docs/index.html`
@@ -112,17 +142,17 @@ signal interactivity's own render pass sets (see "The code-highlight module" bel
 `ORDERED_MODULES` in `docs/index.html` encodes this fixed relative order, filtered per-render
 down to whichever entries are actually wanted (core, or declared).
 
-**`hierarchy-module.js` (D-112) is unconditionally force-injected alongside interactivity and
-code-highlight, above — D-126's original click-triggered load (behind the header's "Layers"
-button) was reversed by D-174** once it became clear that rule conflicted with "only the
-plan's own code decides what loads": there's no plan-content signal for "this plan wants a
-layers panel" the way grid/annotations/wall-with-door each have one (any plan with more than
-one element can use it), so the two choices left were force-injecting it like
-interactivity/code-highlight, or gating it on a UI action — and the latter is exactly what
-D-174 rules out. The Layers button itself is unchanged in what it does for the person using
-the app: it still only ever toggles `#hierarchy-panel`'s visibility (a `localStorage`-backed
-session preference, not plan content) — it just no longer also triggers a module fetch,
-since the module is already loaded by the time anyone could click it.
+**`hierarchy-module.js` (D-112) needs its own `module "hierarchy-module.js"` declaration,
+same as interactivity/code-highlight above (D-195)** — D-126's original click-triggered load
+(behind the header's "Layers" button) was reversed by D-174 first, once it became clear that
+rule conflicted with "only the plan's own code decides what loads": there's no plan-content
+signal for "this plan wants a layers panel" the way grid/annotations/wall-with-door each have
+one (any plan with more than one element can use it), so D-174 force-injected it
+unconditionally instead — later superseded by D-195, which dropped force-injection
+altogether; a bare declaration needs no plan-content signal to gate on. The Layers button
+itself is unchanged in what it does for the person using the app: it still only ever toggles
+`#hierarchy-panel`'s visibility (a `localStorage`-backed session preference, not plan
+content) — it has never triggered a module fetch itself since D-174, and still doesn't.
 
 ## Trust model
 
@@ -144,9 +174,9 @@ declared it" into a deliberate per-URL choice, asked once per session (`loadedEx
 existing dedup) and remembered if declined too (`declinedExternal`, cleared only if the
 module's declaration is actually removed from the plan and re-added, or the page reloads —
 otherwise a declined module would re-prompt on every keystroke, since `rerender()` runs on
-every edit). Every `TRUSTED_MODULES` entry never prompts, however it was loaded —
-force-injected, written out explicitly, or (`hierarchy-module.js` only) triggered by its
-own header button — they all run with the same trust as core itself.
+every edit). Every `TRUSTED_MODULES` entry never prompts, regardless of how it came to be
+declared — written by hand, or by a header toggle's own `ensureModuleDeclared()` — they all
+run with the same trust as core itself.
 
 ## Loading and lifecycle
 
@@ -212,8 +242,9 @@ tested, carried-over machinery, not something the hosted app currently exercises
 
 ## The interactivity module
 
-`docs/interactivity-module.js` is the one module the hosted app actually ships, and (per
-D-034) the one every plan gets by default. It adds, entirely on top of the API above:
+`docs/interactivity-module.js` was the first module the hosted app shipped (D-034), and (D-195)
+needs its own `module "interactivity-module.js"` declaration like every other one now rather
+than coming by default. It adds, entirely on top of the API above:
 
 - **Drag-to-move** — direct nodes, expression-backed positions (solve-backward, D-012),
   connection propagation (D-014) with structural ancestor/descendant pairs skipped so a

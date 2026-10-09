@@ -2,10 +2,12 @@
 declaration order, per-parent show/hide (`hidden: true`, a new core-level rendering
 property), and sibling reordering via the panel's own up/down buttons.
 
-D-174: hierarchy-module.js is unconditionally loaded on every render now (reversing D-126's
-click-triggered load) -- module loading is decided purely by the plan's own code, never by a
-UI interaction like the Layers button. The button now only ever toggles the panel's own
-visibility; the tree itself is already populated before anyone could click it."""
+D-174/D-195: hierarchy-module.js needs its own `module "hierarchy-module.js"` declaration
+(same as every other module now, no exception) rather than waiting for D-126's own
+click-triggered load -- module loading is decided purely by the plan's own code, never by a
+UI interaction like the Layers button. `load_plan()` (helpers.py) declares it by default for
+every test below, so the button only ever toggles the panel's own visibility; the tree
+itself is already populated before anyone could click it."""
 
 from helpers import element_center, load_plan, select_example
 
@@ -170,9 +172,9 @@ def test_campervan_example_demonstrates_a_layer_hiding_something_underneath(app_
 
 
 def test_tree_is_populated_before_the_panel_is_ever_opened(app_page):
-    """D-174: hierarchy-module.js is unconditionally loaded now -- a plan with no module
-    declarations at all already has a populated tree in the DOM (just visually hidden by the
-    closed panel's own CSS), proving loading no longer waits for the button click."""
+    """D-174: once loaded, the module keeps the tree current regardless of whether the panel
+    is visually open -- it's already populated (just hidden by the closed panel's own CSS)
+    before anyone could click the Layers button to open it."""
     load_plan(app_page, VAN_PLAN)
     assert tree_labels(app_page) == ["van", "elektrik", "kabel", "einrichtung", "bett"]
     open_panel(app_page)

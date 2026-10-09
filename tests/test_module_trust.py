@@ -21,6 +21,13 @@ def test_hierarchy_module_is_trusted(app_page):
     assert app_page.evaluate("isTrustedModule('hierarchy-module.js')") is True
 
 
+def test_interactivity_and_code_highlight_modules_are_trusted(app_page):
+    """D-195: no longer force-injected, but still shipped-by-this-app trusted modules --
+    same TRUSTED_MODULES membership as grid/annotations/wall-with-door/hierarchy."""
+    assert app_page.evaluate("isTrustedModule('interactivity-module.js')") is True
+    assert app_page.evaluate("isTrustedModule('code-highlight-module.js')") is True
+
+
 def test_unrelated_external_url_is_not_trusted(app_page):
     assert app_page.evaluate("isTrustedModule('https://evil.example.com/x.js')") is False
 

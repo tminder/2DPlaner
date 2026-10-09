@@ -1149,9 +1149,12 @@
   // "wallWithDoor" each render nothing without the matching module declared, with nothing
   // anywhere to say why. This surfaces exactly that, the same "warn, don't fail silently"
   // pattern D-015 already established for an unsolvable drag. `label` gets its own, softer
-  // wording -- unlike the other three, hierarchy-module.js/the stack-hint badge (both core,
-  // D-034/D-174) already read it regardless, so it's never *fully* inert, just missing the
-  // on-shape annotation specifically.
+  // wording only while hierarchy-module.js is itself declared -- it's the one module that
+  // still reads `label` for its own tree row regardless of annotations-module.js, so label
+  // isn't *fully* inert in that case, just missing the on-shape annotation specifically. Since
+  // D-195 (hierarchy-module.js no longer force-injected either), that softer wording no longer
+  // applies if hierarchy-module.js itself isn't declared -- then `label` really is fully inert,
+  // same as the other three.
   function checkMissingModuleDeclarations(base, violations) {
     const declared = new Set(base.modules);
     if (base.settings?.grid && !declared.has("grid-module.js")) {
@@ -1160,7 +1163,8 @@
     for (const node of collectAllNodes(base.root, [])) {
       if (!declared.has("annotations-module.js")) {
         if (node.props.label != null) {
-          violations.push({ type: "missing-module", message: `'${node.id}': "label" is set but "annotations-module.js" isn't declared -- it'll show in the hierarchy panel, but not as an on-shape label, until it is`, spans: keySpan(node, "label") });
+          const fallback = declared.has("hierarchy-module.js") ? " -- it'll show in the hierarchy panel, but not as an on-shape label, until it is" : " -- it won't render until it is";
+          violations.push({ type: "missing-module", message: `'${node.id}': "label" is set but "annotations-module.js" isn't declared${fallback}`, spans: keySpan(node, "label") });
         }
         if (node.props.dimensions === true) {
           violations.push({ type: "missing-module", message: `'${node.id}': "dimensions" is set but "annotations-module.js" isn't declared -- it won't render until it is`, spans: keySpan(node, "dimensions") });

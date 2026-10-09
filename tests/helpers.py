@@ -3,12 +3,27 @@ each test file imports only what it needs. Mirrors the patterns this project's o
 scratchpad scripts already used successfully throughout this project's history."""
 
 
-def load_plan(page, text):
+CORE_TEST_MODULES = (
+    'module "interactivity-module.js"\n'
+    'module "code-highlight-module.js"\n'
+    'module "hierarchy-module.js"\n\n'
+)
+
+
+def load_plan(page, text, declare_core_modules=True):
     """Set the code pane to `text` as a fresh baseline — the same
     resetUndoHistory()+rerender() pair a real plan switch uses, not a dispatched `input`
     event: that path debounces commitUndoStep 600ms later (matching real typing), which
     races non-deterministically with whatever a test does immediately afterward (e.g. a
-    drag, which commits its own undo step at pointerup) and must not leak into it."""
+    drag, which commits its own undo step at pointerup) and must not leak into it.
+
+    D-195: interactivity/code-highlight/hierarchy need their own `module "..."` declaration
+    now, same as every other module — no longer force-injected. Prepending them here by
+    default keeps every other test's own plan text exactly as it was written (none of them
+    were testing the declaration mechanism itself); pass `declare_core_modules=False` for a
+    test that specifically wants a plan with no declarations at all."""
+    if declare_core_modules:
+        text = CORE_TEST_MODULES + text
     page.evaluate(
         """(text) => {
             const el = document.getElementById('source');

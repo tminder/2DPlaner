@@ -943,7 +943,11 @@
 <script>
 // ---------- Example plans ----------
 const EXAMPLES = {
-  blank: `settings {
+  blank: `module "interactivity-module.js"
+module "code-highlight-module.js"
+module "hierarchy-module.js"
+
+settings {
   version: 1
 }
 
@@ -951,6 +955,9 @@ element plan {
 }
 `,
   apartment: `module "annotations-module.js"
+module "interactivity-module.js"
+module "code-highlight-module.js"
+module "hierarchy-module.js"
 
 settings {
   version: 1
@@ -1038,6 +1045,9 @@ element room {
 connection stove counter
 `,
   utility: `module "annotations-module.js"
+module "interactivity-module.js"
+module "code-highlight-module.js"
+module "hierarchy-module.js"
 
 settings {
   version: 1
@@ -1201,6 +1211,9 @@ connection hausanschluss_3 verteilkabine
   // real packaging trick small campervans actually use) so hiding "Einrichtung" visibly
   // reveals something that was hidden underneath it, not just an empty gap.
   campervan: `module "annotations-module.js"
+module "interactivity-module.js"
+module "code-highlight-module.js"
+module "hierarchy-module.js"
 
 settings {
   version: 1
@@ -1359,26 +1372,29 @@ connection klapptisch sitzbank
 // EXAMPLES' own keys since those are also used as (stable, never user-facing) identifiers.
 const EXAMPLE_LABELS = { blank: "Blank", apartment: "Studio Apartment", utility: "Electrical Grid", campervan: "Campervan Build" };
 
-// D-175: a module loads if and only if the plan's own code says so -- either it's core (no
-// property, no declaration, always loaded) or the plan's own text literally declares
-// `module "<name>"`, the exact same mechanism D-020 always had for any external/internal
+// D-175: a module loads if and only if the plan's own text literally declares
+// `module "<name>"` -- the exact same mechanism D-020 always had for any external/internal
 // module. Reverses D-173's content-triggered detection (inferring "needed" from properties
 // like label/settings.grid/compose, with no `module "..."` line in sight) once it became
 // clear that's exactly what "a module loaded that doesn't appear in the code" meant from the
 // plan author's own point of view -- the property-inference WAS the bug, not a caching
-// artifact. interactivity/code-highlight/hierarchy stay core (D-034/D-174): the hosted
-// editor itself, no plan property or declaration gates them. grid/annotations/wall-with-door
-// go back to needing an explicit `module "..."` line, same as any other module -- including
-// S-025's own wall-with-door-module.js, no longer a special case (every one of them is
-// equally "needs the author to ask for it," not inconsistent).
+// artifact. grid/annotations/wall-with-door go back to needing an explicit `module "..."`
+// line, same as any other module -- including S-025's own wall-with-door-module.js, no
+// longer a special case (every one of them is equally "needs the author to ask for it," not
+// inconsistent).
+//
+// D-195 extends this to interactivity/code-highlight/hierarchy, which D-034/D-174 had kept
+// force-injected as an exception ("the hosted editor itself, no plan property or declaration
+// gates them") -- that exception is gone now: every module, without exception, loads if and
+// only if the plan's own code declares it. True `index.html`-core (parse/render only) is the
+// only thing that's still unconditional.
 //
 // Known, accepted tradeoff: `label`/`dimensions`/`edgeLengths`/`settings.grid`/
-// `compose:"wallWithDoor"` go silently inert again for a plan that uses the property without
-// declaring the module that renders it -- the exact risk D-034/D-039 originally built
-// force-injection to avoid. Explicit declaration over implicit inference was the point of
-// this change, not an oversight; the shipped EXAMPLES below declare what they need rather
-// than relying on inference.
-const CORE_MODULES = ["interactivity-module.js", "code-highlight-module.js", "hierarchy-module.js"];
+// `compose:"wallWithDoor"`, and now also click/drag/select, syntax highlighting, and the
+// Layers panel, all go silently inert for a plan that doesn't declare the module that renders
+// them -- the exact risk D-034/D-039 originally built force-injection to avoid. Explicit
+// declaration over implicit inference was the point of this change, not an oversight; the
+// shipped EXAMPLES below declare what they need rather than relying on inference.
 
 // Fixed relative order for modules whose own onRendered callback has to register in a
 // specific sequence: annotations-module.js has to run first so its labels render like part
@@ -1395,13 +1411,12 @@ const ORDERED_MODULES = ["grid-module.js", "annotations-module.js", "interactivi
 
 const TRUSTED_MODULES = [...ORDERED_MODULES, "wall-with-door-module.js"];
 
-// Core, unconditionally, plus whatever the plan's own text declares -- ORDERED_MODULES'
-// fixed relative order applied to whichever of its own entries ended up wanted (core or
-// declared), with every other declared module (wall-with-door, any external/internal one)
-// appended after in whatever order the plan itself declared them.
+// D-195: purely what the plan's own text declares, no force-included set -- ORDERED_MODULES'
+// fixed relative order applied to whichever of its own entries the plan actually declared,
+// with every other declared module (wall-with-door, any external/internal one) appended
+// after in whatever order the plan itself declared them.
 function requiredModulesFor(parsed) {
-  const wanted = new Set([...CORE_MODULES, ...parsed.modules]);
-  const ordered = ORDERED_MODULES.filter((name) => wanted.has(name));
+  const ordered = ORDERED_MODULES.filter((name) => parsed.modules.includes(name));
   const rest = parsed.modules.filter((name) => !ORDERED_MODULES.includes(name));
   return [...ordered, ...rest];
 }
@@ -3481,12 +3496,12 @@ paneResizerEl.addEventListener("keydown", (e) => {
 // button only ever toggles a class + persists it. #hierarchy-panel itself is a stable,
 // always-present empty slot (see its own HTML comment) that the module fills.
 //
-// D-174: hierarchy-module.js is unconditionally loaded now (ORDERED_MODULES), replacing
-// D-126's click-triggered load -- module loading is decided purely by the plan's own code,
-// never by a UI interaction like this button. The module keeps #hierarchy-panel's content
-// current on every render regardless of whether the panel is visually open (see
-// language-spec/modules.md), so toggling visibility here needs nothing beyond the class
-// flip + persisted preference. ----------
+// D-174/D-195: module loading is decided purely by the plan's own code, never by a UI
+// interaction like this button -- hierarchy-module.js needs its own `module "..."`
+// declaration now, same as every other module. The module keeps #hierarchy-panel's content
+// current on every render regardless of whether the panel is visually open, whenever it's
+// loaded at all (see language-spec/modules.md), so toggling visibility here needs nothing
+// beyond the class flip + persisted preference. ----------
 const HIERARCHY_PANEL_OPEN_KEY = "planagonia:hierarchyPanelOpen";
 const hierarchyToggleBtn = document.getElementById("hierarchy-toggle-btn");
 function setHierarchyPanelOpen(open) {
