@@ -455,9 +455,10 @@ primitive:
 element w { compose: "wallWithDoor" from: [0m,0m] to: [5m,0m] doorAt: 2m doorWidth: 0.9m }
 ```
 
-expands into three ordinary `polyline` children (`w_wall_a`, `w_door`, `w_wall_b`) — what
-this app's own `apartment` example still writes by hand as four corner elements plus three
-polylines (D-018's shared-corner pattern) for the identical visual.
+expands into three ordinary `polyline` children (`w_wall_a`, `w_door`, `w_wall_b`) — the same
+shape D-018's shared-corner pattern would otherwise need four corner elements plus three
+polylines to write by hand for one wall segment. The shipped `apartment` example declares
+this module directly (`entry_wall`, D-196) rather than hand-writing the equivalent.
 
 **Runs via `core.registerBeforeRender`, not `core.onRendered`, the only module here that
 does** — its synthesized children are pushed into the tree *before* core ever renders, so

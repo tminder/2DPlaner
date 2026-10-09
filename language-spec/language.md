@@ -754,8 +754,9 @@ historical.
   "composed from Element and Connection" — literally the wall-with-a-door example this
   document has used illustratively throughout. `wall-with-door-module.js` expands one
   compact `compose: "wallWithDoor"` element into the same three-piece wall/door/wall
-  structure the shipped `apartment` example writes by hand as four corner elements. Needed
-  exactly one new core hook, `registerBeforeRender`, letting a module inject synthesized
+  structure D-018's shared-corner pattern would otherwise need four corner elements plus
+  three polylines to write by hand for one wall segment. Needed exactly one new core hook,
+  `registerBeforeRender`, letting a module inject synthesized
   child nodes before `render()` runs — rendering itself needed zero composition-specific
   code once that existed. **Since promoted into [docs/](../docs/)** (D-071), drag-editability
   included: dragging a wall segment moves the whole composite (`from`/`to` shift together);
@@ -765,4 +766,7 @@ historical.
   `parse()` had to split into a bare parse and a `parseExpanded` (parse + run every
   `registerBeforeRender` callback + reindex) — module loading itself depends on a first,
   un-expanded parse to discover which modules a plan even declares, so expansion can't be
-  folded into parsing itself without a circular dependency.
+  folded into parsing itself without a circular dependency. **The shipped `apartment`
+  example now declares `wall-with-door-module.js` directly** (D-196) — an `entry_wall`
+  element built with `compose: "wallWithDoor"`, demonstrating it in place rather than only
+  in this prototype.

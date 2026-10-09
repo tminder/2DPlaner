@@ -958,12 +958,14 @@ element plan {
 module "interactivity-module.js"
 module "code-highlight-module.js"
 module "hierarchy-module.js"
+module "wall-with-door-module.js"
 
 settings {
   version: 1
   units: "m"
   allowSelfIntersectingPolygons: false
   dimensionStyle: "arrows"
+  showConnections: true
 }
 
 element room {
@@ -1040,6 +1042,14 @@ element room {
     show: "always"
     dimensions: true
   }
+
+  element entry_wall {
+    compose: "wallWithDoor"
+    from: [2.5, 0]
+    to: [2.5, 1.6]
+    doorAt: 0.8
+    doorWidth: 0.9
+  }
 }
 
 connection stove counter
@@ -1048,11 +1058,13 @@ connection stove counter
 module "interactivity-module.js"
 module "code-highlight-module.js"
 module "hierarchy-module.js"
+module "grid-module.js"
 
 settings {
   version: 1
   units: "m"
   allowSelfIntersectingPolygons: false
+  grid: { size: 2 }
   styles: {
     parcel: { fill: "#e7ecdf", stroke: "#7c8f6a", strokeWidth: 0.05 }
     haus: { fill: "#dcdcd7", stroke: "#55554f", strokeWidth: 0.07 }
@@ -1210,6 +1222,16 @@ connection hausanschluss_3 verteilkabine
   // id, and one deliberate overlap (the water tank sits directly under the bench seat, a
   // real packaging trick small campervans actually use) so hiding "Einrichtung" visibly
   // reveals something that was hidden underneath it, not just an empty gap.
+  //
+  // D-196: also the one example with `settings.allowCollisions: false` (checking ON) —
+  // einrichtung's own `klapptisch` (a flip-down table) genuinely overlaps `sitzbank`/`bett`
+  // at rest, a real geometric collision no prior version of this plan ever had checked
+  // against. Rather than contort its position to avoid that, `klapptisch` itself gets
+  // `allowCollisions: true`, exempting just that element's own pairs — a realistic reason
+  // for the per-element override to exist (a fold-down table is *expected* to overlap what
+  // it folds against), demonstrating the override alongside the plan-wide check rather than
+  // only the check in isolation. Water tank/bench seat aren't siblings (different groups),
+  // so that overlap was never subject to this check either way.
   campervan: `module "annotations-module.js"
 module "interactivity-module.js"
 module "code-highlight-module.js"
@@ -1218,6 +1240,7 @@ module "hierarchy-module.js"
 settings {
   version: 1
   units: "m"
+  allowCollisions: false
 }
 
 element camper {
@@ -1256,6 +1279,7 @@ element camper {
       style: { fill: "#c9a876", stroke: "#8a6a42", strokeWidth: 0.02 }
       label: "Klapptisch"
       show: "hover"
+      allowCollisions: true
     }
 
     element haengeschrank {
