@@ -509,6 +509,22 @@
     }
   });
 
+  // F-063: the email verification link (verify.php, api.planagonia.com) signs the visitor
+  // in directly now -- it can't write this origin's own sessionStorage itself (a different
+  // origin entirely), so it hands the session token over once, in the URL, for this page to
+  // pick up and store the normal way. Stripped from the URL immediately after, via
+  // history.replaceState -- a bearer token has no business sitting in the address bar (or
+  // browser history) any longer than the one moment it takes to read it.
+  (function consumeSessionFromUrl() {
+    const params = new URLSearchParams(location.search);
+    const token = params.get("session");
+    if (!token) return;
+    setCloudSession(token);
+    params.delete("session");
+    const query = params.toString();
+    history.replaceState(null, "", location.pathname + (query ? `?${query}` : "") + location.hash);
+  })();
+
   render();
 </script>
 

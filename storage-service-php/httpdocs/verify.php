@@ -5,6 +5,7 @@
 // shared header/footer chrome) — this lives on api.planagonia.com, a different origin
 // entirely, and a visitor only ever sees it once, for a few seconds.
 require __DIR__ . '/../app/src/db.php';
+require __DIR__ . '/../app/src/auth.php';
 require __DIR__ . '/../app/src/registration.php';
 
 $config = require __DIR__ . '/../app/config.local.php';
@@ -13,6 +14,7 @@ $token = $_GET['token'] ?? '';
 $verified = null;
 $appPassword = null;
 $appPasswordError = null;
+$sessionToken = null;
 if ($token !== '') {
     try {
         $db = get_db($config);
@@ -28,6 +30,17 @@ if ($token !== '') {
             } catch (RegistrationException $e) {
                 $appPasswordError = $e->getMessage();
             }
+            // F-063: sign the visitor in directly too, not just hand them a credential to
+            // carry over and type into the sign-in form themselves -- the whole point of
+            // reaching this page at all was proving they own this email/account, exactly
+            // what signing in also requires. Needs no extra WP round-trip beyond what's
+            // already happened above; issue_session_token's own 'name' fallback (username)
+            // covers a brand-new account correctly, since WordPress gives a fresh user no
+            // display name of its own yet. The Application Password above is kept, not
+            // replaced -- still the one real credential for typing into the sign-in form
+            // by hand later, or for any non-browser use; this just means nobody is ever
+            // *forced* to do that the very first time.
+            $sessionToken = issue_session_token($config, $verified);
         }
     } catch (Throwable $e) {
         error_log('verify.php: ' . $e->getMessage());
@@ -35,6 +48,7 @@ if ($token !== '') {
 }
 
 $profileUrl = rtrim($config['site_url'], '/') . '/profile/';
+$profileSignInUrl = $sessionToken ? $profileUrl . '?session=' . urlencode($sessionToken) : $profileUrl;
 header('Content-Type: text/html; charset=utf-8');
 ?>
 <!DOCTYPE html>
@@ -61,19 +75,19 @@ header('Content-Type: text/html; charset=utf-8');
 <body>
 <main>
 <?php if ($verified && $appPassword): ?>
-  <h1>Your account is confirmed</h1>
-  <p>Use these to sign in — save them now, this password is shown only once:</p>
+  <h1>You're confirmed and signed in</h1>
+  <p>Continue to your profile — or save this password first, if you'd rather sign in by hand another time (shown only once):</p>
   <dl class="credentials">
     <dt>Username</dt>
     <dd><?= htmlspecialchars($verified['username']) ?></dd>
     <dt>Password</dt>
     <dd><?= htmlspecialchars($appPassword) ?></dd>
   </dl>
-  <p><a href="<?= htmlspecialchars($profileUrl) ?>">Go to Profile to sign in →</a></p>
+  <p><a href="<?= htmlspecialchars($profileSignInUrl) ?>">Continue to Profile →</a></p>
 <?php elseif ($verified): ?>
-  <h1>Your account is confirmed</h1>
-  <p><?= htmlspecialchars($appPasswordError) ?></p>
-  <p>Your account exists and is verified — contact support to get a working sign-in credential for it.</p>
+  <h1>You're confirmed and signed in</h1>
+  <p>One thing didn't work: <?= htmlspecialchars($appPasswordError) ?> — you're still signed in for now, but if you sign out, getting back in by hand may not work until this is looked into. Contact support if that happens.</p>
+  <p><a href="<?= htmlspecialchars($profileSignInUrl) ?>">Continue to Profile →</a></p>
 <?php else: ?>
   <h1>This link isn't valid</h1>
   <p>It may have already been used, or it's expired (verification links are valid for 24 hours).</p>
