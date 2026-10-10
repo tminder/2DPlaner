@@ -3739,6 +3739,7 @@ const menuTabPanels = document.querySelectorAll(".menu-tab-panel");
 // screen. Re-run on every tab switch (setActiveMenuTab, below) and on resize, since the
 // active element's own x-position moves with the window.
 const headerRow1El = document.querySelector(".header-row1");
+const headerLogoEl = document.getElementById("header-logo");
 const tabBaselineLeftEl = document.getElementById("tab-baseline-left");
 const tabBaselineRightEl = document.getElementById("tab-baseline-right");
 function updateTabBaseline() {
@@ -3753,7 +3754,15 @@ function updateTabBaseline() {
     return;
   }
   const activeRect = activeEl.getBoundingClientRect();
-  const gapLeft = Math.max(0, activeRect.left - containerRect.left);
+  // Reported directly: with the logo itself active, the left segment still drew row1's own
+  // left padding (0 to the logo's own left edge) -- mathematically "correct" (there's
+  // nothing there to draw a line *under*, so it's blank space either way) but visually a
+  // stray, disconnected mark floating at the page's own edge, unlike Edit/View's own case
+  // where the gap at least reads as "this padded box's own footprint." The logo is always
+  // row1's own first child (nothing legitimately *could* sit to its left), so this segment
+  // never has anything to show when it's the active one -- suppressed outright rather than
+  // drawn-but-zero-width, same end result, clearer intent.
+  const gapLeft = activeEl === headerLogoEl ? 0 : Math.max(0, activeRect.left - containerRect.left);
   const gapRight = Math.min(containerRect.width, activeRect.right - containerRect.left);
   tabBaselineLeftEl.style.left = "0px";
   tabBaselineLeftEl.style.width = `${gapLeft}px`;
