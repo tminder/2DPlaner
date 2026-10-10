@@ -165,8 +165,8 @@ still holds if the audience broadens is F-009, open.
 
 **One real gate, added directly in response to project-overview.md's risk review, not a
 sandbox:** the first time a session would load a module that isn't in `TRUSTED_MODULES`
-(every module this app ships itself — interactivity, code-highlight, grid, annotations,
-wall-with-door, and hierarchy-module.js, see above), `ensureModulesLoaded()` shows a
+(every module this app ships itself — interactivity, view, code-highlight, grid,
+annotations, wall-with-door, and hierarchy-module.js, see above), `ensureModulesLoaded()` shows a
 native `confirm()` naming the exact URL before fetching/running it. Declining throws
 instead of loading — the plan simply doesn't render past that point, same as any other
 unresolved error (D-015). This doesn't make the code any safer to run once accepted (still
@@ -544,9 +544,9 @@ it renders as).
 
 **Needs an explicit `module "door-module.js"` declaration (D-175)** — the same as
 `grid-module.js`/`annotations-module.js` above, no exceptions between any of the three
-anymore. `compose: "wallWithDoor"` with no declaration does nothing; nothing currently warns
-an author if that happens, the same gap every one of these three now shares
-([planning/tech-debt.md](../planning/tech-debt.md) S-043).
+anymore. `compose: "wallWithDoor"` with no declaration does nothing; the load-time
+validation pass warns an author if that happens, the same way it does for the other two
+([planning/decisions.md](../planning/decisions.md#d-184-s-043-fixed-a-load-time-warning-when-a-propertys-own-rendering-module-isnt-declared) D-184).
 
 **S-028, investigated directly and found not to be a real bug ([D-190](../planning/decisions.md#d-190-s-028-investigated-wall-with-door-modulejss-own-composite-already-handles-a-non-zero-position-correctly--no-bug-found)):** an earlier version of this document claimed the composite's own `position` "isn't factored into `from`/`to`," self-admitted as broken for a nested, non-zero `position`. Checked live, including two levels of ancestor position stacked on top of the composite's own: it already comes out exactly right with no special-casing at all.
 
