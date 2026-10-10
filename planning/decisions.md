@@ -2808,7 +2808,7 @@ Direct follow-up to D-204, reported immediately after seeing it live: "why is th
 
 **Verified locally** (`file://`, screenshotted before/after clicking View, same method as D-204) — a continuous line now runs under the resting tab and the Account area, broken cleanly only under whichever tab is actually open, the ordinary "folder tab" shape named directly in the ask.
 
-**Status: built, verified locally, full suite re-run.** Deploy and `.deploy-state` commit to follow.
+**Status: built, deployed, verified live** (`#header-toolbar`'s `border-top` confirmed present on `www.planagonia.com/app/` via direct fetch).
 
 ## D-206 The header's Account area collapses to one profile icon; Save to Cloud moves into the File menu
 
@@ -2828,7 +2828,7 @@ Raised directly, two asks against the same live screenshot: (1) "Save to Cloud s
 
 **No existing test references any of the moved/renamed elements** (`grep` against `tests/` for every touched id came back empty) — this stack has no automated coverage of the sign-in/account UI at all (F-057), consistent with every other change in this area this session.
 
-**Status: built, verified locally.** Deploy and `.deploy-state` commit to follow in the same pass as D-205.
+**Status: built, deployed, verified live** (`account-menu-btn`/relocated `Save to Cloud`/the `profile/`'s `scrollIntoView` deep-link all confirmed present via direct fetch against `www.planagonia.com/app/` and `/profile/`).
 
 ## D-207 The shipped `apartment` example's door is fixed to actually open into clear floor space
 
@@ -2841,4 +2841,4 @@ Raised directly against a live screenshot: "the door doesn't make sense there." 
 
 **Verified against the real shipped template, not a copy** — `docs/index.html`'s own "New…" → apartment example flow (the same path `tests/helpers.py`'s `select_example` already drives), screenshotted: the door now swings cleanly into open floor, wall jambs intact on both sides, no overlap with the bed or anything else. `tests/test_examples.py::test_example_has_no_validation_violations[apartment]` (part of the full suite, 313 passed) already covers this example loading with zero containment/collision violations — unaffected either way, since neither old nor new geometry trips it (swing-arc paths aren't checked by `checkCollisions`), but confirms nothing else broke.
 
-**Status: built, verified locally.** Deploy and `.deploy-state` commit to follow in the same pass as D-205/D-206.
+**Status: built, deployed, verified live** (`doorAt: 0.35`/`swing: "right"` confirmed present in the live `apartment` example source via direct fetch against `www.planagonia.com/app/`).
