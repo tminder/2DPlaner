@@ -40,24 +40,31 @@
   header { flex: 0 0 auto; display: flex; flex-direction: column; gap: 0;
     background: var(--paper-raised); border-bottom: 1px solid var(--line);
     font-family: "IBM Plex Sans", system-ui, sans-serif; }
-  .header-row1 { display: flex; align-items: center; gap: 0.8rem; padding: 0.5rem 1rem 0; flex-wrap: wrap; }
+  .header-row1 { display: flex; align-items: center; gap: 0.8rem; padding: 0.5rem 1rem 0; flex-wrap: wrap;
+    position: relative; }
+  /* D-213: supersedes D-211's per-element border-bottom approach -- reported directly,
+     marked on a screenshot: that approach left the line missing everywhere it *wasn't*
+     explicitly drawn (the small gaps between the logo/Edit/View, and the entire empty
+     stretch over the spacer/account area), when what was actually wanted all along was one
+     real, continuous line under the *whole* row, broken only exactly where the active
+     element sits. A single CSS border can't have a gap at a position that moves depending
+     on which tab is active and where it currently renders -- so the line is two absolutely
+     positioned segments (.tab-baseline-seg, below), left-of-gap and right-of-gap, whose own
+     width/position are recomputed in JS (updateTabBaseline(), near setActiveMenuTab) from
+     the active element's own live getBoundingClientRect() every time the active tab changes
+     or the window resizes. Not a cover-up like D-205/D-208's own old mechanism (nothing is
+     painted over anything) -- the gap is a real absence, the two segments simply don't
+     reach each other there. */
+  .tab-baseline-seg { position: absolute; bottom: 0; height: 1px; background: var(--line); pointer-events: none; }
   /* D-132: no longer a link (removed along with its own <a>, "remove the logo's link" —
      its only job now is triggering the File panel, on hover or click, exactly like an
      ordinary .menu-tab-btn behaviorally, but keeping its own distinct brand styling below
      rather than looking like a tab -- cursor/hover color are this element's own version of
      a .menu-tab-btn's hover affordance. */
-  /* D-208/D-211: participates in the same per-element baseline D-211 gives every
-     .menu-tab-btn -- its own border-bottom, var(--line) at rest, transparent when .active
-     (menuTabBtns includes "#header-logo", toggled by the exact same JS). Deliberately just
-     a bottom border, no left/right/top/background/radius -- D-132's own "keeping its own
-     distinct brand styling... rather than looking like a tab" stands; this is the minimum
-     needed to participate in the shared baseline, not a tab-chip shape. padding-bottom
-     gives the line the same breathing room from the text a tab's own padding already has. */
   header h1 { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 1.05rem; margin: 0;
     white-space: nowrap; display: flex; align-items: center; gap: 0.4rem; color: var(--ink);
-    cursor: pointer; align-self: flex-end; border-bottom: 1px solid var(--line); padding-bottom: 0.4rem; }
+    cursor: pointer; align-self: flex-end; padding-bottom: 0.4rem; }
   header h1:hover { color: var(--blue-deep); }
-  header h1.active { border-bottom-color: transparent; }
   .beta-badge { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 0.62rem;
     font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
     color: var(--amber); background: var(--amber-soft); border-radius: 4px; padding: 0.15rem 0.4rem; }
@@ -126,26 +133,20 @@
      .mobile-tabs/.tab-btn (the unrelated code/viewer pane switcher, D-006), so the two
      genuinely different "tabs" concepts in this header never collide or read as one
      feature by accident. */
-  /* D-211: rebuilt again, reported directly against a zoomed screenshot -- the previous
-     approach (a single shared #header-toolbar border-top, with the active tab's own
-     background + margin-bottom: -1px painting over that exact 1px to "hide" it) was
-     fragile in exactly the way a cover-up always is: it relied on the active tab's own box
-     and the toolbar's border landing on the *identical* device pixel, which flex rounding
-     doesn't actually guarantee -- at high zoom this showed as two faint parallel lines
-     ("doubled") instead of one clean line, and the active tab's own line was covered, not
-     genuinely absent. Replaced with a per-element border-bottom: every row1 child that
-     needs to sit "on" the baseline draws its *own* bottom edge -- var(--line) at rest,
-     transparent when .active -- and #header-toolbar no longer draws a line of its own at
-     all. Nothing to misalign, nothing to cover: the line under any one element is either
-     there or it isn't, never two independent declarations landing near each other. The
-     small gaps between tabs (and before/after the strip) simply show no line, the same way
-     a real browser's own tab strip does between tabs -- never "doubled," never a seam to
-     hide. align-self: flex-end makes the strip hug row1's own bottom edge -- row1 centers
-     its children by default, and without this the strip (shorter than the h1/account
-     group) would float with dead space below it. */
+  /* D-211 (superseded by D-213, see .tab-baseline-seg above): rebuilt the shared
+     #header-toolbar border-top into a per-element border-bottom on each tab, to stop a
+     pixel-alignment "doubled" artifact. Left a different gap, reported directly: a line
+     only where each element explicitly drew its own meant *no* line anywhere else --
+     the small gaps between tabs, and the entire empty stretch past the last tab -- when
+     one continuous line (broken only under the active element) was the actual ask all
+     along. .menu-tab-btn no longer draws any bottom border of its own at all; the shared
+     baseline segments are what make a resting tab look "closed" now, not its own box.
+     align-self: flex-end (strip) still matters: it's what makes the tabs' own bottom edge
+     -- and the active element's own getBoundingClientRect(), what updateTabBaseline()
+     actually measures -- line up with row1's own bottom edge, where the baseline lives. */
   .menu-tab-strip { display: flex; gap: 3px; align-items: flex-end; align-self: flex-end; }
   .menu-tab-btn { font: inherit; font-size: 0.8rem; font-weight: 500; color: var(--ink-soft);
-    background: var(--paper); border: 1px solid var(--line);
+    background: var(--paper); border: 1px solid var(--line); border-bottom: none;
     border-radius: 8px 8px 0 0; padding: 0.4rem 0.8rem; cursor: pointer; display: flex;
     align-items: center; gap: 0.3rem; }
   .menu-tab-btn .tab-icon { font-size: 1rem; line-height: 1; }
@@ -158,7 +159,7 @@
      via its thin border outline. A colored border + bold label give the open tab its own
      unambiguous, non-positional cue instead of relying on a near-invisible fill contrast. */
   .menu-tab-btn.active { background: var(--paper-raised); color: var(--ink); font-weight: 700;
-    border-color: var(--blue); border-bottom-color: transparent; }
+    border-color: var(--blue); }
 
   /* D-131: a real, always-present second row (D-129's own docked shape) -- what it shows
      switches on hover or click (see the JS at the bottom of this file: entering a tab
@@ -542,6 +543,11 @@
         </ul>
       </div>
     </div>
+    <!-- D-213: the shared tab baseline -- two segments, positioned/sized in JS
+         (updateTabBaseline()) from whichever element is currently .active, leaving a real
+         gap exactly there and a continuous line everywhere else in this row. -->
+    <div class="tab-baseline-seg" id="tab-baseline-left"></div>
+    <div class="tab-baseline-seg" id="tab-baseline-right"></div>
   </div>
   <div id="header-toolbar">
     <!-- F-044: "open" and "new" as separate actions, each opening #plan-picker-panel
@@ -3726,16 +3732,47 @@ const MENU_TAB_KEY = "planagonia:activeHeaderTab";
 const menuTabBtns = document.querySelectorAll(".menu-tab-btn, #header-logo");
 const menuTabPanels = document.querySelectorAll(".menu-tab-panel");
 
+// D-213: the shared baseline's own two segments, left-of-gap and right-of-gap -- measured
+// from whichever element is actually .active (and visible: #menu-tab-modules can be
+// .active-but-hidden if it was the last tab open before its own module unloaded) rather
+// than trusted from the `tab` string alone, so this always reflects what's really on
+// screen. Re-run on every tab switch (setActiveMenuTab, below) and on resize, since the
+// active element's own x-position moves with the window.
+const headerRow1El = document.querySelector(".header-row1");
+const tabBaselineLeftEl = document.getElementById("tab-baseline-left");
+const tabBaselineRightEl = document.getElementById("tab-baseline-right");
+function updateTabBaseline() {
+  const containerRect = headerRow1El.getBoundingClientRect();
+  const activeEl = [...menuTabBtns].find((el) => el.classList.contains("active") && !el.hidden);
+  if (!activeEl) {
+    // Nothing active/visible (shouldn't normally happen) -- a full, unbroken line is a
+    // more honest fallback than an arbitrary gap with nothing under it.
+    tabBaselineLeftEl.style.left = "0px";
+    tabBaselineLeftEl.style.width = `${containerRect.width}px`;
+    tabBaselineRightEl.style.width = "0px";
+    return;
+  }
+  const activeRect = activeEl.getBoundingClientRect();
+  const gapLeft = Math.max(0, activeRect.left - containerRect.left);
+  const gapRight = Math.min(containerRect.width, activeRect.right - containerRect.left);
+  tabBaselineLeftEl.style.left = "0px";
+  tabBaselineLeftEl.style.width = `${gapLeft}px`;
+  tabBaselineRightEl.style.left = `${gapRight}px`;
+  tabBaselineRightEl.style.width = `${Math.max(0, containerRect.width - gapRight)}px`;
+}
+
 function setActiveMenuTab(tab) {
   for (const btn of menuTabBtns) btn.classList.toggle("active", btn.dataset.tab === tab);
   for (const panel of menuTabPanels) panel.hidden = panel.dataset.tab !== tab;
   safeStorageSet(localStorage, MENU_TAB_KEY, tab);
+  updateTabBaseline();
 }
 for (const btn of menuTabBtns) {
   btn.addEventListener("mouseenter", () => setActiveMenuTab(btn.dataset.tab));
   btn.addEventListener("click", () => setActiveMenuTab(btn.dataset.tab));
 }
 setActiveMenuTab(safeStorageGet(localStorage, MENU_TAB_KEY) || "file");
+window.addEventListener("resize", updateTabBaseline);
 
 // D-153: has-submenu flyouts (Export, Grid) are positioned in the viewport via JS
 // (`position: fixed`, see the .submenu rule above) instead of pure CSS (`absolute`,
