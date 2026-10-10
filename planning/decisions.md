@@ -2887,4 +2887,4 @@ Reported directly against a zoomed-in screenshot: the line still showed faintly 
 
 **Verified locally at 3x device-pixel-ratio** (the zoom level the original report was effectively made at) — screenshotted all three reachable active states (File/logo, Edit, View): in every case, the active element shows no line at all beneath it, every inactive element shows exactly one clean line, and nothing anywhere reads as doubled.
 
-**Status: built.** Deploy and `.deploy-state` commit to follow.
+**Status: built, deployed, verified live** (screenshotted at 3x device-pixel-ratio against `www.planagonia.com/app/` — no line under the logo, no line under Edit when active, no doubling anywhere).
