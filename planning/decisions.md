@@ -2851,7 +2851,7 @@ Direct follow-up to D-205, caught immediately: the new baseline cut cleanly unde
 
 **Fix:** `header h1` gains `align-self: flex-end` (unconditionally, matching `.menu-tab-strip`'s own D-205 treatment, so the logo hugs row1's bottom edge the same way regardless of which tab is active) and a new `header h1.active` rule — `background: var(--paper-raised); margin-bottom: -1px; padding-bottom: 1px;` — painting over the exact same 1px the tab buttons already hide. Deliberately **not** reusing `.menu-tab-btn.active`'s own bold-text/blue-border look: the logo staying visually distinct from a tab is the entire point of D-132's original design, so only the minimum needed to interrupt the line (a background patch matching its surroundings) was added, nothing that would make it read as a tab chip.
 
-**Status: built.** Folded into the same deploy pass as D-209/D-210 below.
+**Status: built, deployed, verified live** (screenshotted against `www.planagonia.com/app/`'s own default load — the baseline now breaks cleanly under the logo, matching the Edit/View tabs).
 
 ## D-209 The shipped `apartment` example's `entry_wall` rebuilt as a real perimeter with a real entrance
 
@@ -2867,7 +2867,7 @@ The door's own position (`doorAt: 2.7`, spanning `x: 2.7–3.6`) sits centered i
 
 **Verified locally** (`docs/index.html`'s own "New…" → apartment flow, the real shipped path, not a standalone copy) — screenshotted: a continuous thick wall now runs around the entire room, broken only by the door at the top, swinging down into open floor, clear of every piece of furniture. Zero console errors; `tests/test_examples.py::test_example_has_no_validation_violations[apartment]` (full suite) unaffected — the new walls sit exactly on the room's own former boundary, the same extent the room rect always occupied.
 
-**Status: built.** Deploy and `.deploy-state` commit to follow in the same pass as D-208/D-210.
+**Status: built, deployed, verified live** (`stroke: "none"`/`wall_right`/`wall_bottom`/`wall_left` all confirmed present in the live `apartment` example source via direct fetch against `www.planagonia.com/app/`).
 
 ## D-210 The stack-hint badge's own de-duplication fix (S-042) left a confusing blank line — now a visible placeholder
 
@@ -2877,4 +2877,4 @@ Raised directly, live, against the "utility" example: `haus_1` and `parzelle_1` 
 
 **Existing regression test updated, not just left to fail:** `tests/test_stacked_elements.py::test_the_current_lines_own_redundant_name_is_suppressed_when_already_shown_persistently` asserted `current == [""]` — the literal old behavior this fix changes on purpose. Updated to assert `current == ["(shown above)"]`, same test intent (the current line's own name isn't redundantly repeated), just matching what should actually render there. Full file re-run: 12 passed.
 
-**Status: built.** Deploy and `.deploy-state` commit to follow in the same pass as D-208/D-209.
+**Status: built, deployed, verified live** (`"shown above"` confirmed present in the live `interactivity-module.js` via direct fetch against `www.planagonia.com/app/`).
