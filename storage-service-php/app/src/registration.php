@@ -10,6 +10,16 @@
 // generic 500 — invalid input, WordPress rejecting the username/email as taken, etc.
 class RegistrationException extends Exception {}
 
+// Thrown specifically for an `existing_user_email` collision, kept distinct from a plain
+// RegistrationException so register.php can treat it differently rather than relaying it.
+// A real bug found re-auditing this file: every *other* rejection relays WordPress's own
+// message straight to the visitor, which is fine for "that doesn't look like a valid
+// password" but directly confirms a given email already has an account for this one case
+// specifically — exactly what forgot-password.php's own "identical response whether or
+// not the email was found" already goes out of its way to avoid revealing. register.php
+// catches this one separately and responds exactly like a fresh registration instead.
+class EmailAlreadyRegisteredException extends Exception {}
+
 // WordPress needs *some* username internally (its own core concept, distinct from email
 // or display name) — but there's no reason a visitor should have to invent one just to
 // register. Derived from the email's own local part instead: lowercased, stripped to
@@ -79,10 +89,14 @@ function create_wp_user(array $config, string $email, string $password): array {
         }
 
         $code = is_array($data) ? ($data['code'] ?? '') : '';
+        if ($code === 'existing_user_email') {
+            throw new EmailAlreadyRegisteredException();
+        }
         if ($code !== 'existing_user_login') {
-            // Any other rejection (duplicate email, invalid password, ...) is real and
-            // not fixed by trying a different username — relay WP's own message as-is,
-            // since WP is the actual source of truth for what's valid.
+            // Any other rejection (invalid password, ...) is real and not fixed by trying
+            // a different username — relay WP's own message as-is, since WP is the actual
+            // source of truth for what's valid. Never reaches here for a duplicate email
+            // specifically — that's the enumeration-sensitive case just above.
             $reason = is_array($data) && isset($data['message']) ? $data['message'] : 'Registration failed';
             throw new RegistrationException($reason);
         }

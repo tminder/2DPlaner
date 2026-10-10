@@ -40,6 +40,20 @@ try {
     send_verification_email($config, $email, $wpUser['username'], $token);
 
     send_json(201, ['message' => 'Check your email to confirm your account before signing in.']);
+} catch (EmailAlreadyRegisteredException $e) {
+    // F-059: never let this response distinguish "account created" from "that email
+    // already has one" — same reasoning as forgot-password.php's own identical-response
+    // rule, applied here too. Issues a fresh verification/reset token for the existing
+    // account and emails it — functionally a resend, exactly what a visitor who forgot
+    // they already registered actually needs — then returns the exact same 201 and
+    // message a brand-new registration would.
+    $wpUser = find_wp_user_by_email($config, $email);
+    if ($wpUser) {
+        ensure_user($db, $wpUser['id'], $wpUser['username']);
+        $token = issue_password_reset_token($db, $wpUser['id']);
+        send_verification_email($config, $email, $wpUser['username'], $token);
+    }
+    send_json(201, ['message' => 'Check your email to confirm your account before signing in.']);
 } catch (RegistrationException $e) {
     send_json(400, ['error' => $e->getMessage()]);
 } catch (Throwable $e) {
