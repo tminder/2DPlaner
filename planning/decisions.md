@@ -2911,4 +2911,4 @@ D-211 was built on a misreading of its own brief. Re-marked directly, three roun
 
 **Verified locally at 3x device-pixel-ratio, all three reachable states** (File/logo, Edit, View) — screenshotted and the segments' own measured geometry checked directly: the gap's left/right edges matched the active tab's own `getBoundingClientRect()` exactly in every case, and the two segments together span the full row width otherwise, continuous from the far left edge through the logo, through every tab, across the spacer, to the account icon at the far right.
 
-**Status: built, full suite re-run.** Deploy, GitHub Pages push, and `.deploy-state` commit to follow in the same pass — this time to all three now-confirmed-relevant hosts (`www.planagonia.com/app/`, GitHub Pages, per D-212's own new standing step).
+**Status: built, deployed, verified live on both hosts** — `www.planagonia.com/app/` (screenshotted + segment geometry read directly, matching the active tab's own bounds exactly) and GitHub Pages (`tminder.github.io/2DPlaner/`, confirmed rebuilt with `tab-baseline-seg` present, per D-212's own new standing push step).
