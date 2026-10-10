@@ -46,21 +46,18 @@
      ordinary .menu-tab-btn behaviorally, but keeping its own distinct brand styling below
      rather than looking like a tab -- cursor/hover color are this element's own version of
      a .menu-tab-btn's hover affordance. */
+  /* D-208/D-211: participates in the same per-element baseline D-211 gives every
+     .menu-tab-btn -- its own border-bottom, var(--line) at rest, transparent when .active
+     (menuTabBtns includes "#header-logo", toggled by the exact same JS). Deliberately just
+     a bottom border, no left/right/top/background/radius -- D-132's own "keeping its own
+     distinct brand styling... rather than looking like a tab" stands; this is the minimum
+     needed to participate in the shared baseline, not a tab-chip shape. padding-bottom
+     gives the line the same breathing room from the text a tab's own padding already has. */
   header h1 { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 1.05rem; margin: 0;
     white-space: nowrap; display: flex; align-items: center; gap: 0.4rem; color: var(--ink);
-    cursor: pointer; align-self: flex-end; }
+    cursor: pointer; align-self: flex-end; border-bottom: 1px solid var(--line); padding-bottom: 0.4rem; }
   header h1:hover { color: var(--blue-deep); }
-  /* D-208: reported directly -- the new baseline (D-205) cut cleanly under the logo on
-     every normal page load, since "File" (the logo, data-tab="file") is MENU_TAB_KEY's own
-     default and the logo was never given the same active-merge treatment
-     .menu-tab-btn.active already has, despite the exact same JS toggling .active on it
-     (menuTabBtns includes "#header-logo"). align-self: flex-end (above) makes the logo hug
-     row1's own bottom edge the same way .menu-tab-strip already does, so this can actually
-     reach the line; the merge itself deliberately doesn't borrow .menu-tab-btn.active's
-     look (no border/bold -- D-132's own "keeping its own distinct brand styling... rather
-     than looking like a tab" stands), just enough background to paint over the exact 1px
-     the line would otherwise show through. */
-  header h1.active { background: var(--paper-raised); margin-bottom: -1px; padding-bottom: 1px; }
+  header h1.active { border-bottom-color: transparent; }
   .beta-badge { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 0.62rem;
     font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
     color: var(--amber); background: var(--amber-soft); border-radius: 4px; padding: 0.15rem 0.4rem; }
@@ -124,19 +121,28 @@
   .ribbon-divider { width: 1px; align-self: stretch; margin: 2px 2px; background: var(--line); }
 
   /* D-131: File/Edit/View -- real attached tabs (D-130's own visual ask, kept), the
-     currently-shown one's bottom edge merging into #header-toolbar directly below it.
+     currently-shown one's bottom edge opening directly into #header-toolbar below it.
      Deliberately its own classes (.menu-tab-*), not a reuse of the pre-existing
      .mobile-tabs/.tab-btn (the unrelated code/viewer pane switcher, D-006), so the two
      genuinely different "tabs" concepts in this header never collide or read as one
      feature by accident. */
-  /* Reported directly, against a live screenshot: no horizontal line separated the tab row
-     from the toolbar panel below it, unlike how a real tab/folder-tab look normally reads
-     (a baseline every *inactive* tab's own closed bottom edge sits on, broken only where
-     the active tab opens through it into the panel). align-self: flex-end makes the strip
-     hug row1's own bottom edge -- row1 centers its children by default, and without this
-     the strip (shorter than the h1/account group) would float with dead space below it,
-     leaving the active tab's own merge trick (below) nothing adjacent to actually merge
-     into. */
+  /* D-211: rebuilt again, reported directly against a zoomed screenshot -- the previous
+     approach (a single shared #header-toolbar border-top, with the active tab's own
+     background + margin-bottom: -1px painting over that exact 1px to "hide" it) was
+     fragile in exactly the way a cover-up always is: it relied on the active tab's own box
+     and the toolbar's border landing on the *identical* device pixel, which flex rounding
+     doesn't actually guarantee -- at high zoom this showed as two faint parallel lines
+     ("doubled") instead of one clean line, and the active tab's own line was covered, not
+     genuinely absent. Replaced with a per-element border-bottom: every row1 child that
+     needs to sit "on" the baseline draws its *own* bottom edge -- var(--line) at rest,
+     transparent when .active -- and #header-toolbar no longer draws a line of its own at
+     all. Nothing to misalign, nothing to cover: the line under any one element is either
+     there or it isn't, never two independent declarations landing near each other. The
+     small gaps between tabs (and before/after the strip) simply show no line, the same way
+     a real browser's own tab strip does between tabs -- never "doubled," never a seam to
+     hide. align-self: flex-end makes the strip hug row1's own bottom edge -- row1 centers
+     its children by default, and without this the strip (shorter than the h1/account
+     group) would float with dead space below it. */
   .menu-tab-strip { display: flex; gap: 3px; align-items: flex-end; align-self: flex-end; }
   .menu-tab-btn { font: inherit; font-size: 0.8rem; font-weight: 500; color: var(--ink-soft);
     background: var(--paper); border: 1px solid var(--line);
@@ -153,23 +159,14 @@
      unambiguous, non-positional cue instead of relying on a near-invisible fill contrast. */
   .menu-tab-btn.active { background: var(--paper-raised); color: var(--ink); font-weight: 700;
     border-color: var(--blue); border-bottom-color: transparent; }
-  /* The shown tab's own bottom edge visually merges into #header-toolbar below it -- pulled
-     down 1px, its own border-bottom hidden by the toolbar's own top edge sitting right
-     under it, the classic "attached folder tab" look rather than a floating pill. */
-  .menu-tab-btn.active { margin-bottom: -1px; padding-bottom: calc(0.4rem + 1px); }
 
   /* D-131: a real, always-present second row (D-129's own docked shape) -- what it shows
      switches on hover or click (see the JS at the bottom of this file: entering a tab
      button previews that tab's panel immediately, a short grace period lets the pointer
      travel from the tab down into the toolbar itself without reverting mid-move, and
-     leaving both without clicking reverts to whichever tab was last actually clicked).
-     border-top is the baseline every inactive tab's own now-closed bottom border sits on
-     (see .menu-tab-btn above) -- the active tab's own background + margin-bottom: -1px
-     (below) paints directly over this exact 1px, the actual mechanism the pre-existing
-     "hidden by the toolbar's own top edge" comment already described but which, until now,
-     had no real border here to hide into. */
+     leaving both without clicking reverts to whichever tab was last actually clicked). */
   #header-toolbar { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
-    padding: 0.5rem 1rem; border-top: 1px solid var(--line); }
+    padding: 0.5rem 1rem; }
   .menu-tab-panel[hidden] { display: none; }
   .menu-tab-panel { display: flex; align-items: center; gap: 2px; }
   /* D-172's own #menu-tab-modules is the first .menu-tab-btn ever conditionally hidden --
