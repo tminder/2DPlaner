@@ -2888,3 +2888,13 @@ Reported directly against a zoomed-in screenshot: the line still showed faintly 
 **Verified locally at 3x device-pixel-ratio** (the zoom level the original report was effectively made at) — screenshotted all three reachable active states (File/logo, Edit, View): in every case, the active element shows no line at all beneath it, every inactive element shows exactly one clean line, and nothing anywhere reads as doubled.
 
 **Status: built, deployed, verified live** (screenshotted at 3x device-pixel-ratio against `www.planagonia.com/app/` — no line under the logo, no line under Edit when active, no doubling anywhere).
+
+## D-212 `git push` folded into the standing deploy workflow, closing S-044
+
+Found directly while chasing a user's repeated "still not fixed" report on D-211 that every available check — local `file://` verification, a live fetch against `www.planagonia.com/app/`, a cross-engine (Chromium/WebKit/Firefox) pixel probe, all at high zoom — said was already correct. The actual cause (S-044): `scripts/deploy.sh` only ever pushes to the custom-domain server over SSH; it has no concept of GitHub Pages, the *second* live host `docs/` is deployed to (D-076). `origin/master` was 45 commits and over a day behind local `HEAD` at the point this was found — this entire session's worth of fixes, D-200 through D-211, had never reached the GitHub remote at all, so GitHub Pages (which auto-builds from `master` on push, independent of `scripts/deploy.sh` entirely) was still serving a version from before any of it.
+
+**Fix: `git push origin master` immediately, and folded into this session's own deploy habit going forward — not a change to `scripts/deploy.sh` itself.** The gap was a missing *step* in the overall workflow, not a missing capability: `git push` needs no tooling, and baking an automatic push into a script whose own documented scope (S-032's own design) is specifically "diff local paths against `.deploy-state`, SSH the difference" would quietly widen what that script does without being asked to. Recorded here instead, as the durable instruction this and future sessions should follow: **every deploy pass that touches `docs/` ends with `git push origin master` alongside the SSH deploy**, the same way it already ends with a `.deploy-state` commit — both are "make the record match what's actually live," just for two different hosts.
+
+**Verified:** `git push origin master` ran clean (`f90358d..1e38180`); GitHub Pages rebuild confirmed separately by polling `https://tminder.github.io/2DPlaner/` for D-211's own marker text until it appeared.
+
+**Status: built, verified live.** Closes S-044 in `tech-debt.md`.
