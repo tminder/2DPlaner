@@ -92,7 +92,8 @@ Not a decision to make preemptively — recorded so the next concrete choice tha
 - **Versioning.** Editing a module overwrites it in place at the same URL (deliberate v1 choice, matching `plans.php`'s own `PUT` behavior) — every plan declaring that URL gets the new code silently on its next load. Whether this is the right permanent answer, or whether published/shared modules eventually need real version pinning, is unresolved.
 - **Real public discoverability**, if ever wanted: a public-listing JSON endpoint, and/or actually surfacing user-authored public modules on `/modules/` — both deliberately not built in v1, see D-201.
 - **Any validation/safety check on submitted code** — still none, same as every other external module (F-009's existing, accepted posture).
-- **S-043 (tech-debt.md) tracks this v1's own still-pending live verification** — deployed without exercising it against the real WordPress/MySQL instance.
+
+(Live verification against the real WordPress/MySQL instance — create/edit/delete a module, load it in a real plan — is **not** actually open: D-201's own status line already records it done, end to end, against production. A stale line here previously claimed otherwise, citing a tech-debt number — S-043 — that had already been closed for an unrelated fix (D-184) by the time this entry was written; corrected directly rather than left to keep misleading the next read. Re-confirmed live again, lightly, while fixing this: `modules.php` without a token still returns `401`, `module-code.php` with an unknown id still `404`s, a missing id still `400`s, and CORS still allows the main domain — the backend hasn't silently regressed since D-201.)
 
 ## F-049 The `<main>` content tabs (Code/Viewer/Layers) aren't a standardized, registrable system
 
