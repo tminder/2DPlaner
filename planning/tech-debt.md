@@ -10,10 +10,6 @@ This file holds only *currently open* debt. An entry is removed once it's resolv
 
 `computePositions` and the load-time validation pass (`checkContainment`/`checkCollisions`) walk the *full* tree unconditionally — a `hidden: true` node (D-112) renders nothing, but its position is still resolved and it can still trigger a containment/collision violation naming an element that's currently invisible on screen. Deliberately deferred when `hidden` was built: fixing it means threading a "skip this subtree" check through several existing tree-walks for a case that's cosmetic today (a stray validation message), not a functional bug.
 
-## S-040 `findOwnPropertyLine`'s line-anchored regex can't find a property on a single-line-formatted element
-
-Found live while building D-150: `findOwnPropertyLine` (used by `setPlacementInside`/`toggleFlush`/`clearPlacement`/`reparentElement` to locate `placement`/`flush`) matches `^([ \t]*)key\s*:.*$` with `/gm` — anchored to a physical *line* start. Every shipped example writes one property per line, but nothing in the grammar requires that; an element written entirely on one line (`element x { shape: "rect" ... placement: "inside" ... }`) has `placement:` sitting mid-line, never at a line start, so the regex silently finds nothing. Every caller above then silently no-ops on that property instead of erroring — `clearPlacement`/`reparentElement` still complete (the reparent/position-rewrite itself isn't affected), just leaving a stale `placement`/`flush` behind on a single-line element specifically. Not fixed in D-150 (out of scope for that pass, and shared by D-148 before it) — would need `findOwnPropertyLine` to locate a property by token position instead of a per-line regex.
-
 ## `docs/index.html` (core)
 
 ## S-016 Two independent recursive interpreters over the same AST must be kept in sync by hand

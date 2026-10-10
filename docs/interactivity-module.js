@@ -2217,23 +2217,131 @@
   }
 
   // ---------- F-035: setting placement/flush directly from the context menu ----------
-  // No existing mechanism finds an element's own top-level `key: value` line by text
-  // position — parseValue's STRING branch (docs/index.html) carries no span the way a
-  // numeric literal does (confirmed directly, not assumed). Scans for the first `key:` line
-  // inside the node's own text that ISN'T inside one of its children's own spans, rather
-  // than a naive whole-slice regex — a nested child could have its own same-named property,
-  // and a naive scan would silently rewrite the wrong one.
+  // S-040 fix: locates a property by walking this node's own token stream (core.tokenize),
+  // mirroring parseElementDecl's exact grammar, rather than the line-anchored regex this
+  // used to be (`^key\s*:.*$`) — that one found nothing for a property written mid-line on
+  // a single-line-formatted element, since `key:` never sits at a line start there. Walking
+  // tokens also fixes two latent bugs the regex's own "not inside a child's span" check
+  // never covered: a same-named key nested inside an object-literal *value* (e.g.
+  // `style: { placement: "x" }`) could false-match, since that check only ever looked at
+  // node.children (real child elements), never a value's own nested keys; and a trailing
+  // same-line comment used to get silently deleted along with the old property's value —
+  // untouched now, since a comment is never a token at all (tokenize() already drops it).
+  //
+  // skipExprTokens/skipTermTokens/skipFactorTokens mirror parseExpr/parseTerm/parseFactor
+  // (docs/index.html) exactly — same branches, just advancing a token index instead of
+  // building a tree, so this can only ever agree with what the real parser considers one
+  // expression's own extent.
+  function skipFactorTokens(tokens, pos) {
+    if (tokens[pos].type === "MINUS") return skipFactorTokens(tokens, pos + 1);
+    if (tokens[pos].type === "LPAREN") return skipExprTokens(tokens, pos + 1) + 1; // + 1 past ")"
+    if (tokens[pos].type === "NUMBER") return pos + 1;
+    if (tokens[pos].type === "IDENT") {
+      pos++;
+      while (tokens[pos].type === "DOT") pos += 2; // DOT IDENT, a further path segment
+      return pos;
+    }
+    throw new Error(`Expected a value, got ${tokens[pos].type}`);
+  }
+  function skipTermTokens(tokens, pos) {
+    pos = skipFactorTokens(tokens, pos);
+    while (tokens[pos].type === "STAR" || tokens[pos].type === "SLASH") pos = skipFactorTokens(tokens, pos + 1);
+    return pos;
+  }
+  function skipExprTokens(tokens, pos) {
+    pos = skipTermTokens(tokens, pos);
+    while (tokens[pos].type === "PLUS" || tokens[pos].type === "MINUS") pos = skipTermTokens(tokens, pos + 1);
+    return pos;
+  }
+
+  // Mirrors parseValue/parseArray/parseObjectLiteral (docs/index.html) exactly — same
+  // branches, returning the index right after whatever token the value's own last token is.
+  function skipValueTokens(tokens, pos) {
+    const type = tokens[pos].type;
+    if (type === "LBRACKET" || type === "LBRACE") {
+      // An array's/object's own contents can nest further arrays, objects, or (an array
+      // only) parenthesized expressions — none of those un-balance LBRACKET/LBRACE against
+      // each other, so plain depth-counting over just this one bracket type, from here to
+      // its own match, is exactly the span parseArray/parseObjectLiteral would consume.
+      const close = type === "LBRACKET" ? "RBRACKET" : "RBRACE";
+      let depth = 0, i = pos;
+      do {
+        if (tokens[i].type === type) depth++;
+        else if (tokens[i].type === close) depth--;
+        i++;
+      } while (depth > 0);
+      return i;
+    }
+    if (type === "STRING" || type === "TRUE" || type === "FALSE") return pos + 1;
+    return skipExprTokens(tokens, pos);
+  }
+
+  // tokens[pos] is the ELEMENT token of a *child* declaration — returns the index right
+  // after its own matching "}". Plain LBRACE/RBRACE depth-counting from that child's own
+  // "{" is enough regardless of what's nested inside it (further child elements,
+  // object-literal property values, arrays), since every one of those nests LBRACE/RBRACE
+  // in a properly balanced way by construction — the same established pattern
+  // findObjectSpanAt (docs/index.html, D-149) already uses for its own span-finding.
+  function skipChildElementTokens(tokens, pos) {
+    let depth = 0, i = pos + 2; // tokens[pos+1] is the child's own IDENT, tokens[pos+2] its "{"
+    do {
+      if (tokens[i].type === "LBRACE") depth++;
+      else if (tokens[i].type === "RBRACE") depth--;
+      i++;
+    } while (depth > 0);
+    return i;
+  }
+
   function findOwnPropertyLine(text, node, key) {
-    const re = new RegExp(`^([ \\t]*)${key}\\s*:.*$`, "gm");
-    const slice = text.slice(node.start, node.end);
-    let m;
-    while ((m = re.exec(slice))) {
-      const absStart = node.start + m.index;
-      if (!node.children.some((c) => absStart >= c.start && absStart < c.end)) {
-        return { start: absStart, end: absStart + m[0].length, indent: m[1] };
+    const tokens = core.tokenize(text.slice(node.start, node.end));
+    let i = 3; // past this element's own ELEMENT IDENT LBRACE
+    while (tokens[i].type !== "RBRACE") {
+      if (tokens[i].type === "ELEMENT") {
+        i = skipChildElementTokens(tokens, i);
+        continue;
       }
+      const keyTok = tokens[i];
+      const valueEnd = skipValueTokens(tokens, i + 2); // past IDENT COLON
+      if (keyTok.value === key) {
+        return { start: node.start + keyTok.start, end: node.start + tokens[valueEnd - 1].end, indent: "" };
+      }
+      i = valueEnd;
     }
     return null;
+  }
+
+  // A property being cleared entirely (toggleFlush turning off, renameElement clearing a
+  // label) used to always remove via toLineSpan — safe *only* because the old
+  // findOwnPropertyLine only ever found a property alone on its own line in the first
+  // place. Now that it also finds one sharing a line with other content (a single-line-
+  // formatted element, S-040's whole point), blindly snapping out to full line boundaries
+  // there would delete every other property on that line too, not just this one. Takes the
+  // whole physical line (including its own newline) only when nothing but whitespace sits
+  // on either side of the property on that line; otherwise removes just the property's own
+  // "key: value" text, absorbing one immediately-adjacent space (if there is one) so it
+  // doesn't leave a double space behind.
+  function removablePropertySpan(text, span) {
+    let lineStart = span.start;
+    while (lineStart > 0 && text[lineStart - 1] !== "\n") lineStart--;
+    let lineEnd = span.end;
+    while (lineEnd < text.length && text[lineEnd] !== "\n") lineEnd++;
+    const alone = /^[ \t]*$/.test(text.slice(lineStart, span.start)) && /^[ \t]*$/.test(text.slice(span.end, lineEnd));
+    if (alone) return toLineSpan(text, span.start, span.end);
+    if (text[span.end] === " ") return { start: span.start, end: span.end + 1 };
+    if (text[span.start - 1] === " ") return { start: span.start - 1, end: span.end };
+    return span;
+  }
+
+  // reparentElement/clearPlacement's own "strip placement/flush" step — deleteSpans (S-003's
+  // shared "apply edits to a string" primitive) always expands every span via toLineSpan
+  // first, correct for its own callers (deleting a whole element/connection) but exactly the
+  // over-deletion risk removablePropertySpan above exists to avoid for a single-line
+  // element's property. A dedicated variant rather than a flag threaded through the shared
+  // one — deleteSpans' own callers all want the unconditional expansion, so branching inside
+  // it would just move this same reasoning one level down without simplifying anything.
+  function deletePropertySpans(text, spans) {
+    const edits = spans.map((span) => ({ ...removablePropertySpan(text, span), text: "" }));
+    return applyEditsDescending(text, edits);
   }
 
   function lineIndentAt(text, pos) {
@@ -2355,7 +2463,7 @@
         if (existing) edits.push({ start: existing.start, end: existing.end, text: `${existing.indent}flush: true` });
         else edits.push({ start: afterHeaderLine(text, node), end: afterHeaderLine(text, node), text: `${lineIndentAt(text, node.start)}  flush: true\n` });
       } else if (existing) {
-        const span = toLineSpan(text, existing.start, existing.end);
+        const span = removablePropertySpan(text, existing);
         edits.push({ start: span.start, end: span.end, text: "" });
       }
 
@@ -2385,8 +2493,8 @@
   // F-055: renames the element's own display-facing `label`, not its `id` -- the id is a
   // structural reference other `points`/`connection` lines may depend on throughout the
   // plan, a materially bigger and riskier rename than anything F-055 itself asked for.
-  // Empty input clears the label entirely (toLineSpan's whole-line removal, same shape
-  // toggleFlush's own turning-off branch already uses) rather than writing `label: ""`.
+  // Empty input clears the label entirely (removablePropertySpan, same shape toggleFlush's
+  // own turning-off branch already uses) rather than writing `label: ""`.
   function renameElement(nodeId) {
     withParsedSource((text, base) => {
       const node = base.nodesById[nodeId];
@@ -2399,7 +2507,7 @@
       let newText;
       if (!trimmed) {
         if (!existing) return; // nothing to clear
-        const span = toLineSpan(text, existing.start, existing.end);
+        const span = removablePropertySpan(text, existing);
         newText = text.slice(0, span.start) + text.slice(span.end);
       } else if (existing) {
         newText = text.slice(0, existing.start) + `${existing.indent}label: "${escapePlanString(trimmed)}"` + text.slice(existing.end);
@@ -2454,7 +2562,7 @@
       // provably correct rather than reasoning about two edits that might land on the
       // identical offset (e.g. if `placement` happened to be this node's very first property
       // line, right where a freshly-inserted `position` line would also need to go).
-      const strippedText = deleteSpans(text, propSpans);
+      const strippedText = deletePropertySpans(text, propSpans);
       let strippedBase;
       try { strippedBase = core.parseExpanded(strippedText); } catch (e) { return; }
       const freshNode = strippedBase.nodesById[nodeId];
@@ -2552,7 +2660,7 @@
       if (!propSpans.length) return;
 
       if (!grandparent) {
-        commitSourceEdit(deleteSpans(text, propSpans), `'${nodeId}': placement cleared.`);
+        commitSourceEdit(deletePropertySpans(text, propSpans), `'${nodeId}': placement cleared.`);
         return;
       }
 
