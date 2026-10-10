@@ -20,7 +20,7 @@
   :root {
     color-scheme: light;
     --paper: #f7f4ee; --paper-raised: #ffffff; --ink: #221f1c; --ink-soft: #5b5650;
-    --line: #d8d2c6; --blue: #2c5f7c; --blue-deep: #1e4457; --amber: #b9791f; --amber-soft: #f2dfb8;
+    --line: #d8d2c6; --blue: #2c5f7c; --blue-deep: #1e4457; --blue-soft: #dde8ec; --amber: #b9791f; --amber-soft: #f2dfb8;
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
@@ -121,8 +121,16 @@
     border-radius: 8px 8px 0 0; padding: 0.4rem 0.8rem; cursor: pointer; display: flex;
     align-items: center; gap: 0.3rem; }
   .menu-tab-btn .tab-icon { font-size: 1rem; line-height: 1; }
-  .menu-tab-btn:hover,
-  .menu-tab-btn.active { background: var(--paper-raised); color: var(--ink); border-color: var(--line); }
+  .menu-tab-btn:hover { background: var(--paper-raised); color: var(--ink); border-color: var(--line); }
+  /* Reported directly: the previous active state (background: var(--paper-raised), same
+     color: var(--ink) as :hover) only differed from the resting/inactive tab by an ~8-unit
+     background shift (--paper #f7f4ee vs --paper-raised #fff) -- against the white header
+     behind the whole strip, the *inactive* tab's faint cream fill actually read as more
+     "present" than the active one, which just blended into the header and was legible only
+     via its thin border outline. A colored border + bold label give the open tab its own
+     unambiguous, non-positional cue instead of relying on a near-invisible fill contrast. */
+  .menu-tab-btn.active { background: var(--paper-raised); color: var(--ink); font-weight: 700;
+    border-color: var(--blue); border-bottom-color: transparent; }
   /* The shown tab's own bottom edge visually merges into #header-toolbar below it -- pulled
      down 1px, its own border-bottom hidden by the toolbar's own top edge sitting right
      under it, the classic "attached folder tab" look rather than a floating pill. */
@@ -237,7 +245,14 @@
   .modal .btn-primary:hover { background: #1e4457; }
   .auth-msg { font-size: 0.8rem; margin: 0.6rem 0 0; min-height: 1.1em; }
   .auth-msg.error { color: #a63d34; }
-  .auth-msg.ok { color: #555; }
+  /* F-060: plain muted text used to carry the same weight as any neutral .hint line --
+     easy to miss as the one thing telling a visitor to go check their email. Mirrors
+     profile/index.html's own identical fix. */
+  .auth-msg.ok {
+    color: var(--ink); background: var(--blue-soft); border-left: 3px solid var(--blue);
+    border-radius: 0 6px 6px 0; padding: 0.55rem 0.8rem; display: flex; align-items: flex-start; gap: 0.4rem;
+  }
+  .auth-msg.ok::before { content: "✓"; color: var(--blue); font-weight: 700; flex: 0 0 auto; }
   .modal .toggle-mode { font-size: 0.8rem; margin-top: 1rem; }
   .modal .toggle-mode a { color: #2c5f7c; cursor: pointer; }
 

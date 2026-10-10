@@ -15,21 +15,21 @@
   :root {
     color-scheme: light;
     --paper: #f7f4ee; --paper-raised: #ffffff; --ink: #221f1c; --ink-soft: #5b5650;
-    --line: #d8d2c6; --blue: #2c5f7c; --blue-deep: #1e4457; --amber: #b9791f;
+    --line: #d8d2c6; --blue: #2c5f7c; --blue-deep: #1e4457; --blue-soft: #dde8ec; --amber: #b9791f;
     --amber-soft: #f2dfb8; --danger: #a63d34;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       color-scheme: dark;
       --paper: #191715; --paper-raised: #221f1c; --ink: #f1ece2; --ink-soft: #b5ada0;
-      --line: #3a352c; --blue: #6fa6c4; --blue-deep: #8fbfda; --amber: #e0ab53;
+      --line: #3a352c; --blue: #6fa6c4; --blue-deep: #8fbfda; --blue-soft: #1f3540; --amber: #e0ab53;
       --amber-soft: #4a3c22; --danger: #e28b80;
     }
   }
   :root[data-theme="dark"] {
     color-scheme: dark;
     --paper: #191715; --paper-raised: #221f1c; --ink: #f1ece2; --ink-soft: #b5ada0;
-    --line: #3a352c; --blue: #6fa6c4; --blue-deep: #8fbfda; --amber: #e0ab53;
+    --line: #3a352c; --blue: #6fa6c4; --blue-deep: #8fbfda; --blue-soft: #1f3540; --amber: #e0ab53;
     --amber-soft: #4a3c22; --danger: #e28b80;
   }
 
@@ -91,7 +91,17 @@
 
   .msg { font-size: 0.85rem; margin-top: 0.9rem; }
   .msg.error { color: var(--danger); }
-  .msg.ok { color: var(--ink-soft); }
+  /* F-060: used to be plain var(--ink-soft) text -- identical visual weight to any neutral
+     .hint line on the same form, easy to miss as the one thing telling a visitor what to
+     do next (check their email). A callout-style box (same shape as .callout below, its
+     own accent instead of amber) plus a checkmark reads as an actual confirmation, not more
+     fine print. */
+  .msg.ok {
+    color: var(--ink); background: var(--blue-soft); border-left: 3px solid var(--blue);
+    border-radius: 0 8px 8px 0; padding: 0.7rem 1rem; display: flex; align-items: flex-start; gap: 0.5rem;
+  }
+  .msg.ok::before { content: "✓"; color: var(--blue); font-weight: 700; flex: 0 0 auto; }
+  .msg:empty { display: none; }
 
   .callout {
     background: var(--amber-soft); border-left: 3px solid var(--amber); border-radius: 0 8px 8px 0;
