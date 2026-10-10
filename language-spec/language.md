@@ -765,7 +765,7 @@ historical.
 - [Prototypes/17-module-composition/](../Prototypes/17-module-composition/) — tests D-011's
   third module promise: a module offering a reusable, higher-level building block
   "composed from Element and Connection" — literally the wall-with-a-door example this
-  document has used illustratively throughout. `wall-with-door-module.js` expands one
+  document has used illustratively throughout. `door-module.js` expands one
   compact `compose: "wallWithDoor"` element into the same three-piece wall/door/wall
   structure D-018's shared-corner pattern would otherwise need four corner elements plus
   three polylines to write by hand for one wall segment. Needed exactly one new core hook,
@@ -780,6 +780,6 @@ historical.
   `registerBeforeRender` callback + reindex) — module loading itself depends on a first,
   un-expanded parse to discover which modules a plan even declares, so expansion can't be
   folded into parsing itself without a circular dependency. **The shipped `apartment`
-  example now declares `wall-with-door-module.js` directly** (D-196) — an `entry_wall`
+  example now declares `door-module.js` directly** (D-196) — an `entry_wall`
   element built with `compose: "wallWithDoor"`, demonstrating it in place rather than only
   in this prototype.

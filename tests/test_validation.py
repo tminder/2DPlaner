@@ -270,14 +270,14 @@ element root {
 """,
     )
     violations = validation_violations(app_page)
-    assert any("wall-with-door-module.js" in v for v in violations), violations
+    assert any("door-module.js" in v for v in violations), violations
 
 
 def test_compose_wall_with_door_with_its_module_declared_is_not_reported(app_page):
     load_plan(
         app_page,
         """
-module "wall-with-door-module.js"
+module "door-module.js"
 element root {
   element w {
     compose: "wallWithDoor"
@@ -289,4 +289,4 @@ element root {
 """,
     )
     violations = validation_violations(app_page)
-    assert not any("wall-with-door-module.js" in v for v in violations), violations
+    assert not any("door-module.js" in v for v in violations), violations

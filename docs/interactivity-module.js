@@ -242,7 +242,11 @@
     newElementBtnEl.querySelector(".submenu").addEventListener("click", (e) => {
       const btn = e.target.closest("button[data-preset]");
       if (!btn) return;
-      const preset = STANDARD_ELEMENTS.find((p) => p.idBase === btn.dataset.preset);
+      // D-199: a module-registered preset (core.registerElementPreset, e.g. door-module.js's
+      // own standalone door) lives in core's own elementPresets map, checked second -- the
+      // four built-in generic shapes always win a same-idBase collision, same precedence
+      // registerHeaderAction's own duplicate-id warning establishes elsewhere.
+      const preset = STANDARD_ELEMENTS.find((p) => p.idBase === btn.dataset.preset) ?? core.elementPresets?.get(btn.dataset.preset);
       if (preset) insertStandardElement(preset);
     });
   }
@@ -973,7 +977,7 @@
   // addition to naming it in the message. Always the property *key* token or the
   // element's own *id* token (never a value span — most values don't carry one at all,
   // e.g. a bare STRING) — both are plain IDENT tokens parseElementDecl already keeps
-  // (docs/index.html). A composite-synthesized node (wall-with-door-module.js, D-046)
+  // (docs/index.html). A composite-synthesized node (door-module.js, D-046)
   // won't have either field; these helpers just return no spans for it rather than
   // throwing, so the violation still shows in the panel with no inline mark.
   function idSpan(node) {
@@ -1159,8 +1163,8 @@
           violations.push({ type: "missing-module", message: `'${node.id}': "edgeLengths" is set but "annotations-module.js" isn't declared -- it won't render until it is`, spans: keySpan(node, "edgeLengths") });
         }
       }
-      if (node.props.compose === "wallWithDoor" && !declared.has("wall-with-door-module.js")) {
-        violations.push({ type: "missing-module", message: `'${node.id}': compose: "wallWithDoor" is set but "wall-with-door-module.js" isn't declared -- it won't render until it is`, spans: keySpan(node, "compose") });
+      if (node.props.compose === "wallWithDoor" && !declared.has("door-module.js")) {
+        violations.push({ type: "missing-module", message: `'${node.id}': compose: "wallWithDoor" is set but "door-module.js" isn't declared -- it won't render until it is`, spans: keySpan(node, "compose") });
       }
     }
   }
@@ -1402,7 +1406,7 @@
     let base;
     try {
       // parseExpanded, not the bare parse — this drag frame's own throwaway tree needs
-      // any synthesized composite children (docs/wall-with-door-module.js, D-046) in it
+      // any synthesized composite children (docs/door-module.js, D-046) in it
       // too, or resolving one by id (exactly what's about to happen for the very node
       // being dragged, if it's one of them) throws instead of finding nothing.
       base = core.parseExpanded(dragState.baseText);
@@ -1547,7 +1551,7 @@
   }
 
   // ---------- Compose drag-editability (F-002's other, previously-unattempted half,
-  // D-046) — a synthesized child (docs/wall-with-door-module.js's own _wall_a/_door/
+  // D-046) — a synthesized child (docs/door-module.js's own _wall_a/_door/
   // _wall_b, pushed into the tree by core.registerBeforeRender before this module ever
   // sees it) has no source-text span of its own: it was computed, never typed, so
   // core.nodeDragEdits finds nothing editable in its points and produces no edits at all
@@ -1557,7 +1561,7 @@
   // handled as its own explicit, per-composition-type mechanism rather than a general one
   // — D-046's own framing, not a scope-cut made here. ----------
 
-  // Only wallWithDoor exists right now (docs/wall-with-door-module.js) — this returns the
+  // Only wallWithDoor exists right now (docs/door-module.js) — this returns the
   // owning composite node only for that specific composition, not a general "is this
   // node's parent a composite" check, since there's nothing else yet to generalize from.
   function composeParentOf(node, base) {
@@ -2002,10 +2006,14 @@
   // assuming fill/stroke/strokeWidth all exist unconditionally the way D-162's own first
   // pass did (every one of *its* presets happened to have all three).
   //
-  // Deliberately a plain array, not backed by anything fancier: framed directly as a first
-  // step toward later module-extensibility (F-048/D-157's own already-recorded "a module
-  // can't add to the app" future direction) -- a future registration hook could just push
-  // another entry onto this same array without restructuring anything here.
+  // Deliberately a plain array, not backed by anything fancier -- this was framed as a
+  // first step toward later module-extensibility (F-048/D-157), and D-199 built exactly
+  // that, but as a separate core.registerElementPreset registry (core.elementPresets)
+  // rather than by pushing onto this array directly: a registered preset supplies its own
+  // buildElementText instead of a shape/style config, since a module's own element (e.g.
+  // door-module.js's door, composed from a custom shape kind) generally isn't one of this
+  // language's four generic shapes the way every entry below is. insertStandardElement
+  // below treats the two interchangeably once it has one or the other in hand.
   const STANDARD_ELEMENTS = [
     { idBase: "line", shape: "polyline", points: [[0.3, 0.3], [1.3, 0.3]], style: { stroke: "#666", strokeWidth: 0.02 } },
     { idBase: "rect", shape: "rect", size: [1, 1], style: { fill: "#e8e8e8", stroke: "#666", strokeWidth: 0.02 } },
@@ -2067,7 +2075,14 @@
       const usedIds = new Set(Object.keys(base.nodesById));
       const id = uniqueId(preset.idBase, usedIds);
       const indent = lineIndentAt(text, target.start) + "  ";
-      const elementText = presetElementText(preset, id, indent, core.newLiteralUnit(base.settings));
+      const unit = core.newLiteralUnit(base.settings);
+      // D-199: preset.buildElementText (a module-registered preset) and presetElementText
+      // (the four built-in shapes) return the exact same shape -- an indent-prefixed
+      // `element ${id} { ... }` text block -- so either can be inserted through the
+      // identical container-placement/undo path below with no branching needed beyond this.
+      const elementText = preset.buildElementText
+        ? preset.buildElementText(id, indent, unit)
+        : presetElementText(preset, id, indent, unit);
       const insertAt = afterOpenBrace(text, target);
       const newText = text.slice(0, insertAt) + `\n${elementText}` + text.slice(insertAt);
       commitSourceEdit(newText, `'${id}': added to '${target.id}'.`);

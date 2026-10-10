@@ -75,12 +75,12 @@ WALL_WITH_DOOR_BODY = (
 
 def test_compose_wall_with_door_alone_without_a_declaration_stays_silently_inert(app_page):
     load_plan(app_page, WALL_WITH_DOOR_BODY, declare_core_modules=False)
-    assert app_page.evaluate("loadedExternal.has('wall-with-door-module.js')") is False
+    assert app_page.evaluate("loadedExternal.has('door-module.js')") is False
     assert app_page.locator('[data-id="w_wall_a"]').count() == 0
 
 
 def test_declaring_wall_with_door_module_expands_the_composite(app_page):
-    load_plan(app_page, 'module "wall-with-door-module.js"\n\n' + WALL_WITH_DOOR_BODY, declare_core_modules=False)
+    load_plan(app_page, 'module "door-module.js"\n\n' + WALL_WITH_DOOR_BODY, declare_core_modules=False)
     assert app_page.locator('[data-id="w_wall_a"]').count() == 1
     assert app_page.locator('[data-id="w_door"]').count() == 1
     assert app_page.locator('[data-id="w_wall_b"]').count() == 1
@@ -92,7 +92,7 @@ def test_a_synthesized_segment_id_colliding_with_a_real_sibling_is_disambiguated
     # lookup), and the real sibling must still render under its own, untouched id.
     load_plan(
         app_page,
-        'module "wall-with-door-module.js"\n\n'
+        'module "door-module.js"\n\n'
         'element root {\n' + WALL_WITH_DOOR_BODY + '\n'
         '  element w_wall_a {\n'
         '    shape: "circle"\n'
@@ -108,10 +108,10 @@ def test_a_synthesized_segment_id_colliding_with_a_real_sibling_is_disambiguated
 
 
 def test_wall_with_door_module_is_trusted_and_never_prompts(app_page):
-    assert app_page.evaluate("isTrustedModule('wall-with-door-module.js')") is True
+    assert app_page.evaluate("isTrustedModule('door-module.js')") is True
     dialogs = []
     app_page.on("dialog", lambda d: (dialogs.append(d.message), d.dismiss()))
-    load_plan(app_page, 'module "wall-with-door-module.js"\n\n' + WALL_WITH_DOOR_BODY, declare_core_modules=False)
+    load_plan(app_page, 'module "door-module.js"\n\n' + WALL_WITH_DOOR_BODY, declare_core_modules=False)
     assert dialogs == []
 
 

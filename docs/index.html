@@ -960,7 +960,7 @@ module "interactivity-module.js"
 module "view-module.js"
 module "code-highlight-module.js"
 module "hierarchy-module.js"
-module "wall-with-door-module.js"
+module "door-module.js"
 
 settings {
   version: 1
@@ -1407,7 +1407,7 @@ const EXAMPLE_LABELS = { blank: "Blank", apartment: "Studio Apartment", utility:
 // clear that's exactly what "a module loaded that doesn't appear in the code" meant from the
 // plan author's own point of view -- the property-inference WAS the bug, not a caching
 // artifact. grid/annotations/wall-with-door go back to needing an explicit `module "..."`
-// line, same as any other module -- including S-025's own wall-with-door-module.js, no
+// line, same as any other module -- including S-025's own door-module.js, no
 // longer a special case (every one of them is equally "needs the author to ask for it," not
 // inconsistent).
 //
@@ -1432,12 +1432,12 @@ const EXAMPLE_LABELS = { blank: "Blank", apartment: "Studio Apartment", utility:
 // (F-014) always inserts itself as the SVG's very first child regardless of callback order,
 // and hierarchy-module.js renders into its own separate #hierarchy-panel slot entirely
 // outside the SVG -- neither one's position here affects anything, kept only for a stable,
-// readable order. wall-with-door-module.js isn't here: it runs via registerBeforeRender, not
+// readable order. door-module.js isn't here: it runs via registerBeforeRender, not
 // onRendered, so it has no ordering constraint relative to any of these -- see
 // requiredModulesFor below, which appends it (and any other declared module) after.
 const ORDERED_MODULES = ["grid-module.js", "annotations-module.js", "interactivity-module.js", "view-module.js", "code-highlight-module.js", "hierarchy-module.js"];
 
-const TRUSTED_MODULES = [...ORDERED_MODULES, "wall-with-door-module.js"];
+const TRUSTED_MODULES = [...ORDERED_MODULES, "door-module.js"];
 
 // D-195: purely what the plan's own text declares, no force-included set -- ORDERED_MODULES'
 // fixed relative order applied to whichever of its own entries the plan actually declared,
@@ -1753,6 +1753,11 @@ const declinedExternal = new Set();
 // (the overwhelmingly common case: a module registers its button once at load time, see
 // D-172's own "deliberately stateless" design).
 const headerActionsByModule = new Map();
+// D-199: same shape as headerActionsByModule just above, for registerElementPreset below --
+// a module that creates its own kind of element (e.g. a composed door) can add a matching
+// "New Element" flyout entry, auto-removed when the module itself is torn down rather than
+// relying on its own cleanup to remember calling unregister().
+const elementPresetsByModule = new Map();
 let currentlyLoadingModule = null;
 
 function deactivateRemovedModules(currentModuleNames) {
@@ -1768,6 +1773,11 @@ function deactivateRemovedModules(currentModuleNames) {
         for (const unregisterAction of actions) unregisterAction();
         headerActionsByModule.delete(name);
       }
+      const presets = elementPresetsByModule.get(name);
+      if (presets) {
+        for (const unregisterPreset of presets) unregisterPreset();
+        elementPresetsByModule.delete(name);
+      }
     }
   }
 }
@@ -1775,7 +1785,7 @@ function deactivateRemovedModules(currentModuleNames) {
 function isUrlLike(name) { return name.includes("/") || name.endsWith(".js") || name.includes("://"); }
 
 // The modules this app ships itself (TRUSTED_MODULES — ORDERED_MODULES plus
-// wall-with-door-module.js) run with the same trust as core — a plan declaring one of these
+// door-module.js) run with the same trust as core — a plan declaring one of these
 // by name never prompts, whether core force-injected it or the plan's own text declared it
 // explicitly.
 // Anything else URL-like is code from wherever the plan's author (often an AI, D-003) pointed it,
@@ -2722,6 +2732,55 @@ function registerHeaderAction({ id, label, title, onClick, tab = "modules", posi
   return result;
 }
 
+// D-199: a module that creates its own kind of element (door-module.js's own standalone
+// door, F-054) can add a matching entry to the header's own "New Element" flyout -- the
+// exact same shape registerHeaderAction above already established (DOM insertion here in
+// core, since core owns #new-element-btn's slot; the actual *meaning* of a click supplied
+// by the registering module), auto-removed via elementPresetsByModule/currentlyLoadingModule
+// the same way headerActionsByModule already is.
+//
+// buildElementText(id, indent, unit) returns the full `${indent}element ${id} { ... }` text
+// block, indent-prefixed, exactly presetElementText's own shape (interactivity-module.js) --
+// so interactivity-module.js's own insertStandardElement can call either one interchangeably
+// and a registered preset gets the exact same container-placement/indent/undo handling
+// Line/Rectangle/Circle/Polygon already have, for free, with no duplicated insertion logic
+// here or in the registering module.
+const elementPresets = new Map();
+function registerElementPreset({ idBase, label, swatchHtml, buildElementText }) {
+  const submenuEl = document.querySelector("#new-element-btn .submenu");
+  if (!submenuEl) {
+    console.warn(`registerElementPreset: '#new-element-btn .submenu' not found -- ignoring '${idBase}'.`);
+    return { unregister: () => {} };
+  }
+  // Checked against the live DOM, not just elementPresets -- also catches a collision with
+  // one of the four built-in presets (Line/Rectangle/Circle/Polygon, static HTML in
+  // docs/index.html's own header), which elementPresets itself has no idea exist.
+  if (submenuEl.querySelector(`button[data-preset="${CSS.escape(idBase)}"]`)) {
+    console.warn(`registerElementPreset: '${idBase}' is already registered -- ignoring the duplicate.`);
+    return { unregister: () => {} };
+  }
+  const li = document.createElement("li");
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.dataset.preset = idBase;
+  btn.innerHTML = `${swatchHtml ?? '<span class="preset-swatch"></span>'}${escapeHtml(label)}`;
+  li.appendChild(btn);
+  submenuEl.appendChild(li);
+  elementPresets.set(idBase, { idBase, buildElementText });
+
+  const result = {
+    unregister() {
+      li.remove();
+      elementPresets.delete(idBase);
+    },
+  };
+  if (currentlyLoadingModule) {
+    if (!elementPresetsByModule.has(currentlyLoadingModule)) elementPresetsByModule.set(currentlyLoadingModule, new Set());
+    elementPresetsByModule.get(currentlyLoadingModule).add(result.unregister);
+  }
+  return result;
+}
+
 window.PlanCore = {
   parse, parseExpanded, render, tokenize,
   numOf, isEditable, formatNumber, formatMeasurement, getDisplayUnit, FT_TO_M, newLiteralUnit,
@@ -2732,6 +2791,8 @@ window.PlanCore = {
   rerender,
   registerBeforeRender,
   registerHeaderAction,
+  registerElementPreset,
+  elementPresets,
   commitUndoStep,
   onRendered: (cb) => {
     renderedCallbacks.push(cb);

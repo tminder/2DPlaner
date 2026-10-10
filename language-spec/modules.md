@@ -18,7 +18,7 @@ app — reuses that architecture verbatim: `docs/index.html` is core (parse/rend
 Documented here in depth: `docs/interactivity-module.js` (D-031),
 `docs/annotations-module.js` (D-039), `docs/code-highlight-module.js` (D-043),
 `docs/hierarchy-module.js` (D-112), `docs/grid-module.js` (F-014),
-`docs/wall-with-door-module.js` (D-046/D-071), and `docs/view-module.js` (D-198) — every one
+`docs/door-module.js` (D-046/D-071), and `docs/view-module.js` (D-198) — every one
 of them loads only when the plan's own text literally declares it (D-175, extended to all
 six pre-D-198 modules by D-195, see below): the same `module "..."` mechanism D-020 always
 had for any module, with no force-injected exception left for any of them. Module loading is
@@ -35,7 +35,7 @@ directly by [planning/core-aims.md](../planning/core-aims.md)'s Aim 3:
   unconditional; never a module, never declared, never optional.
 - **Wahl (own)** — every module this app ships itself: `interactivity-module.js`,
   `code-highlight-module.js`, `hierarchy-module.js`, `grid-module.js`,
-  `annotations-module.js`, `wall-with-door-module.js`, `view-module.js`. Declared by a bare
+  `annotations-module.js`, `door-module.js`, `view-module.js`. Declared by a bare
   `module "<name>.js"` line and run with full trust — no `confirm()` prompt
   (`TRUSTED_MODULES`, see Trust model below) — because the code is reviewed the same way
   core itself is, not fetched from anywhere untrusted.
@@ -98,7 +98,7 @@ three holdouts by D-195)** — the exact same mechanism, no exceptions left betw
 them. A plan using `settings.grid` without declaring `module "grid-module.js"`, or
 `label`/`dimensions`/`edgeLengths`/`settings.showConnections` without declaring
 `module "annotations-module.js"`, or `compose: "wallWithDoor"` without declaring
-`module "wall-with-door-module.js"` — or simply never declaring
+`module "door-module.js"` — or simply never declaring
 `interactivity-module.js`/`code-highlight-module.js`/`hierarchy-module.js` at all — gets
 exactly nothing for that property or that capability: silently inert, a known and accepted
 tradeoff, not a bug.
@@ -110,7 +110,7 @@ replacing its own earlier click-triggered load, D-126), on the reasoning that th
 hosted editor itself, not a feature a plan opts into, and there was no plan-content signal to
 gate them on the way grid/annotations/wall-with-door each had one.** D-195 removed that
 exception: a bare declaration is itself a sufficient signal — no plan-content property is
-needed, the same way `wall-with-door-module.js`'s own `module "..."` line was always enough
+needed, the same way `door-module.js`'s own `module "..."` line was always enough
 on its own. Every `EXAMPLES` entry in `docs/` (including `blank`) now declares all three
 directly, so the shipped experience is unchanged; a plan that deletes those lines loses
 click/drag/select, syntax highlighting, and the Layers panel, as a deliberate, informed
@@ -225,6 +225,8 @@ every other interactive behavior live entirely in a loaded module, never in core
 | `rerender(opts)` | Re-parses `sourceEl.value`, re-runs the module-list diff (see Lifecycle), re-renders, and notifies every `onRendered` callback. `opts.preserveViewBox: true` keeps the current auto-fit viewBox instead of re-fitting to the new content — a drag's own repeated re-renders pass this so the camera doesn't jump mid-drag; a real content edit doesn't, so the view re-fits (D-031). |
 | `onRendered(cb)` | Registers `cb(program, result)` to run after every `rerender()`. Returns an unsubscribe function — required for any module with persistent state, or its callback keeps firing after the module has been torn down. |
 | `registerModuleCleanup(name, cleanupFn)` | Registers this module's own teardown; see Lifecycle above. |
+| `registerElementPreset({ idBase, label, swatchHtml, buildElementText })` | D-199: adds an entry to the header's own "New Element" flyout. `buildElementText(id, indent, unit)` returns the new element's full, indent-prefixed source text; core handles DOM insertion and auto-removes the entry when the registering module is torn down. See "The door module" below for a real use. |
+| `elementPresets` | The live `Map<idBase, {idBase, buildElementText}>` of every currently-registered preset (built-in and module-registered alike are looked up the same way by `interactivity-module.js`'s own `insertStandardElement`). |
 
 Notably **not** in this API, on the judgment that it's interactivity-specific rather than
 something core should need to know exists: adjacency/contact-point geometry, connect/
@@ -238,8 +240,8 @@ recognize itself (`rect`/`circle`/`polyline`/`polygon`): `window.PlanModules[sha
 ownAbs, M, { numOf, idAttr })`, expected to return the SVG markup for that node. A module
 adds a shape kind by assigning to that global before the plan renders. Validated by
 [Prototypes/12-module-loading/](../Prototypes/12-module-loading/)'s `star-tool` (internal)
-and an external equivalent; **no module currently shipped in `docs/` uses this** — it's
-tested, carried-over machinery, not something the hosted app currently exercises.
+and an external equivalent; **first exercised by the hosted app itself in D-199** —
+`docs/door-module.js`'s own `doorSwing` (see below), tested-but-unused machinery until then.
 
 ## The interactivity module
 
@@ -482,38 +484,71 @@ alongside the setting automatically (`ensureModuleDeclared()`, `docs/index.html`
 editing `settings.grid` directly into the code pane still needs the `module "..."` line
 written by hand too, same as any other module.
 
-## The wall-with-door module
+## The door module
 
-`docs/wall-with-door-module.js` (D-046, D-071) is F-002's third module promise — a reusable,
-higher-level building block "composed from Element and Connection," not a new fundamental
-primitive:
+`docs/door-module.js` (D-046, D-071, renamed from `wall-with-door-module.js` by D-199) is
+F-002's third module promise — a reusable, higher-level building block "composed from
+Element and Connection," not a new fundamental primitive:
 
 ```
 element w { compose: "wallWithDoor" from: [0m,0m] to: [5m,0m] doorAt: 2m doorWidth: 0.9m }
 ```
 
-expands into three ordinary `polyline` children (`w_wall_a`, `w_door`, `w_wall_b`) — the same
-shape D-018's shared-corner pattern would otherwise need four corner elements plus three
-polylines to write by hand for one wall segment. The shipped `apartment` example declares
-this module directly (`entry_wall`, D-196) rather than hand-writing the equivalent.
+expands into three children — `w_wall_a`/`w_wall_b` (ordinary `polyline`s) and `w_door`, a
+`doorSwing`-shaped node (D-199, see below) — the same shape D-018's shared-corner pattern
+would otherwise need four corner elements plus three polylines to write by hand for one wall
+segment. The shipped `apartment` example declares this module directly (`entry_wall`,
+D-196) rather than hand-writing the equivalent.
+
+**`doorSwing` (D-199/F-054) — a new shape kind this module registers
+(`window.PlanModules.doorSwing`, see "Adding a shape kind" above), the standard
+architectural door symbol: a quarter-circle swing arc from the hinge point, not the dashed
+line across the gap this module used to draw.** Reads `position` (the hinge), `width`,
+`rotation` (degrees clockwise, matching `rect`'s own D-141 convention), and `swing`
+(`"left"`, the default, or `"right"` — which side the arc bulges toward) directly off the
+node; none of these need core's own awareness, the same way `checkUnrecognizedShapes`/
+`checkUnsupportedProperties` (`interactivity-module.js`) already treat any shape with a
+matching `window.PlanModules` entry as fully valid, custom properties included.
+
+**A standalone door, placeable on its own — not only as part of `wallWithDoor` (D-199/F-054)
+— is just `shape: "doorSwing"` directly on an ordinary element, no `compose` needed at
+all:**
+
+```
+element d1 { shape: "doorSwing" position: [2m, 3m] width: 0.9m rotation: 0 swing: "left" }
+```
+
+Its `position` is a real, author-editable literal (unlike the `wallWithDoor` composite's own
+synthesized `_door` child, whose hinge point is computed fresh from `from`/`to`/`doorAt`
+every render) — it drags/selects through the exact same generic path any other positioned
+element does, no composite-specific drag handling needed for it.
+
+**Registered into the header's own "New Element" flyout (D-199)** — `core.registerElementPreset`
+(new in `docs/index.html`, see the core API table above), the same shape
+`registerHeaderAction` already has for header buttons: a module supplies a `buildElementText`
+callback: returning the new element's own source text; core owns the DOM (inserting a `<li>`
+into `#new-element-btn`'s submenu) and the auto-removal when the module itself is torn down.
+`interactivity-module.js`'s own `insertStandardElement` treats a registered preset and one of
+its four built-in ones (Line/Rectangle/Circle/Polygon) interchangeably once it has either in
+hand, so a registered preset gets the exact same container-placement/indent/undo handling for
+free.
 
 **Runs via `core.registerBeforeRender`, not `core.onRendered`, the only module here that
-does** — its synthesized children are pushed into the tree *before* core ever renders, so
-rendering itself needs zero composition-specific code: the expanded polylines are
-indistinguishable from ones typed directly into the plan, drag-editable the same way
-(`interactivity-module.js`'s own `composeDragEdits`, a per-composition-type backward-solve
-this module's own expansion has to stay the mirror image of).
+does** — `wallWithDoor`'s own synthesized children are pushed into the tree *before* core
+ever renders, so rendering itself needs zero composition-specific code: the expanded
+children are indistinguishable from ones typed directly into the plan, drag-editable the
+same way (`interactivity-module.js`'s own `composeDragEdits`, a per-composition-type
+backward-solve this module's own expansion has to stay the mirror image of — unaffected by
+the `_door` child's new shape, since `composeDragEdits` matches it by id suffix, not by what
+it renders as).
 
-**Needs an explicit `module "wall-with-door-module.js"` declaration (D-175)** — the same as
+**Needs an explicit `module "door-module.js"` declaration (D-175)** — the same as
 `grid-module.js`/`annotations-module.js` above, no exceptions between any of the three
 anymore. `compose: "wallWithDoor"` with no declaration does nothing; nothing currently warns
 an author if that happens, the same gap every one of these three now shares
 ([planning/tech-debt.md](../planning/tech-debt.md) S-043).
 
-**Known limitation, self-admitted, not yet fixed:** the composite's own `position` isn't
-factored into `from`/`to` — both are treated as already being in the composite's parent's
-own local space. A `wallWithDoor` element nested somewhere with a non-zero `position` will
-likely place its segments wrong ([planning/tech-debt.md](../planning/tech-debt.md) S-028).
+**S-028, investigated directly and found not to be a real bug ([D-190](../planning/decisions.md#d-190-s-028-investigated-wall-with-door-modulejss-own-composite-already-handles-a-non-zero-position-correctly--no-bug-found)):** an earlier version of this document claimed the composite's own `position` "isn't factored into `from`/`to`," self-admitted as broken for a nested, non-zero `position`. Checked live, including two levels of ancestor position stacked on top of the composite's own: it already comes out exactly right with no special-casing at all.
 
 ## Known seams
 
