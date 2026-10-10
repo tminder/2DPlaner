@@ -817,7 +817,7 @@
       <input type="text" id="modal-username" autocomplete="username" required>
       <label for="modal-password">Password</label>
       <input type="password" id="modal-password" autocomplete="current-password" required>
-      <p class="hint">Not the password you chose when registering — the real sign-in credential was generated for you once you verified your email, and shown once on that confirmation page alongside your username.</p>
+      <p class="hint">The credential shown on your confirmation page after verifying your email, alongside your username — not something you chose yourself.</p>
       <button type="submit" class="btn-primary">Sign in</button>
       <p id="app-signin-msg" class="auth-msg" role="status"></p>
       <p class="toggle-mode"><a id="auth-modal-forgot" href="#">Forgot your password?</a></p>
@@ -825,9 +825,7 @@
     <form id="app-register-form" hidden>
       <label for="modal-reg-email">Email</label>
       <input type="text" id="modal-reg-email" autocomplete="email" inputmode="email" required>
-      <label for="modal-reg-password">Password</label>
-      <input type="password" id="modal-reg-password" autocomplete="new-password" minlength="8" required>
-      <p class="hint">At least 8 characters. No username to invent — we'll assign you one and show it on the confirmation page after you verify your email; you won't need this password again day to day, since signing in uses a separate credential generated at that point.</p>
+      <p class="hint">No password to choose, and no username to invent — confirm your email and we'll show you a ready-to-use sign-in credential on the next page.</p>
       <!-- Full absolute URL, not a relative /terms/ -- docs/index.html is multi-homed
            (GitHub Pages, www.planagonia.com/app/, test.planagonia.com, D-051), and only
            the main domain actually has a /terms/ page. -->
@@ -980,7 +978,6 @@
     registerForm.addEventListener("submit", async function (e) {
       e.preventDefault();
       var email = document.getElementById("modal-reg-email").value.trim();
-      var password = document.getElementById("modal-reg-password").value;
       var msgEl = document.getElementById("app-register-msg");
       msgEl.className = "auth-msg";
       msgEl.textContent = "Creating your account…";
@@ -988,7 +985,7 @@
         var res = await fetch(`${CLOUD_API_BASE}/register.php`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: email, password: password }),
+          body: JSON.stringify({ email: email }),
         });
         var body = await res.json().catch(function () { return {}; });
         if (!res.ok) throw new Error(body.error || `Registration failed (${res.status})`);
