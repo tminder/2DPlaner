@@ -126,3 +126,7 @@ Raised directly re-auditing `storage-service-php/app/src/registration.php`. Its 
 
 (This entry originally also covered an email-enumeration asymmetry between `/register.php` and `/forgot-password.php` — fixed, see [decisions.md D-200](decisions.md#d-200-f-059s-email-enumeration-half-fixed-registerphp-no-longer-confirms-an-email-is-already-taken).)
 
+## F-060 The post-registration success message is too easy to miss
+
+Raised directly while live-testing D-200's email-enumeration fix: after submitting the register form, "Check your email to confirm your account before signing in." is the *only* thing telling a visitor what to do next — and it renders as a small, muted-grey `<p class="msg ok">` (`profile/index.html`'s `.msg.ok { color: var(--ink-soft) }`, `docs/index.html`'s own auth-modal equivalent `.auth-msg.ok { color: #555 }`), the exact same visual weight as a neutral hint line elsewhere on the same form, with no background, border, icon, or other success-state treatment to make it read as "this actually worked, go check your inbox now" rather than just more fine print. Not designed: the actual fix — a more prominent success treatment (closer to `profile/index.html`'s own `.callout` box, or an icon/color change distinct from `.msg.error`'s own red), and whether it should also replace the form entirely rather than leaving it sitting there still showing the just-submitted email/password fields.
+
