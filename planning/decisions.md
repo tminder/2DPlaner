@@ -3003,3 +3003,17 @@ Raised directly, three concrete complaints: the homepage's header menu is overlo
 **Tests:** full suite (313 tests) re-run after the `docs/index.html` change — green.
 
 **Status: built, deployed to all four affected targets (`docs`, `site-docs`, `profile`, `homepage`), byte-verified (61 files), live-confirmed on both hosts** — `www.planagonia.com` (nav text, `logo-mark` present on both the homepage and the App, the new favicon's own path data, the OG image's new byte size) and GitHub Pages (confirmed rebuilt with `logo-mark` present), pushed.
+
+## D-220 F-070 built: the blog index gets filterable categories, reusing a label every post already carried
+
+Picked up directly on request. Confirmed first that `/blog/` already was an overview page (a reverse-chronological list) — the actual gap, clarified directly with the user, was no way to browse or filter by topic.
+
+**No new taxonomy invented — a real, already-deliberate one was already sitting unused.** Every post page's own `<p class="eyebrow">` already classified it: "Product update" (5 posts), "Design notes" (the toolbar-redesign post), "Behind the scenes" (the two-AIs stress-test post) — never surfaced on the index itself, which only ever showed a date.
+
+**`homepage/blog/index.html`:** each `.post-card` gained a `data-category` attribute matching its own page's eyebrow, shown inline next to the date ("October 7, 2026 · Product update"); three filter pills plus "All" above the list toggle `[hidden]` on non-matching cards via a plain click handler — no dependency, no new URLs, the same vanilla-JS pattern this file's own mobile-nav toggle and cookie notice already use.
+
+**Deliberately client-side only, no per-category archive pages** — F-070's own text had already flagged the tension (more indexable surface area vs. more thin pages competing for a small site's limited topical relevance); not worth resolving for a 7-post blog with no real demand signal yet.
+
+**Verified locally before deploying:** screenshotted the unfiltered list and, after clicking "Behind the scenes," confirmed via direct DOM query that exactly the one matching card (`Two AIs, One Camper Van`) remained visible.
+
+**Status: built, deployed, byte-verified, live-confirmed** (`www.planagonia.com/blog/`, `data-filter="behind-the-scenes"` and its label present via direct fetch) and pushed. Closes F-070 in `open-questions.md`.
