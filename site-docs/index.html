@@ -70,7 +70,7 @@
     border-radius: 4px; font-size: 0.88em;
   }
   .wrap { max-width: 1160px; margin: 0 auto; padding: 0 1.5rem; }
-  /* Same fixed chrome width as every other site page (Homepage/Profile) — see
+  /* Same fixed chrome width as every other site page (Homepage/Account) — see
      homepage/index.html's own comment on this rule for why it's separate from .wrap. */
   .wrap-chrome { max-width: 1080px; margin: 0 auto; padding: 0 1.5rem; }
 
@@ -203,7 +203,7 @@
       <a href="/docs/">Docs</a>
       <a href="/modules/">Modules</a>
       <a href="/blog/">Blog</a>
-      <a href="/profile/">Profile</a>
+      <a href="/account/">Account</a>
     </nav>
   </header>
 </div>
@@ -379,7 +379,7 @@
         <h3>Custom (external) modules</h3>
         <p>A module doesn't have to be one of this app's own built-in ones — <code>module</code> also accepts a full URL, fetched and run alongside whatever else a plan declares:</p>
         <pre class="code-block"><span class="k">module</span> <span class="s">"https://example.com/campervan-kit.js"</span></pre>
-        <p>A module loaded this way can add new rendering (a shape kind the core language doesn't have), new interactivity, or a reusable higher-level building block composed from ordinary elements and connections — a "wall with a door" that expands from a few parameters instead of being written out corner by corner, for example (see the Studio Apartment example below). Browse what other authors have published at <a href="/modules/">planagonia.com/modules</a>, or sign in and write your own from the <a href="/profile/">Profile</a> page's "Your modules" dashboard — paste in the JavaScript and you get a stable URL back to declare with <code>module "..."</code>, the same as any other module.</p>
+        <p>A module loaded this way can add new rendering (a shape kind the core language doesn't have), new interactivity, or a reusable higher-level building block composed from ordinary elements and connections — a "wall with a door" that expands from a few parameters instead of being written out corner by corner, for example (see the Studio Apartment example below). Browse what other authors have published at <a href="/modules/">planagonia.com/modules</a>, or sign in and write your own from the <a href="/account/">Account</a> page's "Your modules" dashboard — paste in the JavaScript and you get a stable URL back to declare with <code>module "..."</code>, the same as any other module.</p>
         <div class="callout">
           <strong>You'll be asked before it loads</strong>
           The first time a plan declares a module that isn't one of this app's own built-in ones, the app asks whether to trust the URL before fetching and running it — module code runs with full access to the page, the same as any script you'd choose to add yourself, so only accept one from somewhere you actually trust.
@@ -390,7 +390,7 @@
       <section id="saving">
         <h2>Saving &amp; the cloud</h2>
         <p>Every plan you touch is saved automatically in your browser — no account needed. The header's <strong>Open</strong> and <strong>New</strong> buttons each open a full picker with a live preview of every plan or example, so switching or starting one means seeing it first, not just a name in a list. Use <em>Import…</em> to bring in a plan file, and <em>Export</em> to get the current one back out — as a plan file, a PNG, or an SVG.</p>
-        <p>Sign in (top of the app, or on the <a href="/profile/">Profile</a> page) to also explicitly push the plan you're working on to the cloud, or pull one you saved earlier back in — useful for picking up the same plan on a different device. This is optional and separate from the automatic local save, which always happens regardless of whether you're signed in. Don't have an account yet? Create one directly on the <a href="/profile/">Profile</a> page — you'll get an email to confirm it before you can sign in.</p>
+        <p>Sign in (top of the app, or on the <a href="/account/">Account</a> page) to also explicitly push the plan you're working on to the cloud, or pull one you saved earlier back in — useful for picking up the same plan on a different device. This is optional and separate from the automatic local save, which always happens regardless of whether you're signed in. Don't have an account yet? Create one directly on the <a href="/account/">Account</a> page — you'll get an email to confirm it before you can sign in.</p>
       </section>
 
       <section id="examples">
@@ -851,7 +851,7 @@
 <div class="wrap-chrome">
   <footer class="site">
     <span>Planagonia — a 2D plan generator.</span>
-    <span><a href="/app/">Open the app</a> · <a href="/docs/">Docs</a> · <a href="/modules/">Modules</a> · <a href="/blog/">Blog</a> · <a href="/profile/">Profile</a> · <a href="/impressum/">Impressum</a></span>
+    <span><a href="/app/">Open the app</a> · <a href="/docs/">Docs</a> · <a href="/modules/">Modules</a> · <a href="/blog/">Blog</a> · <a href="/account/">Account</a> · <a href="/impressum/">Impressum</a></span>
   </footer>
 </div>
 

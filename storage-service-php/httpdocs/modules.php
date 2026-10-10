@@ -1,5 +1,5 @@
 <?php
-// F-056: CRUD for a signed-in user's own modules, for profile/index.html's dashboard —
+// F-056: CRUD for a signed-in user's own modules, for account/index.html's dashboard —
 // structurally copied from plans.php (same auth gate, same query-string routing, same
 // rate-limit shape) since this is the same kind of per-user-scoped resource plans already
 // are. The actual public serving of a module's own code (no auth at all, by design) is a
@@ -30,7 +30,7 @@ try {
     send_json(500, ['error' => 'Internal error']);
 }
 
-// Same generosity as plans.php's own limit — this is only ever called from the profile
+// Same generosity as plans.php's own limit — this is only ever called from the account
 // dashboard (list/create/edit/delete), never on every keystroke.
 enforce_rate_limit($db, 'modules:' . $userId, 300, 900);
 

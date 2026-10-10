@@ -43,7 +43,7 @@ SCP="scp -i $SSH_KEY -P $SSH_PORT"
 TARGETS=(
   "docs:docs:/httpdocs/app"
   "site-docs:site-docs:/httpdocs/docs"
-  "profile:profile:/httpdocs/profile"
+  "account:account:/httpdocs/account"
   "homepage:homepage:/httpdocs"
   "storage-service-php-httpdocs:storage-service-php/httpdocs:/subdomains/api/httpdocs"
   "storage-service-php-app:storage-service-php/app:/subdomains/api/app"

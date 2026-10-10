@@ -46,7 +46,7 @@ return [
     'bot_username' => 'change-me',
     'bot_password' => 'change-me-too',
 
-    // The main site — used only to build the profile-page link shown after a successful
+    // The main site — used only to build the account-page link shown after a successful
     // verification (see httpdocs/verify.php). Not where verify.php itself lives.
     'site_url' => 'https://www.planagonia.com',
 

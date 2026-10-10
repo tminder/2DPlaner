@@ -1,2 +1,7 @@
 RewriteEngine On
 RewriteRule ^sitemap\.xml$ sitemap.php [L]
+
+# profile/ renamed to account/ -- "Profile" never fit what this page actually is (sign-in
+# + account management, no public-facing bio/avatar); redirects any already-shared /profile/
+# link or bookmark rather than letting it quietly break.
+RedirectMatch 301 ^/profile/?(.*)$ /account/$1

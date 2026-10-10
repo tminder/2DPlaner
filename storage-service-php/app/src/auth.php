@@ -22,7 +22,7 @@ function session_ttl_seconds(): int { return 60 * 60; } // 1 hour — D-021's "s
 function issue_session_token(array $config, array $user): string {
     // F-058: 'name' (WordPress's own editable display name, falling back to the username
     // when unset -- a fresh account's name defaults to its username until changed) rides
-    // along from login so profile/index.html's and docs/index.html's own "Signed in as X"
+    // along from login so account/index.html's and docs/index.html's own "Signed in as X"
     // can show it without a separate round-trip. Goes stale only the same way 'username'
     // already does -- for this token's own 1-hour TTL, until the next login re-reads it
     // fresh from WordPress.

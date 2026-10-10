@@ -108,7 +108,7 @@
 
   h2.section-title { font-size: 1.3rem; margin: 0 0 0.8rem; }
 
-  /* F-064: the signed-in "Your modules" dashboard, merged in from profile/index.html so
+  /* F-064: the signed-in "Your modules" dashboard, merged in from account/index.html so
      browsing what's available and managing your own both live on this one page. */
   section.your-modules { margin: 0 0 3.5rem; }
   .btn {
@@ -218,7 +218,7 @@
       <a href="/docs/">Docs</a>
       <a href="/modules/">Modules</a>
       <a href="/blog/">Blog</a>
-      <a href="/profile/">Profile</a>
+      <a href="/account/">Account</a>
     </nav>
   </header>
 </div>
@@ -296,7 +296,7 @@
 
       <div id="your-modules-signed-out" class="callout">
         <strong>Sign in to create and manage your own modules</strong>
-        A module you create gets its own stable URL you can declare in any plan with <code>module "..."</code> — <a href="/profile/">sign in or create an account</a> to get started.
+        A module you create gets its own stable URL you can declare in any plan with <code>module "..."</code> — <a href="/account/">sign in or create an account</a> to get started.
       </div>
 
       <div id="your-modules-signed-in" hidden>
@@ -335,7 +335,7 @@
 <div class="wrap-chrome">
   <footer class="site">
     <span>Planagonia — a 2D plan generator.</span>
-    <span><a href="/app/">Open the app</a> · <a href="/docs/">Docs</a> · <a href="/modules/">Modules</a> · <a href="/blog/">Blog</a> · <a href="/profile/">Profile</a> · <a href="/impressum/">Impressum</a></span>
+    <span><a href="/app/">Open the app</a> · <a href="/docs/">Docs</a> · <a href="/modules/">Modules</a> · <a href="/blog/">Blog</a> · <a href="/account/">Account</a> · <a href="/impressum/">Impressum</a></span>
   </footer>
 </div>
 
@@ -356,10 +356,10 @@
 </script>
 
 <script>
-  // F-064: "Your modules" dashboard, merged in from profile/index.html. Same origin
+  // F-064: "Your modules" dashboard, merged in from account/index.html. Same origin
   // (planagonia.com), same sessionStorage keys -- a session from profile/ or the app is
   // recognized here automatically, no sign-in form duplicated on this page; sign-in/
-  // registration/password-reset stay on profile/ (linked from the callout below when
+  // registration/password-reset stay on account/ (linked from the callout below when
   // signed out). Deliberately duplicated logic rather than shared via a build step,
   // matching this project's standing "no build step, plain static files" choice (D-034).
   const CLOUD_API_BASE = "https://api.planagonia.com";

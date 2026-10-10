@@ -47,8 +47,8 @@ if ($token !== '') {
     }
 }
 
-$profileUrl = rtrim($config['site_url'], '/') . '/profile/';
-$profileSignInUrl = $sessionToken ? $profileUrl . '?session=' . urlencode($sessionToken) : $profileUrl;
+$accountUrl = rtrim($config['site_url'], '/') . '/account/';
+$accountSignInUrl = $sessionToken ? $accountUrl . '?session=' . urlencode($sessionToken) : $accountUrl;
 header('Content-Type: text/html; charset=utf-8');
 ?>
 <!DOCTYPE html>
@@ -83,11 +83,11 @@ header('Content-Type: text/html; charset=utf-8');
     <dt>Password</dt>
     <dd><?= htmlspecialchars($appPassword) ?></dd>
   </dl>
-  <p><a href="<?= htmlspecialchars($profileSignInUrl) ?>">Continue to Profile →</a></p>
+  <p><a href="<?= htmlspecialchars($accountSignInUrl) ?>">Continue to Account →</a></p>
 <?php elseif ($verified): ?>
   <h1>You're confirmed and signed in</h1>
   <p>One thing didn't work: <?= htmlspecialchars($appPasswordError) ?> — you're still signed in for now, but if you sign out, getting back in by hand may not work until this is looked into. Contact support if that happens.</p>
-  <p><a href="<?= htmlspecialchars($profileSignInUrl) ?>">Continue to Profile →</a></p>
+  <p><a href="<?= htmlspecialchars($accountSignInUrl) ?>">Continue to Account →</a></p>
 <?php else: ?>
   <h1>This link isn't valid</h1>
   <p>It may have already been used, or it's expired (verification links are valid for 24 hours).</p>

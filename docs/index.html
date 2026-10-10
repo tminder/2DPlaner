@@ -24,7 +24,7 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   /* D-128: the header adopts the same token palette/font pair every other page of this
-     product already shares (homepage/blog/docs/profile/modules) -- real brand consistency
+     product already shares (homepage/blog/docs/account/modules) -- real brand consistency
      for the first time, scoped deliberately to the header only (these tokens are used by
      header-descendant selectors alone; the code pane/SVG viewer/every module's own
      injected CSS keep their own existing look, out of scope here). Light-only, matching
@@ -273,7 +273,7 @@
   #grid-toggle-btn { cursor: pointer; }
 
   /* D-105: a real popup instead of native prompt()s for sign-in/registration — same
-     fields/copy/endpoints as profile/index.html's own card, ported here rather than
+     fields/copy/endpoints as account/index.html's own card, ported here rather than
      redesigned, so the two stay recognizably the same flow. */
   .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.35);
     display: flex; align-items: center; justify-content: center; z-index: 50; padding: 1rem; }
@@ -295,7 +295,7 @@
   .auth-msg.error { color: #a63d34; }
   /* F-060: plain muted text used to carry the same weight as any neutral .hint line --
      easy to miss as the one thing telling a visitor to go check their email. Mirrors
-     profile/index.html's own identical fix. */
+     account/index.html's own identical fix. */
   .auth-msg.ok {
     color: var(--ink); background: var(--blue-soft); border-left: 3px solid var(--blue);
     border-radius: 0 6px 6px 0; padding: 0.55rem 0.8rem; display: flex; align-items: flex-start; gap: 0.4rem;
@@ -536,7 +536,7 @@
          plus a status span) down to two -- signed out shows just "Sign in…" unchanged;
          signed in shows one icon-only profile button whose own flyout (reusing the
          has-submenu/.submenu mechanism Export/Grid already established, hover-or-click,
-         touch-handled for free) holds the status line, Profile/Custom modules links, and
+         touch-handled for free) holds the status line, Account/Custom modules links, and
          Sign out. "Save to Cloud" moved out entirely, into the File panel below, alongside
          Import/Export -- requested directly ("sollte im normalen Menü sein"). -->
     <div class="ribbon-group">
@@ -549,7 +549,7 @@
         <ul class="submenu">
           <li class="submenu-status" id="cloud-status"></li>
           <li class="submenu-divider"></li>
-          <li><a href="https://www.planagonia.com/profile/">Profile</a></li>
+          <li><a href="https://www.planagonia.com/account/">Account</a></li>
           <li><a href="https://www.planagonia.com/modules/#your-modules">Custom modules</a></li>
           <li class="submenu-divider"></li>
           <li><button id="cloud-signout-btn" title="Sign out">Sign out</button></li>
@@ -806,7 +806,7 @@
   </div>
 </main>
 
-<!-- D-105: a real popup instead of native prompt()s, ported from profile/index.html's own
+<!-- D-105: a real popup instead of native prompt()s, ported from account/index.html's own
      sign-in/register card so both stay the same flow, same copy, same endpoints. -->
 <div id="auth-modal" class="modal-overlay" hidden>
   <div class="modal">
@@ -923,7 +923,7 @@
     });
 
     // Toggles between the two forms sharing this popup rather than a separate step —
-    // matches profile/index.html's own toggle-auth-mode behavior exactly.
+    // matches account/index.html's own toggle-auth-mode behavior exactly.
     toggleLink.addEventListener("click", function (e) {
       e.preventDefault();
       setMode(signinForm.hidden === false ? "register" : "signin");
