@@ -64,6 +64,12 @@ Reported directly, not yet reproduced or root-caused: the highlighted/colored ba
 
 `toLineSpan`/`applyEditsDescending`/`findOwnPropertyLine`-shaped helpers live privately inside both `interactivity-module.js` and (D-112) `hierarchy-module.js` — the same small "read/write a plan-text edit" primitives, copied rather than shared, since neither `window.PlanCore` nor any other cross-module channel exposes them. Accepted as the right call the first time (matching S-023's own "a module brings its own copy" tradeoff with core's geometry) but a second instance of the identical duplication is exactly the "wait for a second use, then share" signal this project's own refactor philosophy (D-095/D-096) watches for — worth hoisting onto `window.PlanCore` if a third module ever needs the same capability.
 
+## `storage-service-php/`
+
+## S-042 D-200's `register.php` fix shipped without a live test against WordPress
+
+[D-200](decisions.md#d-200-f-059s-email-enumeration-half-fixed-registerphp-no-longer-confirms-an-email-is-already-taken) (the email-enumeration fix, folding a duplicate-email registration into the same code path `forgot-password.php` already uses) was deployed deliberately without exercising it against the live `auth.planagonia.com`/`api.planagonia.com` instances first — confirmed directly as the right tradeoff for this specific change (reuses already-verified-live functions unchanged), but it means this is still, right now, unverified in production. Three checks are still outstanding: (1) registering a genuinely new email still returns `201` with a working verification email: (2) registering again with an email that already has a verified account returns the identical `201`/message, not a `400`; (3) that second case actually emails a working fresh verification/reset link. Tied to [F-057](open-questions.md#f-057-the-whole-profileauthcloud-storage-stack-has-no-automated-test-coverage-at-all)'s own broader point — this is one concrete, resolvable instance of exactly the coverage gap that entry describes, not a new category of problem.
+
 ## Project structure / process
 
 ## S-033 Static assets are physically duplicated across many directories
