@@ -76,6 +76,7 @@
   header h1 { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 1.05rem; margin: 0;
     white-space: nowrap; display: flex; align-items: center; gap: 0.4rem; color: var(--ink);
     cursor: pointer; align-self: flex-end; padding-bottom: 0.4rem; }
+  header h1 .logo-mark { width: 1.2em; height: 1.2em; flex: 0 0 auto; }
   header h1:hover { color: var(--blue-deep); }
   .beta-badge { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 0.62rem;
     font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
@@ -519,7 +520,7 @@
        (identity, not a plan action) sits permanently at the header's own right edge
        instead of behind a tab. -->
   <div class="header-row1">
-    <h1 id="header-logo" data-tab="file" role="tab" title="File" aria-label="File">Planagonia <span class="beta-badge">Beta</span></h1>
+    <h1 id="header-logo" data-tab="file" role="tab" title="File" aria-label="File"><svg class="logo-mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" style="fill:var(--blue-deep)"/><path d="M8 8 H24 V16 H16 V24 H8 Z" style="fill:var(--amber)"/></svg> Planagonia <span class="beta-badge">Beta</span></h1>
     <div class="menu-tab-strip" role="tablist">
       <button class="menu-tab-btn" id="menu-tab-edit" data-tab="edit" role="tab">Edit</button>
       <button class="menu-tab-btn" id="menu-tab-view" data-tab="view" role="tab">View</button>
