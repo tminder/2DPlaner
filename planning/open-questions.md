@@ -80,22 +80,19 @@ A menu that shows which modules/settings are *actually active in this exact plan
 
 Not a decision to make preemptively — recorded so the next concrete choice that touches any of this (F-045 itself, a pricing page, opening accounts more broadly) gets weighed against it rather than decided in isolation.
 
-## F-056 Signed-in users authoring their own modules — a dashboard, a code editor, private or published
+## F-056 Signed-in users authoring their own modules — versioning and real public discoverability still open
 
-Raised directly: an account holder (the existing self-service registration, D-058, `auth.planagonia.com`) should be able to write their own module and either keep it private (for their own plans only) or publish it. Requested scope for a first version, explicitly kept small: a dashboard (presumably on [profile/](../profile/), where account management already lives) and "an einfacher code editor (vorerst nur als Text den Code reinkopieren)" — a plain paste-your-code textarea, not a real in-browser authoring/debugging environment.
+**v1 built** ([decisions.md D-201](decisions.md#d-201-f-056-v1-built-signed-in-users-can-create-their-own-modules-from-profile)): a dashboard on `profile/` with a plain paste-in `<textarea>` (not a real authoring environment, matching the original "vorerst nur als Text den Code reinkopieren" ask), backed by a new `api.planagonia.com` storage-service table/endpoints. A module gets a stable URL (`module-code.php?id=X`) to declare in any plan via the existing `module "..."` mechanism — nothing on the app side needed to change at all.
 
-**Directly collides with two already-open questions rather than being independent of them:**
-- **F-045's module store is still a manually-curated static list** — a PR or an email, no self-serve submission pipeline, deliberately deferred until there was real submission volume to design against. User-authored modules with a "publish" button *are* that volume arriving — this is plausibly the concrete trigger F-045 itself said to wait for, not a separate feature next to it.
-- **F-046's ownership/licensing gap is exactly what this would expose first** — "a listed module is still someone else's code, not covered by this repo's own `LICENSE`" is still true the moment the first user clicks publish; a self-serve authoring flow makes that gap immediately load-bearing instead of theoretical.
+**Deliberately the smallest workable "publish" scope, confirmed directly before building:** `visibility` (`private`/`public`) is a dashboard-only label with zero behavioral effect — no new public-listing endpoint, `/modules/` itself completely untouched. This sidesteps, rather than resolves, the two collisions this entry originally flagged:
+- **F-045's module store stays exactly as manually-curated as it already was** — v1 adds no self-serve path onto `/modules/` at all, so the "real submission volume arriving" trigger F-045 was waiting for hasn't actually arrived yet in a form that forces that question.
+- **F-046's ownership/licensing gap stays theoretical, not load-bearing** — a module that's merely labeled "public" in someone's own dashboard, with no public listing anywhere, isn't yet "a listed module" in the sense F-046 means.
 
-**Not designed at all, beyond the two paragraphs above:**
-- Where a private module's own source actually lives — a new storage-service endpoint (`api.planagonia.com`, alongside the existing plans storage, D-021) is the obvious shape, but nothing about its schema, size limits, or versioning is decided.
-- What "private" actually restricts — loadable only by its own author's plans, specifically, or by anyone who knows the exact URL (today's external-module model is already "unlisted by default," so a private module might need nothing beyond *not* also being listed on `/modules/`)?
-- Whether a published module goes straight onto the public store page, or through some review step first — F-045's own one-line PR/email intake had an implicit human-review step by construction; a self-serve "publish" button removes that unless a new one is designed in.
-- Any validation/safety check on submitted code before it's servable, if any — today's trust model (D-003's "closer to a developer choosing an npm package," F-009) assumes a technical reviewer; a non-technical account holder pasting arbitrary JS and publishing it to other users changes who's actually making that trust call.
-- Versioning/editing a module after it's published and in use elsewhere (does updating it change what every plan that already declared its URL loads, silently?).
-
-Recorded as a trigger for revisiting F-045/F-046 together, not a spec to build from — the "simple text paste-in editor" framing suggests the UI itself is the smallest part of this.
+**Still genuinely open:**
+- **Versioning.** Editing a module overwrites it in place at the same URL (deliberate v1 choice, matching `plans.php`'s own `PUT` behavior) — every plan declaring that URL gets the new code silently on its next load. Whether this is the right permanent answer, or whether published/shared modules eventually need real version pinning, is unresolved.
+- **Real public discoverability**, if ever wanted: a public-listing JSON endpoint, and/or actually surfacing user-authored public modules on `/modules/` — both deliberately not built in v1, see D-201.
+- **Any validation/safety check on submitted code** — still none, same as every other external module (F-009's existing, accepted posture).
+- **S-043 (tech-debt.md) tracks this v1's own still-pending live verification** — deployed without exercising it against the real WordPress/MySQL instance.
 
 ## F-049 The `<main>` content tabs (Code/Viewer/Layers) aren't a standardized, registrable system
 

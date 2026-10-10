@@ -66,5 +66,21 @@ function get_db(array $config): PDO {
         count INT NOT NULL DEFAULT 1
     ) ENGINE=InnoDB');
 
+    // F-056: a signed-in user's own modules — `code` is plain JS text, served back
+    // verbatim by module-code.php to anyone who has the row's own `id` (no access control
+    // beyond that, see that file's own comment). `visibility` is a dashboard-only label
+    // with no enforcement behind it yet (confirmed directly, not assumed) — kept as a
+    // plain VARCHAR rather than an ENUM so neither value needs a schema migration later.
+    $db->exec('CREATE TABLE IF NOT EXISTS user_modules (
+        id VARCHAR(64) PRIMARY KEY,
+        user_id VARCHAR(64) NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        code LONGTEXT NOT NULL,
+        visibility VARCHAR(16) NOT NULL DEFAULT \'private\',
+        updated_at BIGINT NOT NULL,
+        INDEX idx_user_modules_user (user_id),
+        FOREIGN KEY (user_id) REFERENCES users(id)
+    ) ENGINE=InnoDB');
+
     return $db;
 }

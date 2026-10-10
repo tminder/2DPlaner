@@ -98,6 +98,29 @@
     padding: 0.9rem 1.2rem; color: var(--ink); font-size: 0.88rem; margin-top: 1.5rem;
   }
 
+  /* F-056: the "Your modules" dashboard. */
+  textarea#module-code {
+    width: 100%; min-height: 10rem; padding: 0.6rem 0.75rem; border: 1px solid var(--line);
+    border-radius: 7px; background: var(--paper); color: var(--ink); font: inherit;
+    font-family: ui-monospace, Consolas, monospace; font-size: 0.85rem; resize: vertical;
+  }
+  textarea#module-code:focus { outline: 2px solid var(--blue); outline-offset: 1px; }
+  .visibility-row { display: flex; gap: 1.2rem; margin-top: 0.5rem; }
+  .radio-label { display: flex; align-items: center; gap: 0.4rem; font-size: 0.9rem; color: var(--ink); margin: 0; font-weight: normal; }
+  .btn-sm { padding: 0.35rem 0.75rem; font-size: 0.82rem; }
+  ul.plans li.module-row { flex-direction: column; align-items: stretch; gap: 0.6rem; }
+  .module-row-main { display: flex; align-items: center; gap: 0.6rem; }
+  .badge {
+    font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--ink-soft);
+    background: var(--paper); border: 1px solid var(--line); border-radius: 999px; padding: 0.15rem 0.6rem;
+  }
+  .module-row-url { display: flex; gap: 0.5rem; }
+  .module-row-url input {
+    flex: 1 1 auto; min-width: 0; font-family: ui-monospace, Consolas, monospace; font-size: 0.78rem;
+    padding: 0.4rem 0.6rem; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--ink-soft);
+  }
+  .module-row-actions { display: flex; gap: 0.5rem; }
+
   footer.site {
     padding: 2.5rem 0 3rem; color: var(--ink-soft); font-size: 0.86rem;
     display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.7rem;
@@ -211,6 +234,32 @@
       <p id="plans-msg" class="msg error" hidden></p>
     </div>
 
+    <div id="modules-view" class="card" hidden>
+      <h2>Your modules</h2>
+      <ul class="plans" id="modules-list"></ul>
+      <p id="modules-empty" class="empty" hidden>No modules yet — a module you create here gets its own stable URL you can declare in any plan with a <code>module "..."</code> line.</p>
+      <p id="modules-msg" class="msg error" hidden></p>
+      <button type="button" id="new-module-btn" class="btn btn-ghost" style="margin-top: 1rem;">+ New module</button>
+
+      <form id="module-form" hidden style="margin-top: 1.2rem;">
+        <input type="hidden" id="module-edit-id">
+        <label for="module-name">Name</label>
+        <input type="text" id="module-name" required>
+        <label for="module-code">Code</label>
+        <textarea id="module-code" required></textarea>
+        <p class="hint">Paste your module's JavaScript here — the same thing you'd host at any URL and declare with <code>module "..."</code>.</p>
+        <label>Visibility</label>
+        <div class="visibility-row">
+          <label class="radio-label"><input type="radio" name="module-visibility" value="private" checked> Private</label>
+          <label class="radio-label"><input type="radio" name="module-visibility" value="public"> Public</label>
+        </div>
+        <p class="hint">Private vs. Public is just a label for your own organization right now — anyone who has a module's exact URL can load it either way.</p>
+        <button type="submit" class="btn btn-primary">Save</button>
+        <button type="button" id="module-cancel-btn" class="btn btn-ghost">Cancel</button>
+        <p id="module-form-msg" class="msg" role="status"></p>
+      </form>
+    </div>
+
     <div class="callout">
       Renaming your account, deleting it, or managing Application Passwords isn't handled here yet — those live in WordPress's own account tools for now.
     </div>
@@ -314,9 +363,11 @@
     document.getElementById("signed-out-view").hidden = signedIn;
     document.getElementById("signed-in-view").hidden = !signedIn;
     document.getElementById("plans-view").hidden = !signedIn;
+    document.getElementById("modules-view").hidden = !signedIn;
     if (signedIn) {
       document.getElementById("who-username").textContent = cloudUsername();
       loadPlans();
+      loadModules();
     }
   }
 
@@ -430,6 +481,136 @@
       msgEl.textContent = err.message;
     }
   });
+
+  // F-056: a signed-in user's own modules. moduleUrl()'s id is served back verbatim by
+  // module-code.php (no auth) — see that file's own comment on why "private" is a label,
+  // not real access control.
+  function moduleUrl(id) { return `${CLOUD_API_BASE}/module-code.php?id=${id}`; }
+  function moduleDeclarationLine(id) { return `module "${moduleUrl(id)}"`; }
+
+  async function loadModules() {
+    const listEl = document.getElementById("modules-list");
+    const emptyEl = document.getElementById("modules-empty");
+    const msgEl = document.getElementById("modules-msg");
+    listEl.innerHTML = "";
+    emptyEl.hidden = true;
+    msgEl.hidden = true;
+    try {
+      const res = await cloudFetch("/modules.php");
+      if (!res.ok) throw new Error(`list failed (${res.status})`);
+      const { modules } = await res.json();
+      if (!modules.length) { emptyEl.hidden = false; return; }
+      for (const m of modules.sort((a, b) => b.updatedAt - a.updatedAt)) {
+        const li = document.createElement("li");
+        li.className = "module-row";
+        li.innerHTML = `
+          <div class="module-row-main">
+            <span class="name"></span>
+            <span class="badge"></span>
+          </div>
+          <div class="module-row-url">
+            <input type="text" readonly class="module-url-input">
+            <button type="button" class="btn btn-ghost btn-sm copy-btn">Copy</button>
+          </div>
+          <div class="module-row-actions">
+            <button type="button" class="btn btn-ghost btn-sm edit-btn">Edit</button>
+            <button type="button" class="btn btn-ghost btn-sm delete-btn">Delete</button>
+          </div>`;
+        li.querySelector(".name").textContent = m.name;
+        li.querySelector(".badge").textContent = m.visibility;
+        const urlInput = li.querySelector(".module-url-input");
+        urlInput.value = moduleDeclarationLine(m.id);
+        li.querySelector(".copy-btn").addEventListener("click", async () => {
+          try { await navigator.clipboard.writeText(urlInput.value); } catch (e) { urlInput.select(); }
+        });
+        li.querySelector(".edit-btn").addEventListener("click", () => openModuleForm(m.id));
+        li.querySelector(".delete-btn").addEventListener("click", () => deleteModule(m.id));
+        listEl.appendChild(li);
+      }
+    } catch (e) {
+      msgEl.textContent = e.message;
+      msgEl.hidden = false;
+    }
+  }
+
+  async function openModuleForm(id) {
+    const form = document.getElementById("module-form");
+    const msgEl = document.getElementById("module-form-msg");
+    msgEl.className = "msg";
+    msgEl.textContent = "";
+    document.getElementById("module-edit-id").value = id || "";
+    if (id) {
+      try {
+        const res = await cloudFetch(`/modules.php?id=${encodeURIComponent(id)}`);
+        if (!res.ok) throw new Error(`load failed (${res.status})`);
+        const m = await res.json();
+        document.getElementById("module-name").value = m.name;
+        document.getElementById("module-code").value = m.code;
+        document.querySelector(`input[name="module-visibility"][value="${m.visibility}"]`).checked = true;
+      } catch (e) {
+        msgEl.className = "msg error";
+        msgEl.textContent = e.message;
+      }
+    } else {
+      document.getElementById("module-name").value = "";
+      document.getElementById("module-code").value = "";
+      document.querySelector('input[name="module-visibility"][value="private"]').checked = true;
+    }
+    form.hidden = false;
+    document.getElementById("new-module-btn").hidden = true;
+  }
+
+  function closeModuleForm() {
+    document.getElementById("module-form").hidden = true;
+    document.getElementById("new-module-btn").hidden = false;
+  }
+
+  document.getElementById("new-module-btn").addEventListener("click", () => openModuleForm(null));
+  document.getElementById("module-cancel-btn").addEventListener("click", closeModuleForm);
+
+  document.getElementById("module-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const id = document.getElementById("module-edit-id").value;
+    const name = document.getElementById("module-name").value.trim();
+    const code = document.getElementById("module-code").value;
+    const visibility = document.querySelector('input[name="module-visibility"]:checked').value;
+    const msgEl = document.getElementById("module-form-msg");
+    msgEl.className = "msg";
+    msgEl.textContent = "Saving…";
+    try {
+      const res = id
+        ? await cloudFetch(`/modules.php?id=${encodeURIComponent(id)}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name, code, visibility }),
+          })
+        : await cloudFetch(`/modules.php`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name, code, visibility }),
+          });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || `Save failed (${res.status})`);
+      closeModuleForm();
+      loadModules();
+    } catch (err) {
+      msgEl.className = "msg error";
+      msgEl.textContent = err.message;
+    }
+  });
+
+  async function deleteModule(id) {
+    if (!confirm("Delete this module? Any plan still declaring its URL will fail to load it.")) return;
+    try {
+      const res = await cloudFetch(`/modules.php?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      if (!res.ok && res.status !== 204) throw new Error(`Delete failed (${res.status})`);
+      loadModules();
+    } catch (e) {
+      const msgEl = document.getElementById("modules-msg");
+      msgEl.textContent = e.message;
+      msgEl.hidden = false;
+    }
+  }
 
   render();
 </script>

@@ -149,12 +149,23 @@ directly-requested `.php` file. All `plans.php` requests require
 | POST | `/plans.php` | `{ name, text }` | `{ id, name, text, updatedAt }` (201) |
 | PUT | `/plans.php?id=X` | `{ name?, text? }` | `{ id, name, text, updatedAt }` |
 | DELETE | `/plans.php?id=X` | — | 204, empty |
+| GET | `/modules.php` | — | `{ modules: [{ id, name, visibility, updatedAt }, ...] }` — requires `Authorization: Bearer`, same as `plans.php` |
+| GET | `/modules.php?id=X` | — | `{ id, name, code, visibility, updatedAt }` |
+| POST | `/modules.php` | `{ name, code, visibility? }` | `{ id, name, code, visibility, updatedAt }` (201); `visibility` defaults to `"private"` |
+| PUT | `/modules.php?id=X` | `{ name?, code?, visibility? }` | `{ id, name, code, visibility, updatedAt }` |
+| DELETE | `/modules.php?id=X` | — | 204, empty |
+| GET | `/module-code.php?id=X` | — | The module's raw JS (`Content-Type: application/javascript`), **no auth at all** — see F-056/D-201 |
 
-Every `/plans.php` route also returns `429` past 300 requests/15 min per signed-in user.
-Same response shapes as the Node version — `GET /plans.php` omits `text` for the same
-reason (matches what `docs/`'s plan-switcher, D-043, actually needs for its list); a 404
-from any single-plan route doesn't distinguish "doesn't exist" from "not yours," so a
-request can't be used to probe whether some other user's plan id exists.
+Every `/plans.php` and `/modules.php` route also returns `429` past 300 requests/15 min per
+signed-in user; `/module-code.php` returns `429` past 300/15 min per IP instead, since it
+has no authenticated identity. Same response shapes as the Node version — `GET /plans.php`
+omits `text` for the same reason (matches what `docs/`'s plan-switcher, D-043, actually
+needs for its list); a 404 from any single-plan or single-module route doesn't distinguish
+"doesn't exist" from "not yours," so a request can't be used to probe whether some other
+user's plan/module id exists. `/module-code.php` is the one deliberate exception — anyone
+with a module's own `id` can fetch its code, by design (F-056's "private" is a dashboard
+label, not real access control, since a plan's `module "..."` declaration loads it via a
+plain `<script src>` that can't carry an `Authorization` header at all).
 
 ## Registration — why two round trips through WordPress, not one
 
