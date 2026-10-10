@@ -156,10 +156,10 @@
      background shift (--paper #f7f4ee vs --paper-raised #fff) -- against the white header
      behind the whole strip, the *inactive* tab's faint cream fill actually read as more
      "present" than the active one, which just blended into the header and was legible only
-     via its thin border outline. A colored border + bold label give the open tab its own
+     via its thin border outline. A bold label give the open tab its own
      unambiguous, non-positional cue instead of relying on a near-invisible fill contrast. */
   .menu-tab-btn.active { background: var(--paper-raised); color: var(--ink); font-weight: 700;
-    border-color: var(--blue); }
+ }
 
   /* D-131: a real, always-present second row (D-129's own docked shape) -- what it shows
      switches on hover or click (see the JS at the bottom of this file: entering a tab
@@ -3773,6 +3773,15 @@ for (const btn of menuTabBtns) {
 }
 setActiveMenuTab(safeStorageGet(localStorage, MENU_TAB_KEY) || "file");
 window.addEventListener("resize", updateTabBaseline);
+// Reported directly: correct on hover/click, wrong on a fresh load/reload until then. The
+// header's own webfonts (IBM Plex Mono/Sans) load with `display: swap` -- the very first
+// updateTabBaseline() call above runs against whatever the *fallback* font rendered at
+// (system-ui/monospace), measured before the real font has necessarily finished downloading;
+// when it swaps in moments later, every tab's own text (and so its width) can shift, and
+// nothing re-measures the now-stale gap until the next real interaction. document.fonts
+// resolves exactly when that swap has actually happened, so this re-measures once, right
+// after, rather than guessing at a fixed delay.
+document.fonts?.ready.then(updateTabBaseline);
 
 // D-153: has-submenu flyouts (Export, Grid) are positioned in the viewport via JS
 // (`position: fixed`, see the .submenu rule above) instead of pure CSS (`absolute`,
