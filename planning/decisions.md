@@ -2933,4 +2933,4 @@ D-214's font-swap theory was wrong. Found directly, via the user inspecting the 
 
 **Verified locally** — `tab-baseline-left`'s own `getBoundingClientRect()` now reads `width: 0` with the logo active, `tab-baseline-right` unchanged and still exactly `161.328125` (`== h1.right`), and the screenshot shows clean blank space under the whole logo with no mark anywhere near the page's own left edge.
 
-**Status: built, full suite re-run.** Deploy to both hosts to follow in the same pass.
+**Status: built, deployed, verified live on both hosts** — `www.planagonia.com/app/` (`tab-baseline-left` confirmed `width: 0` with the logo active, `tab-baseline-right` unchanged at `161.328125`) and GitHub Pages (`tminder.github.io/2DPlaner/`, confirmed rebuilt with `headerLogoEl` present).
