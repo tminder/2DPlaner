@@ -33,7 +33,11 @@
      bottom of this file for how a docked row does a hover preview a floating flyout got
      for free from pure CSS. Account stays at the header's own right edge, outside the tab
      system entirely -- it's a signed-in-or-not identity, not a set of plan actions. */
-  header { flex: 0 0 auto; display: flex; flex-direction: column; gap: 0.35rem;
+  /* gap: 0 (was 0.35rem) -- row1 and #header-toolbar now sit directly flush, so the active
+     tab's own margin-bottom: -1px (below) actually lands on #header-toolbar's border-top
+     instead of 0.35rem short of it. #header-toolbar's own top padding supplies the
+     breathing room the gap used to. */
+  header { flex: 0 0 auto; display: flex; flex-direction: column; gap: 0;
     background: var(--paper-raised); border-bottom: 1px solid var(--line);
     font-family: "IBM Plex Sans", system-ui, sans-serif; }
   .header-row1 { display: flex; align-items: center; gap: 0.8rem; padding: 0.5rem 1rem 0; flex-wrap: wrap; }
@@ -107,7 +111,6 @@
      here too even though this is a new rule, not that one). */
   .ribbon-btn[hidden] { display: none; }
   .ribbon-divider { width: 1px; align-self: stretch; margin: 2px 2px; background: var(--line); }
-  .ribbon-status { font-size: 10.5px; color: var(--ink-soft); white-space: nowrap; }
 
   /* D-131: File/Edit/View -- real attached tabs (D-130's own visual ask, kept), the
      currently-shown one's bottom edge merging into #header-toolbar directly below it.
@@ -115,9 +118,17 @@
      .mobile-tabs/.tab-btn (the unrelated code/viewer pane switcher, D-006), so the two
      genuinely different "tabs" concepts in this header never collide or read as one
      feature by accident. */
-  .menu-tab-strip { display: flex; gap: 3px; align-items: flex-end; }
+  /* Reported directly, against a live screenshot: no horizontal line separated the tab row
+     from the toolbar panel below it, unlike how a real tab/folder-tab look normally reads
+     (a baseline every *inactive* tab's own closed bottom edge sits on, broken only where
+     the active tab opens through it into the panel). align-self: flex-end makes the strip
+     hug row1's own bottom edge -- row1 centers its children by default, and without this
+     the strip (shorter than the h1/account group) would float with dead space below it,
+     leaving the active tab's own merge trick (below) nothing adjacent to actually merge
+     into. */
+  .menu-tab-strip { display: flex; gap: 3px; align-items: flex-end; align-self: flex-end; }
   .menu-tab-btn { font: inherit; font-size: 0.8rem; font-weight: 500; color: var(--ink-soft);
-    background: var(--paper); border: 1px solid var(--line); border-bottom-color: transparent;
+    background: var(--paper); border: 1px solid var(--line);
     border-radius: 8px 8px 0 0; padding: 0.4rem 0.8rem; cursor: pointer; display: flex;
     align-items: center; gap: 0.3rem; }
   .menu-tab-btn .tab-icon { font-size: 1rem; line-height: 1; }
@@ -140,9 +151,14 @@
      switches on hover or click (see the JS at the bottom of this file: entering a tab
      button previews that tab's panel immediately, a short grace period lets the pointer
      travel from the tab down into the toolbar itself without reverting mid-move, and
-     leaving both without clicking reverts to whichever tab was last actually clicked). */
+     leaving both without clicking reverts to whichever tab was last actually clicked).
+     border-top is the baseline every inactive tab's own now-closed bottom border sits on
+     (see .menu-tab-btn above) -- the active tab's own background + margin-bottom: -1px
+     (below) paints directly over this exact 1px, the actual mechanism the pre-existing
+     "hidden by the toolbar's own top edge" comment already described but which, until now,
+     had no real border here to hide into. */
   #header-toolbar { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
-    padding: 0.5rem 1rem; }
+    padding: 0.5rem 1rem; border-top: 1px solid var(--line); }
   .menu-tab-panel[hidden] { display: none; }
   .menu-tab-panel { display: flex; align-items: center; gap: 2px; }
   /* D-172's own #menu-tab-modules is the first .menu-tab-btn ever conditionally hidden --
@@ -196,6 +212,16 @@
   .submenu button { display: block; width: 100%; padding: 6px 16px; border: none; background: none;
     text-align: left; font: inherit; font-size: 13px; cursor: pointer; }
   .submenu button:hover { background: #eef2ff; }
+  /* D-206: the account flyout's own items -- plain navigation, not actions, so real <a>
+     tags rather than the buttons every other submenu so far has only ever needed. Matches
+     .submenu button's own look exactly so the two read as one consistent menu. */
+  .submenu a { display: block; padding: 6px 16px; color: inherit; text-decoration: none;
+    font-size: 13px; }
+  .submenu a:hover { background: #eef2ff; }
+  /* The one non-interactive row this menu needs (the signed-in-as line) -- same horizontal
+     rhythm as .submenu-field below, muted since it's a status, not a choice. */
+  .submenu li.submenu-status { padding: 4px 16px 6px; font-size: 12px; color: var(--ink-soft);
+    white-space: nowrap; }
   /* D-149: Grid's own flyout -- Squares/Lines read as a pressed radio pair (same
      .active convention .ribbon-btn.active already uses one level up), and the size field
      is a plain labeled number input, the one non-button row this menu has needed so far. */
@@ -353,11 +379,6 @@
      Below it: the two panes become tabs — showing both panes at once, even stacked, leaves
      neither one tall enough to be usable — rather than a redesign of either. */
   @media (max-width: 760px) {
-    /* D-151: reported directly -- the gap between the tab strip and the toolbar's own
-       buttons below it (header's own desktop-sized 0.35rem column gap, plus the toolbar's
-       own top padding) reads as noticeably too generous once vertical space is already
-       tight on a phone screen. */
-    header { gap: 0.15rem; }
     .header-row1 { padding: 0.4rem 0.5rem 0; gap: 0.4rem; }
     #header-toolbar { padding: 0.25rem 0.5rem; }
     /* D-153: revised from D-151's own flex-wrap fix, per direct feedback -- a row with too
@@ -370,7 +391,7 @@
        silently squeezed every button (the divider down to under 1px) to force-fit them all
        in one line, the opposite of the ask. */
     .ribbon-group { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    .ribbon-btn, .ribbon-divider, .ribbon-status { flex-shrink: 0; }
+    .ribbon-btn, .ribbon-divider { flex-shrink: 0; }
     button, select { font-size: 0.78rem; padding: 0.32rem 0.55rem; }
     header .spacer { display: none; }
     /* D-151: reported directly -- iOS Safari zooms the whole page in on focus whenever a
@@ -488,19 +509,30 @@
       <button class="menu-tab-btn" id="menu-tab-modules" data-tab="modules" role="tab" hidden>Modules</button>
     </div>
     <div class="spacer"></div>
-    <!-- Account, permanently visible, outside the tab system -- see CSS comment. -->
+    <!-- Account, permanently visible, outside the tab system -- see CSS comment.
+         D-206: collapsed from four always-visible children (sign-in/save/sign-out buttons
+         plus a status span) down to two -- signed out shows just "Sign in…" unchanged;
+         signed in shows one icon-only profile button whose own flyout (reusing the
+         has-submenu/.submenu mechanism Export/Grid already established, hover-or-click,
+         touch-handled for free) holds the status line, Profile/Custom modules links, and
+         Sign out. "Save to Cloud" moved out entirely, into the File panel below, alongside
+         Import/Export -- requested directly ("sollte im normalen Menü sein"). -->
     <div class="ribbon-group">
       <!-- D-105: opens the login/register popup (openAuthModal()) instead of native prompt()s. -->
       <button class="ribbon-btn" id="cloud-signin-btn" title="Sign in to save/load plans in the cloud">
         <svg class="ribbon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m10 17 5-5-5-5" /><path d="M15 12H3" /><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" /></svg><span class="ribbon-label">Sign in…</span>
       </button>
-      <button class="ribbon-btn" id="cloud-save-btn" title="Save the current plan to the cloud" hidden>
-        <svg class="ribbon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 13v8" /><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" /><path d="m8 17 4-4 4 4" /></svg><span class="ribbon-label">Save to Cloud</span>
-      </button>
-      <button class="ribbon-btn" id="cloud-signout-btn" title="Sign out" hidden>
-        <svg class="ribbon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 17 5-5-5-5" /><path d="M21 12H9" /><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /></svg><span class="ribbon-label">Sign out</span>
-      </button>
-      <span class="ribbon-status" id="cloud-status"></span>
+      <div class="ribbon-btn has-submenu" id="account-menu-btn" title="Account" hidden>
+        <svg class="ribbon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+        <ul class="submenu">
+          <li class="submenu-status" id="cloud-status"></li>
+          <li class="submenu-divider"></li>
+          <li><a href="https://www.planagonia.com/profile/">Profile</a></li>
+          <li><a href="https://www.planagonia.com/profile/#modules-view">Custom modules</a></li>
+          <li class="submenu-divider"></li>
+          <li><button id="cloud-signout-btn" title="Sign out">Sign out</button></li>
+        </ul>
+      </div>
     </div>
   </div>
   <div id="header-toolbar">
@@ -527,6 +559,12 @@
       </button>
       <button class="ribbon-btn" id="open-btn">
         <svg class="ribbon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17V3" /><path d="m6 11 6 6 6-6" /><path d="M19 21H5" /></svg><span class="ribbon-label">Import…</span>
+      </button>
+      <!-- D-206: moved here from the header's own Account group -- "the normal menu, where
+           Import/Export already are," requested directly. Still hidden/shown by
+           updateCloudUi() exactly as before, unchanged. -->
+      <button class="ribbon-btn" id="cloud-save-btn" title="Save the current plan to the cloud" hidden>
+        <svg class="ribbon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 13v8" /><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" /><path d="m8 17 4-4 4 4" /></svg><span class="ribbon-label">Save to Cloud</span>
       </button>
       <div class="ribbon-btn has-submenu">
         <svg class="ribbon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 9-6-6-6 6" /><path d="M12 3v14" /><path d="M5 21h14" /></svg><span class="ribbon-label">Export ▸</span>
@@ -1064,8 +1102,9 @@ element room {
     compose: "wallWithDoor"
     from: [2.5, 0]
     to: [2.5, 1.6]
-    doorAt: 0.8
+    doorAt: 0.35
     doorWidth: 0.9
+    swing: "right"
   }
 }
 
@@ -2414,7 +2453,10 @@ function updateCloudUi() {
   const signedIn = !!cloudToken();
   document.getElementById("cloud-signin-btn").hidden = signedIn;
   document.getElementById("cloud-save-btn").hidden = !signedIn;
-  document.getElementById("cloud-signout-btn").hidden = !signedIn;
+  // D-206: cloud-signout-btn no longer has its own `hidden` toggle -- it now lives inside
+  // #account-menu-btn's own flyout, whose single `hidden` below already governs it (and
+  // everything else in the menu) as one unit.
+  document.getElementById("account-menu-btn").hidden = !signedIn;
   document.getElementById("cloud-status").textContent = signedIn ? `Signed in as ${cloudUsername()}` : "";
 }
 

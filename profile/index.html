@@ -378,6 +378,14 @@
       document.getElementById("who-username").textContent = cloudUsername();
       loadPlans();
       loadModules();
+      // D-206: the app's own account menu links here with #modules-view -- a plain anchor
+      // scroll doesn't work on first load since the element is still `hidden` (default
+      // `hidden`, display:none until this very branch runs) at the moment the browser
+      // would otherwise have tried it, so it's redone by hand once the section is actually
+      // visible.
+      if (location.hash === "#modules-view") {
+        document.getElementById("modules-view").scrollIntoView({ block: "start" });
+      }
     }
   }
 
