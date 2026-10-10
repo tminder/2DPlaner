@@ -181,7 +181,13 @@ the `verify.php` confirmation page, since it's needed to sign in afterward.
 
 ## Not built yet
 
-- Resending a verification email if the original didn't arrive or the link expired (24h
-  window) — no path for this yet beyond registering again with a different username.
 - Any of this project's own UI for account management (rename, delete, rotate the
   Application Password) — still WordPress's own tools, same as before D-058.
+
+Resending a verification email (the original didn't arrive, or the 24h link expired) was
+believed to be missing too, until re-checked directly while auditing this whole stack:
+`forgot-password.php` already does exactly this for an abandoned, never-verified
+registration — it never checks `verified` at all, so re-submitting the same email there
+issues a fresh token/email and a fresh Application Password on the next click through
+`verify.php`, with no separate "resend" endpoint needed. Not surfaced anywhere in the UI
+as "resend verification" by name, but functionally complete.
