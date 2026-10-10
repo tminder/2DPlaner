@@ -70,7 +70,17 @@
   h1.page-title { font-size: clamp(1.9rem, 3.4vw, 2.5rem); margin: 0 0 0.6rem; }
   p.lede { color: var(--ink-soft); font-size: 1.05rem; max-width: 52ch; margin: 0 0 2.6rem; }
 
+  .filter-pills { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0 0 1.8rem; }
+  .filter-pill {
+    font-family: "IBM Plex Mono", monospace; font-size: 0.8rem; font-weight: 500;
+    color: var(--ink-soft); background: var(--paper-raised); border: 1px solid var(--line);
+    border-radius: 999px; padding: 0.4rem 0.95rem; cursor: pointer;
+  }
+  .filter-pill:hover { border-color: var(--ink-soft); color: var(--ink); }
+  .filter-pill.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
   .post-list { display: flex; flex-direction: column; gap: 1.1rem; }
+  .post-card[hidden] { display: none; }
   .post-card {
     display: block; text-decoration: none; color: inherit;
     background: var(--paper-raised); border: 1px solid var(--line); border-radius: 12px;
@@ -153,45 +163,68 @@
     <h1 class="page-title">What's new at Planagonia</h1>
     <p class="lede">Progress updates from the team building this, written for anyone — not just people who read code for fun.</p>
 
-    <div class="post-list">
-      <a class="post-card" href="/blog/editable-points-and-smarter-plan-cards/">
-        <p class="date">October 7, 2026</p>
+    <div class="filter-pills" id="filter-pills" role="group" aria-label="Filter by category">
+      <button class="filter-pill active" data-filter="all">All</button>
+      <button class="filter-pill" data-filter="product-update">Product updates</button>
+      <button class="filter-pill" data-filter="design-notes">Design notes</button>
+      <button class="filter-pill" data-filter="behind-the-scenes">Behind the scenes</button>
+    </div>
+
+    <div class="post-list" id="post-list">
+      <a class="post-card" data-category="product-update" href="/blog/editable-points-and-smarter-plan-cards/">
+        <p class="date">October 7, 2026 · Product update</p>
         <h2>Editable Points, Quicker Renames, and Smarter Plan Cards</h2>
         <p class="excerpt">Add, remove, and extend points on any line or shape right from the canvas, rename an element or swap its style from the right-click menu, and manage your own saved plans without opening them first.</p>
       </a>
-      <a class="post-card" href="/blog/arrow-dimensions-and-room-to-grow/">
-        <p class="date">October 6, 2026</p>
+      <a class="post-card" data-category="product-update" href="/blog/arrow-dimensions-and-room-to-grow/">
+        <p class="date">October 6, 2026 · Product update</p>
         <h2>Arrow Dimensions, Cleaner Plans, and Room for Modules to Grow</h2>
         <p class="excerpt">A real arrow-tipped dimension-line style for measurements, a plan setting that drops the unit suffix from every single number, and the first way for a module to add its own button to the app's own header.</p>
       </a>
-      <a class="post-card" href="/blog/new-shapes-and-independent-snapping/">
-        <p class="date">September 12, 2026</p>
+      <a class="post-card" data-category="product-update" href="/blog/new-shapes-and-independent-snapping/">
+        <p class="date">September 12, 2026 · Product update</p>
         <h2>Draw Faster: New Shapes, Smarter Snapping, and Feet & Inches</h2>
         <p class="excerpt">A New Element menu to drop a shape onto the canvas without touching the code, a grid and a snap setting that finally don't have to agree with each other, and a toggle to read your plan in feet and inches.</p>
       </a>
-      <a class="post-card" href="/blog/pinch-snap-and-hide/">
-        <p class="date">September 7, 2026</p>
+      <a class="post-card" data-category="product-update" href="/blog/pinch-snap-and-hide/">
+        <p class="date">September 7, 2026 · Product update</p>
         <h2>Pinch, Snap, and Hide: The Editor's Biggest Update Yet</h2>
         <p class="excerpt">Layers you can hide, a plan picker with real previews, a workspace you can resize, and — the big one — the editor finally works properly on a phone: pinch to zoom, hold to open the menu, drag a shape's own corner to resize it.</p>
       </a>
-      <a class="post-card" href="/blog/the-toolbar-we-redesigned-three-times/">
-        <p class="date">September 5, 2026</p>
+      <a class="post-card" data-category="design-notes" href="/blog/the-toolbar-we-redesigned-three-times/">
+        <p class="date">September 5, 2026 · Design notes</p>
         <h2>The Toolbar We Redesigned Three Times in One Afternoon</h2>
         <p class="excerpt">We rebuilt the app's toolbar three different ways in one afternoon before landing on the simplest one — plus a real sign-in popup, an automated test suite, and a showcase example built from reusable style presets.</p>
       </a>
-      <a class="post-card" href="/blog/six-bugs-we-found/">
-        <p class="date">September 3, 2026</p>
+      <a class="post-card" data-category="behind-the-scenes" href="/blog/six-bugs-we-found/">
+        <p class="date">September 3, 2026 · Behind the scenes</p>
         <h2>Two AIs, One Camper Van: Stress-Testing Planagonia's Core Idea</h2>
         <p class="excerpt">Planagonia's whole pitch is that an AI can write your floor plan for you. We'd never tested that against a second, independent AI — so we had two design the same camper van and compared notes.</p>
       </a>
-      <a class="post-card" href="/blog/planagonia-is-live/">
-        <p class="date">August 31, 2026</p>
+      <a class="post-card" data-category="product-update" href="/blog/planagonia-is-live/">
+        <p class="date">August 31, 2026 · Product update</p>
         <h2>Planagonia Is Live: What's New</h2>
         <p class="excerpt">Planagonia's whole idea is that a floor plan can be a small program, not a drawing — one an AI can write for you and you can still drag around by hand. Here's what that looks like now that it's live.</p>
       </a>
     </div>
   </main>
 </div>
+<script>
+  (function () {
+    var pills = document.querySelectorAll("#filter-pills .filter-pill");
+    var cards = document.querySelectorAll("#post-list .post-card");
+    pills.forEach(function (pill) {
+      pill.addEventListener("click", function () {
+        pills.forEach(function (p) { p.classList.remove("active"); });
+        pill.classList.add("active");
+        var filter = pill.dataset.filter;
+        cards.forEach(function (card) {
+          card.hidden = filter !== "all" && card.dataset.category !== filter;
+        });
+      });
+    });
+  })();
+</script>
 
 <div class="wrap-chrome">
   <footer class="site">
