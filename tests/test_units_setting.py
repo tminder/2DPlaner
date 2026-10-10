@@ -41,28 +41,37 @@ def open_new_element_flyout(page):
     page.wait_for_timeout(150)
 
 
-def pick_preset(page, preset_id):
+def pick_preset(page, preset_id, at):
+    """F-068: picking a built-in preset now arms a click-to-place ghost on a fine pointer
+    (every Playwright context) rather than inserting immediately -- `at` is the second click,
+    in the viewer, that actually resolves it."""
+    page.hover("#new-element-btn")
+    page.wait_for_timeout(100)
     page.click(f'#new-element-btn button[data-preset="{preset_id}"]')
+    page.wait_for_timeout(100)
+    page.mouse.click(*at)
     page.wait_for_timeout(150)
 
 
 def test_default_units_m_keeps_new_preset_elements_suffixed(app_page):
     load_plan(app_page, PLAN_DEFAULT)
     open_new_element_flyout(app_page)
-    pick_preset(app_page, "rect")
+    pick_preset(app_page, "rect", element_center(app_page, "room"))
     text = source_text(app_page)
     assert "size: [1m, 1m]" in text
-    assert "position: [0.3m, 0.3m]" in text
+    # F-068: the exact value is now wherever the click landed, not the old fixed [0.3, 0.3]
+    # default -- this test is about the unit *suffix*, not the position's own value.
+    assert re.search(r"position: \[-?[\d.]+m, -?[\d.]+m\]", text)
 
 
 def test_units_none_writes_new_preset_elements_bare(app_page):
     load_plan(app_page, PLAN_NONE)
     open_new_element_flyout(app_page)
-    pick_preset(app_page, "rect")
+    pick_preset(app_page, "rect", element_center(app_page, "room"))
     text = source_text(app_page)
     assert "size: [1, 1]" in text
-    assert "position: [0.3, 0.3]" in text
-    assert "1m" not in text and "0.3m" not in text
+    assert re.search(r"position: \[-?[\d.]+, -?[\d.]+\]", text)
+    assert "1m" not in text
 
 
 def test_units_none_writes_grid_size_input_bare(app_page):

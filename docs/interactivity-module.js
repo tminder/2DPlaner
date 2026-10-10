@@ -255,7 +255,16 @@
       // four built-in generic shapes always win a same-idBase collision, same precedence
       // registerHeaderAction's own duplicate-id warning establishes elsewhere.
       const preset = STANDARD_ELEMENTS.find((p) => p.idBase === btn.dataset.preset) ?? core.elementPresets?.get(btn.dataset.preset);
-      if (preset) insertStandardElement(preset);
+      if (!preset) return;
+      // F-068: click-to-place, desktop only -- `(pointer: fine)` is the standard way to ask
+      // "is there a precise pointing device," the actual thing that matters here (not
+      // screen width, which is what every other mobile/desktop distinction in this app
+      // goes by instead, see docs/index.html's own .mobile-tabs breakpoint). Registered
+      // presets (core.elementPresets, e.g. door-module.js's door) keep the old immediate-
+      // insert path regardless -- buildElementText has no position parameter to place with,
+      // and no shape/size/style data to draw a ghost from either (see placementGhostMarkup).
+      if (!preset.buildElementText && window.matchMedia("(pointer: fine)").matches) startPlacingPreset(preset);
+      else insertStandardElement(preset);
     });
   }
 
@@ -309,6 +318,13 @@
   // The next click resolves it: a valid candidate opens the exact same openRelateMenu
   // confirmation the drag gesture's own drop already does; anything else just cancels.
   let connectPick = null; // { fromId }
+  // F-068: desktop click-to-place for the New Element flyout -- armed by picking a preset
+  // (startPlacingPreset), a ghost shape tracks the cursor (handlePointerMove) until the
+  // next click in the viewer actually inserts it there (handlePointerUp), or Escape/a click
+  // outside the viewer cancels with nothing written. The same "pending action, resolved by
+  // the next click" shape connectPick already established above, just for insertion instead
+  // of a relate target.
+  let placingPreset = null; // { preset, ghostEl }
   let contextMenuItems = [];
   // D-145: which group's own ring (by index, matching renderRadialMenu's own numbering
   // order) is currently blooming open, if any -- reset on every fresh menu open, toggled by
@@ -368,7 +384,7 @@
   // and two fingers down is itself a reasonable-enough signal to suppress hover/keyboard-
   // nudge/resize-handle-visibility by, without needing to know it's specifically a pinch.
   function isGestureActive() {
-    return !!(drag || emptyCanvasClick || relateDrag || resizeDrag || marqueeDrag || vertexDrag || scaleDrag || connectPick) || activeTouches.size >= 2;
+    return !!(drag || emptyCanvasClick || relateDrag || resizeDrag || marqueeDrag || vertexDrag || scaleDrag || connectPick || placingPreset) || activeTouches.size >= 2;
   }
 
   // ---------- Snap geometry ----------
@@ -2040,15 +2056,38 @@
   // (see STANDARD_ELEMENTS's own comment), so they get no separate position line at all.
   // Only writes the style keys the preset actually declares -- a polyline preset with no
   // `fill` at all must not get a synthesized empty one.
-  function presetElementText(preset, id, indent, unit) {
+  // F-068: `position`, when given, is the click-to-place landing spot -- where the cursor
+  // was, already converted to this preset's own future parent's local coordinate space --
+  // not a literal `position` value. Matched to how startPlacingPreset's own ghost is drawn
+  // (centered on the cursor, not anchored at its own top-left/first-point), so what you see
+  // is genuinely what you get: a rect's own `position` (its top-left corner, confirmed
+  // against renderShape) is offset back by half its size; a circle's `position` already
+  // *is* its center (renderShape again), so it's used as-is; polygon/polyline have no
+  // separate `position` property at all -- every point is translated by whatever delta
+  // moves their own shared bounding-box center onto the click spot. Values run through
+  // core.formatNumber, since unlike every other value here (fixed preset constants, never
+  // needing rounding) this one comes from live cursor math. Omitted (the old flyout-click
+  // path, and every non-STANDARD_ELEMENTS preset), every shape keeps the original fixed
+  // [0.3, 0.3] landing spot used before this existed.
+  function presetElementText(preset, id, indent, unit, position) {
     const inner = indent + "  ";
     const lines = [`${indent}element ${id} {`, `${inner}shape: "${preset.shape}"`];
     if (preset.shape === "rect") {
-      lines.push(`${inner}size: [${preset.size[0]}${unit}, ${preset.size[1]}${unit}]`, `${inner}position: [0.3${unit}, 0.3${unit}]`);
+      const [w, h] = preset.size;
+      const [px, py] = position ? [position[0] - w / 2, position[1] - h / 2] : [0.3, 0.3];
+      lines.push(`${inner}size: [${w}${unit}, ${h}${unit}]`, `${inner}position: [${core.formatNumber(px, unit)}, ${core.formatNumber(py, unit)}]`);
     } else if (preset.shape === "circle") {
-      lines.push(`${inner}radius: ${preset.radius}${unit}`, `${inner}position: [0.3${unit}, 0.3${unit}]`);
+      const [px, py] = position ?? [0.3, 0.3];
+      lines.push(`${inner}radius: ${preset.radius}${unit}`, `${inner}position: [${core.formatNumber(px, unit)}, ${core.formatNumber(py, unit)}]`);
     } else if (preset.shape === "polygon" || preset.shape === "polyline") {
-      lines.push(`${inner}points: [${preset.points.map(([x, y]) => `[${x}${unit}, ${y}${unit}]`).join(", ")}]`);
+      let pts = preset.points;
+      if (position) {
+        const xs = preset.points.map((p) => p[0]), ys = preset.points.map((p) => p[1]);
+        const bboxCx = (Math.min(...xs) + Math.max(...xs)) / 2, bboxCy = (Math.min(...ys) + Math.max(...ys)) / 2;
+        const [dx, dy] = [position[0] - bboxCx, position[1] - bboxCy];
+        pts = preset.points.map(([x, y]) => [x + dx, y + dy]);
+      }
+      lines.push(`${inner}points: [${pts.map(([x, y]) => `[${core.formatNumber(x, unit)}, ${core.formatNumber(y, unit)}]`).join(", ")}]`);
     }
     const styleParts = Object.entries(preset.style).map(([key, value]) => `${key}: ${typeof value === "string" ? `"${value}"` : value}`);
     lines.push(`${inner}style: { ${styleParts.join(", ")} }`);
@@ -2073,13 +2112,27 @@
   // reused as-is, no new helper. Deliberately not applied to D-150's own drag-driven
   // reparenting: dragging is already an explicit placement choice, this heuristic exists
   // only to guess a sensible default when the system is choosing with no input at all.
-  function insertStandardElement(preset) {
+  // F-068: `clickPoint`, when given (desktop click-to-place, see startPlacingPreset below),
+  // is an *absolute* plan-space [x, y] in meters -- converted to the target's own local
+  // space here, once `target` itself is actually known, rather than asking the caller to
+  // guess it. Omitted, a preset lands at its own old fixed default spot, exactly as before
+  // this existed (every mobile/touch call, and every core.elementPresets-registered module
+  // preset -- buildElementText's own interface has no position parameter to pass this
+  // through to, so a registered preset like door-module.js's door isn't part of this yet).
+  function insertStandardElement(preset, clickPoint) {
     withParsedSource((text, base) => {
       const selected = selectedId && base.nodesById[selectedId] ? base.nodesById[selectedId] : null;
       const target = !selected ? base.root
         : (!selected.parentId || CONTAINER_SHAPES.includes(selected.props.shape))
           ? selected
           : base.nodesById[selected.parentId];
+      let position;
+      if (clickPoint) {
+        const positions = {};
+        core.computePositions(base.root, null, [0, 0], positions);
+        const [tx, ty] = positions[target.id] ?? [0, 0];
+        position = [clickPoint[0] - tx, clickPoint[1] - ty];
+      }
       const usedIds = new Set(Object.keys(base.nodesById));
       const id = uniqueId(preset.idBase, usedIds);
       const indent = lineIndentAt(text, target.start) + "  ";
@@ -2090,11 +2143,61 @@
       // identical container-placement/undo path below with no branching needed beyond this.
       const elementText = preset.buildElementText
         ? preset.buildElementText(id, indent, unit)
-        : presetElementText(preset, id, indent, unit);
-      const insertAt = afterOpenBrace(text, target);
-      const newText = text.slice(0, insertAt) + `\n${elementText}` + text.slice(insertAt);
+        : presetElementText(preset, id, indent, unit, position);
+      // F-068: the *last* child, not the first -- later-in-source paints later (D-110's own
+      // bringToFront precedent), so a freshly inserted element lands in front of every
+      // existing sibling instead of potentially behind one, matching what "I just added
+      // this" should look like without an extra Bring to Front step.
+      const insertAt = beforeCloseBrace(text, target);
+      const newText = text.slice(0, insertAt) + `${elementText}\n` + text.slice(insertAt);
       commitSourceEdit(newText, `'${id}': added to '${target.id}'.`);
     });
+  }
+
+  // F-068: a lightweight, approximate preview of one of the four generic shapes --
+  // centered on its own local origin (0,0) rather than at the preset's own fixed default
+  // position, since startPlacingPreset positions the whole <g> wrapper via `transform`
+  // instead. Only ever called for a STANDARD_ELEMENTS entry (plain shape/size/radius/
+  // points/style fields) -- a core.elementPresets-registered one (e.g. door-module.js's
+  // door) has no such data to draw from, by design not offered click-to-place at all (see
+  // insertStandardElement's own comment on clickPoint).
+  function placementGhostMarkup(preset) {
+    const style = preset.style ?? {};
+    const common = `fill="${style.fill ?? "none"}" stroke="${style.stroke ?? "#666"}" ` +
+      `stroke-width="${(style.strokeWidth ?? 0.02) * core.M}" opacity="0.55" pointer-events="none"`;
+    if (preset.shape === "rect") {
+      const [w, h] = preset.size;
+      return `<rect x="${-w * core.M / 2}" y="${-h * core.M / 2}" width="${w * core.M}" height="${h * core.M}" ${common}/>`;
+    }
+    if (preset.shape === "circle") {
+      return `<circle cx="0" cy="0" r="${preset.radius * core.M}" ${common}/>`;
+    }
+    // polygon/polyline: centered on the points' own bounding box, not the first point --
+    // a closer match to how the shape will actually look sitting under the cursor than
+    // anchoring on one corner would.
+    const xs = preset.points.map((p) => p[0]), ys = preset.points.map((p) => p[1]);
+    const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+    const pts = preset.points.map(([x, y]) => `${(x - cx) * core.M},${(y - cy) * core.M}`).join(" ");
+    const tag = preset.shape === "polygon" ? "polygon" : "polyline";
+    return `<${tag} points="${pts}" ${common}/>`;
+  }
+
+  function startPlacingPreset(preset) {
+    if (placingPreset) cancelPlacingPreset(); // switching presets mid-placement -- drop the old ghost first, not leak it
+    const svgEl = core.rootEl.querySelector("svg");
+    if (!svgEl) return;
+    svgEl.insertAdjacentHTML("beforeend", `<g class="placement-ghost">${placementGhostMarkup(preset)}</g>`);
+    placingPreset = { preset, ghostEl: svgEl.lastElementChild };
+    core.rootEl.classList.add("picking");
+    core.dragmsgEl.textContent = "Click in the viewer to place it — Escape to cancel.";
+  }
+
+  function cancelPlacingPreset() {
+    if (!placingPreset) return;
+    placingPreset.ghostEl?.remove();
+    placingPreset = null;
+    core.rootEl.classList.remove("picking");
+    core.dragmsgEl.textContent = "";
   }
 
   // F-029: bulk duplicate for a multi-selection. Filtered to selection *roots* first —
@@ -2396,6 +2499,21 @@
   // untidy the way a misplaced property insert still would.
   function afterOpenBrace(text, node) {
     return text.indexOf("{", node.idEnd) + 1;
+  }
+
+  // F-068: the position right before a node's own closing `}`, for inserting a *last*
+  // child. node.end - 1 is the `}` character's own index, but inserting raw text there
+  // would land it *after* the indentation whitespace already sitting on that line (e.g.
+  // "    }" for a nested node) rather than before it -- a real bug, found by actually
+  // testing this against a nested target, not just a top-level one: the new child ended up
+  // sharing a line with the old indent, breaking the closing brace's own indentation.
+  // Walking back over same-line spaces/tabs (never a newline) lands right after the
+  // preceding line break instead, so inserted text + "\n" cleanly precedes the closing
+  // brace's own untouched, correctly-indented line.
+  function beforeCloseBrace(text, node) {
+    let i = node.end - 1;
+    while (i > 0 && (text[i - 1] === " " || text[i - 1] === "\t")) i--;
+    return i;
   }
 
   // Reuses the exact clamp math a drag already applies (dx=dy=0 against the *current*
@@ -3281,6 +3399,12 @@
     // very same event, immediately closing the menu it just opened (a real bug, found live
     // by testing the full flow, not just reading the code).
     if (connectPick) return;
+    // F-068: same reasoning as connectPick right above -- a click while placing a preset is
+    // entirely reinterpreted (resolved on pointerUP, see handlePointerUp), never falls
+    // through to ordinary shape-click/drag/selection handling, so a stray click mid-
+    // placement can't silently change `selectedId` out from under the target resolution
+    // insertStandardElement is about to do.
+    if (placingPreset) return;
 
     // D-198: a second finger landing used to always win over whatever the first finger
     // alone was starting -- cancelling any pending single-pointer gesture here and handing
@@ -3880,6 +4004,7 @@
 
   function handleKeyDown(e) {
     if (e.key === "Escape") {
+      if (placingPreset) { cancelPlacingPreset(); return; }
       if (connectPick) { cancelConnectPick(); return; }
       if (!contextMenuEl.hidden) { closeContextMenu(); return; }
       // F-029: with the menu already closed, Escape clears a multi-selection instead —
@@ -4226,6 +4351,11 @@
     if (resizeDrag) { applyResizeDrag(e.clientX, e.clientY); return; }
     if (vertexDrag) { applyVertexDrag(e.clientX, e.clientY); return; }
     if (scaleDrag) { applyScaleDrag(e.clientX, e.clientY); return; }
+    if (placingPreset) {
+      const vb = clientToViewBoxPoint(e.clientX, e.clientY);
+      if (vb) placingPreset.ghostEl.setAttribute("transform", `translate(${vb[0]}, ${vb[1]})`);
+      return;
+    }
     if (connectPick) {
       // S-038: shared isValidGestureTarget -- relateDrag's own branch below uses the exact
       // same check, just triggered by hover-with-no-button-down instead of hover-during-drag.
@@ -4368,6 +4498,22 @@
     if (scaleDrag) {
       scaleDrag = null;
       core.commitUndoStep();
+      return;
+    }
+    // F-068: resolved on pointerup, same shape as connectPick right below -- a window-level
+    // listener, so this fires for *any* pointerup anywhere on the page, not only ones over
+    // the viewer. core.rootEl.contains(e.target) (the same check updateStackedHint already
+    // uses elsewhere in this file for the identical "did this actually happen over the
+    // viewer" question) is the real gate here, not clientToPlanPoint's own null-check --
+    // found live that clientToViewBoxPoint never actually returns null just because a point
+    // falls outside the SVG's own rendered rect, it extrapolates the same linear formula
+    // regardless, so a click back in the code pane was silently still placing the element.
+    if (placingPreset && e.button === 0) {
+      const { preset } = placingPreset;
+      const overViewer = core.rootEl.contains(e.target);
+      const point = overViewer ? clientToPlanPoint(e.clientX, e.clientY) : null;
+      cancelPlacingPreset();
+      if (point) insertStandardElement(preset, point);
       return;
     }
     // D-144: resolved on pointerup, exactly like relateDrag's own gesture right below --
