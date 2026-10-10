@@ -2923,4 +2923,4 @@ Reported directly, immediately after D-213's own verification: "on reload there'
 
 **A second report, before this was deployed, matches the same cause:** small leftover line slivers right at the gap's edges under the logo ("Strichreste"), marked directly on a screenshot. Checked against a fresh local render with this fix already applied — the gap's own measured geometry matches the logo's `getBoundingClientRect()` exactly (`leftSegRight`/`h1Left` both `16`, `rightSegLeft`/`h1Right` both `161.328125`) and the screenshot shows a clean gap, no slivers — consistent with this being the same stale-pre-font-swap measurement, just a smaller shift than the first report happened to show, rather than a second, separate bug.
 
-**Status: built, full suite re-run.** Deploy and `.deploy-state`/GitHub Pages push to follow in the same pass.
+**Status: built, deployed, verified live on both hosts** — `www.planagonia.com/app/` and GitHub Pages (`tminder.github.io/2DPlaner/`) both confirmed serving `document.fonts?.ready.then(updateTabBaseline)` via direct fetch.
