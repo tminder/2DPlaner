@@ -62,10 +62,6 @@ Reported directly, not yet reproduced or root-caused: the highlighted/colored ba
 
 ## `storage-service-php/`
 
-## S-043 D-201's new user-modules feature shipped without a live test, a bigger risk than S-042's
-
-[D-201](decisions.md#d-201-f-056-v1-built-signed-in-users-can-create-their-own-modules-from-profile) (F-056 v1 — a signed-in user's own modules, a new `user_modules` table plus `modules.php`/`module-code.php`) was deployed deliberately without exercising it against the live `auth.planagonia.com`/`api.planagonia.com` instances — unlike [D-200](decisions.md#d-200-f-059s-email-enumeration-half-fixed-registerphp-no-longer-confirms-an-email-is-already-taken)'s own deferral (a small change reusing an already-verified-live code path, since live-verified), this is an entirely new table and two new endpoints, so the risk here is real and explicitly flagged as such in D-201 itself, not minimized. **Partially checked already, without an account, right after deploying:** plain unauthenticated `curl` against the live endpoints confirmed `module-code.php` returns a clean `404` for a nonexistent id and `400` for a missing one (not a `500`/fatal error — meaning `get_db()`'s new `CREATE TABLE IF NOT EXISTS user_modules` ran without error on the live database), and `modules.php` correctly returns `401` with no bearer token. Three checks are still outstanding, needing a real signed-in test account: (1) the dashboard lists/creates/edits/deletes a module correctly end to end; (2) `module-code.php?id=X` serves a *real* module's stored code with the right content-type, not just the already-confirmed error paths; (3) pasting a created module's own `module "..."` line into a real plan actually loads it through the app's existing confirm() dialog. Tied to [F-057](open-questions.md#f-057-the-whole-profileauthcloud-storage-stack-has-no-automated-test-coverage-at-all)'s own broader point, the same way D-200's own now-resolved deferral was.
-
 ## Project structure / process
 
 ## S-033 Static assets are physically duplicated across many directories
