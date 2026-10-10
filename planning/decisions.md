@@ -2784,7 +2784,7 @@ Picked up directly, the first of three small UX fixes raised while live-testing 
 
 **Verified locally before deploying** (`file://`, no real registration/network call needed) — injected the exact success class+text both pages' own JS sets on a real success, confirmed via `getComputedStyle` that the background/border/checkmark all render as designed, and that an emptied `profile/index.html` message correctly collapses to `display: none`. Full suite re-run after (pure CSS change, no JS touched) — green.
 
-**Status: built, verified locally, full suite green (313 passed).** Deploy and `.deploy-state` commit to follow in the same pass.
+**Status: built, deployed, verified live** (`blue-soft`/`msg:empty`/callout CSS confirmed present on both `www.planagonia.com/profile/` and `www.planagonia.com/app/` via direct fetch). Closes F-060 in `open-questions.md`. (That number had briefly been reused by mistake — the original F-060, an unrelated code-sync question, was already closed via [D-194](decisions.md#d-194-core-aim-1-sharpened-code-is-the-single-source-of-truth-for-every-plan-feature--resolves-f-060) long before this session; harmless in the end since both are now closed and the file never held a live duplicate, but noted here rather than silently glossed over.)
 
 ## D-204 The header's Edit/View tabs get a real active-state cue
 
@@ -2794,4 +2794,4 @@ Reported directly against a live screenshot: it wasn't clear which of Edit/View 
 
 **Verified locally** (`file://`, screenshotted before/after clicking View) — Edit (default-active) renders bold with a visible blue border against View's plain grey-bordered, regular-weight state, and the roles swap correctly on click.
 
-**Status: built, verified locally.** Deploy and `.deploy-state` commit to follow in the same pass as D-203.
+**Status: built, deployed, verified live** (`.menu-tab-btn.active`'s `border-color: var(--blue)` confirmed present on `www.planagonia.com/app/` via direct fetch).
