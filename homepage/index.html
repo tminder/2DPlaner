@@ -120,6 +120,7 @@
   .hero h1 .accent { color: var(--blue-deep); }
   .hero p.lede { font-size: 1.1rem; color: var(--ink-soft); max-width: 46ch; margin: 0 0 1.9rem; }
   .hero .ctas { display: flex; gap: 0.9rem; flex-wrap: wrap; }
+  .hero .cta-note { font-size: 0.86rem; color: var(--ink-soft); margin: 0.9rem 0 0; }
   .eyebrow {
     font-family: "IBM Plex Mono", monospace; font-size: 0.78rem; letter-spacing: 0.09em;
     text-transform: uppercase; color: var(--amber); margin: 0 0 0.9rem;
@@ -132,14 +133,18 @@
     background: var(--paper-raised); border: 1px solid var(--line); border-radius: 14px;
     padding: 1.2rem; box-shadow: 0 1px 0 var(--line);
   }
+  .illustration svg { display: block; width: 100%; height: auto; }
+  .illustration .code-caption {
+    font-family: "IBM Plex Mono", monospace; font-size: 0.72rem; letter-spacing: 0.04em;
+    text-transform: uppercase; color: var(--ink-soft); margin: 1rem 0 0.5rem;
+    padding-top: 0.9rem; border-top: 1px dashed var(--line);
+  }
   .illustration .code-line {
-    font-family: "IBM Plex Mono", monospace; font-size: 0.72rem; color: var(--ink-soft);
-    white-space: pre; overflow-x: auto; margin-bottom: 0.9rem; padding-bottom: 0.9rem;
-    border-bottom: 1px dashed var(--line);
+    font-family: "IBM Plex Mono", monospace; font-size: 0.78rem; color: var(--ink-soft);
+    white-space: pre; overflow-x: auto; margin: 0;
   }
   .illustration .code-line .k { color: var(--blue-deep); }
   .illustration .code-line .s { color: var(--amber); }
-  .illustration svg { display: block; width: 100%; height: auto; }
 
   section.principles { padding: 2.5rem 0 4rem; }
   section.principles h2 { font-size: 1.5rem; margin: 0 0 0.5rem; }
@@ -246,21 +251,17 @@
 <div class="wrap">
   <section class="hero">
     <div>
-      <p class="eyebrow">2D plan generator</p>
-      <h1>A floor plan is code.<br>Edit either, and <span class="accent">both stay true.</span></h1>
-      <p class="lede">Planagonia renders a room, a campervan interior, or a property layout straight from a small, purpose-built language — and keeps it that way. Drag a wall in the viewer and the code updates. Change a measurement in the code and the drawing follows. Neither view ever drifts from the other.</p>
+      <p class="eyebrow">Floor plan generator</p>
+      <h1>As fast as a sketch.<br>As exact as <span class="accent">a plan.</span></h1>
+      <p class="lede">Sketch out your next apartment, a campervan interior, or a garden layout — move something on screen, and the small program behind it updates to match; change a number in that code, and the drawing follows. Want to nudge something to the exact centimeter, or let an AI write the first draft? Either way, nothing here is a black box you can't reach into.</p>
       <div class="ctas">
         <a class="btn btn-primary" href="/app/">Open the app →</a>
         <a class="btn btn-ghost" href="/docs/">Read the docs</a>
       </div>
+      <p class="cta-note">Free, no account needed — try it right now.</p>
     </div>
     <div class="illustration">
-      <div class="code-line"><span class="k">element</span> bed {
-  shape: <span class="s">"rect"</span>
-  size: [1.6m, 2m]
-  position: [0.3m, 0.4m]
-}</div>
-      <svg viewBox="0 0 300 240" role="img" aria-label="Rendered floor plan matching the code above: a room with a bed, desk, side table, and rug.">
+      <svg viewBox="0 0 300 240" role="img" aria-label="A rendered floor plan: a room with a bed, desk, side table, and rug, matching the code below.">
         <rect x="6" y="6" width="288" height="228" rx="4" fill="none" style="stroke:var(--ink-soft)" stroke-width="1.2" opacity="0.5"/>
         <rect x="24" y="30" width="96" height="120" style="fill:var(--bed);stroke:var(--bed-line)" stroke-width="2"/>
         <rect x="200" y="14" width="70" height="36" style="fill:var(--desk);stroke:var(--desk-line)" stroke-width="2"/>
@@ -268,29 +269,35 @@
         <polygon points="80,168 118,175 125,210 90,232 55,215" style="fill:var(--rug)" stroke="#b0a080" stroke-width="1.6"/>
         <circle cx="160" cy="200" r="20" fill="#bfe3f5" stroke="#3a7a9a" stroke-width="1.8"/>
       </svg>
+      <p class="code-caption">↳ the plan behind it</p>
+      <div class="code-line"><span class="k">element</span> bed {
+  shape: <span class="s">"rect"</span>
+  size: [1.6m, 2m]
+  position: [0.3m, 0.4m]
+}</div>
     </div>
   </section>
 </div>
 
 <div class="wrap">
   <section class="principles">
-    <h2>Three ideas the whole language is built around</h2>
-    <p>Not a general drawing tool with a scripting layer bolted on — the language and the renderer were designed together, for exactly this job.</p>
+    <h2>Why it's not just a drawing tool</h2>
+    <p>Not a general drawing tool with a scripting layer bolted on — every part of it was designed around sketching fast without losing control of the exact numbers.</p>
     <div class="principle-grid">
       <div class="principle">
         <p class="num">01</p>
-        <h3>Code and plan never drift apart</h3>
-        <p>There's no view that can silently fall out of sync with the code defining it. Editing the drawing rewrites the source; editing the source redraws the plan — the same underlying model, always.</p>
+        <h3>Two views, always in sync</h3>
+        <p>Move something in the drawing and the code updates to match; change a number in the code and the drawing follows. Neither one ever quietly falls out of sync with the other.</p>
       </div>
       <div class="principle">
         <p class="num">02</p>
-        <h3>A language built for this, not for everything</h3>
-        <p>Real-world units, positions that solve themselves when you drag something, shapes and connections as the only two building blocks. No general-purpose programming required to describe a room.</p>
+        <h3>Built for real layouts, not general drawing</h3>
+        <p>No CAD learning curve, no general-purpose canvas to wrestle with — describe a room, a campervan, or a property boundary directly, in real-world units from the start.</p>
       </div>
       <div class="principle">
         <p class="num">03</p>
-        <h3>Extensible from inside the plan</h3>
-        <p>New shapes, new interactions, new behaviors load as modules declared right in the plan's own source — the core language stays small on purpose.</p>
+        <h3>Full control, down to the exact number</h3>
+        <p>Every measurement is a real, editable value, not a locked-in shape. Type a precise change directly, drag it into place, or hand the whole layout to an AI to draft — review any of it against the live drawing before you trust it.</p>
       </div>
     </div>
   </section>
@@ -301,7 +308,7 @@
     <div class="row">
       <div>
         <h2>Written to be authored by AI, reviewed by you</h2>
-        <p>Planagonia's language favors precision an AI can generate unambiguously over convenience for hand-typing — describe what you want built, let the assistant write the plan, and check the result against the live drawing.</p>
+        <p>Describe what you want to an AI assistant — today, that's your own ChatGPT or Claude conversation — then paste what it writes into the editor and check it against the live drawing. Planagonia's language favors precision an AI can generate unambiguously, so what you paste in usually just works.</p>
         <p>It's still plain, readable source either way — open the app and edit it directly whenever you'd rather.</p>
       </div>
       <div class="author-diagram">
