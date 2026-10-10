@@ -365,8 +365,11 @@ element zimmer {
 def test_the_current_lines_own_redundant_name_is_suppressed_when_already_shown_persistently(app_page):
     """S-042: "tisch" has a persistent show:"always" label already rendered at its own
     anchor -- the badge's own "current" line (at the cursor, exactly over tisch) must not
-    repeat it a second time. The non-current "teppich" line still needs its name, since
-    nothing else on screen names it."""
+    repeat it a second time. Reported directly as a second-order bug of that same fix: a
+    fully blank line reads as "this element is missing," not "its name is already shown" --
+    so the current line gets a visible placeholder instead of nothing at all. The
+    non-current "teppich" line still needs its real name, since nothing else on screen
+    names it."""
     load_plan(app_page, STACK_WITH_PERSISTENT_LABEL)
     cx, cy = element_center(app_page, "tisch")
     app_page.mouse.move(cx, cy)
@@ -375,7 +378,7 @@ def test_the_current_lines_own_redundant_name_is_suppressed_when_already_shown_p
     lines = stack_badge_lines(app_page)
     current = [t for t, is_current in lines if is_current]
     non_current = [t for t, is_current in lines if not is_current]
-    assert current == [""]  # marker only, no redundant "Tisch" text
+    assert current == ["(shown above)"]  # a placeholder, not "Tisch" again and not blank
     assert "Teppich" in non_current
 
 

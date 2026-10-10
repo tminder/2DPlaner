@@ -100,6 +100,7 @@
       #interactivity-stack-badge .stack-line { display: flex; gap: 0.5em; opacity: 0.55; padding: 0.05rem 0; }
       #interactivity-stack-badge .stack-line.current { opacity: 1; }
       #interactivity-stack-badge .stack-marker { width: 0.9em; flex: none; }
+      #interactivity-stack-badge .stack-note { font-weight: 400; font-style: italic; opacity: 0.75; }
       /* D-145/D-146: round buttons arranged in a ring around the click point, replacing
          D-144's list-style dropdown -- kept as a single fixed-position 0x0 anchor box at the
          click point itself, with every button absolutely positioned off of it via its own
@@ -218,6 +219,13 @@
   // name shown, since nothing else on screen names them, and a non-current element's own
   // persistent annotation (if any) sits at *its* own anchor, not at the cursor, so there's
   // nothing for it to visually collide with here.
+  //
+  // Reported directly, live: the fix above traded one confusion for another -- an entirely
+  // blank line (just a floating "❯" with nothing beside it) reads as "this element is
+  // missing from the list," not "its name is intentionally omitted," especially when it's
+  // genuinely the first thing a viewer looks at (the topmost/current candidate). A short,
+  // visibly-not-a-name placeholder keeps the de-duplication this was built for without
+  // leaving a seemingly-broken empty row.
   function stackHintMarkup(ids) {
     const currentId = selectedId && ids.includes(selectedId) ? selectedId : ids[0];
     return ids.map((id) => {
@@ -225,8 +233,8 @@
       const isCurrent = id === currentId;
       const alreadyShownHere = isCurrent && node?.props.show === "always"
         && (node.props.label != null || node.props.dimensions === true);
-      const label = alreadyShownHere ? "" : (node?.props.label ?? id);
-      return `<div class="stack-line${isCurrent ? " current" : ""}"><span class="stack-marker">${isCurrent ? "❯" : ""}</span><span>${escapeHtml(label)}</span></div>`;
+      const label = alreadyShownHere ? "(shown above)" : (node?.props.label ?? id);
+      return `<div class="stack-line${isCurrent ? " current" : ""}"><span class="stack-marker">${isCurrent ? "❯" : ""}</span><span${alreadyShownHere ? ' class="stack-note"' : ""}>${escapeHtml(label)}</span></div>`;
     }).join("");
   }
 

@@ -48,8 +48,19 @@
      a .menu-tab-btn's hover affordance. */
   header h1 { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 1.05rem; margin: 0;
     white-space: nowrap; display: flex; align-items: center; gap: 0.4rem; color: var(--ink);
-    cursor: pointer; }
+    cursor: pointer; align-self: flex-end; }
   header h1:hover { color: var(--blue-deep); }
+  /* D-208: reported directly -- the new baseline (D-205) cut cleanly under the logo on
+     every normal page load, since "File" (the logo, data-tab="file") is MENU_TAB_KEY's own
+     default and the logo was never given the same active-merge treatment
+     .menu-tab-btn.active already has, despite the exact same JS toggling .active on it
+     (menuTabBtns includes "#header-logo"). align-self: flex-end (above) makes the logo hug
+     row1's own bottom edge the same way .menu-tab-strip already does, so this can actually
+     reach the line; the merge itself deliberately doesn't borrow .menu-tab-btn.active's
+     look (no border/bold -- D-132's own "keeping its own distinct brand styling... rather
+     than looking like a tab" stands), just enough background to paint over the exact 1px
+     the line would otherwise show through. */
+  header h1.active { background: var(--paper-raised); margin-bottom: -1px; padding-bottom: 1px; }
   .beta-badge { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 0.62rem;
     font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
     color: var(--amber); background: var(--amber-soft); border-radius: 4px; padding: 0.15rem 0.4rem; }
@@ -1027,7 +1038,7 @@ element room {
   shape: "rect"
   size: [5, 4]
   position: [0, 0]
-  style: { fill: "#f7f5f0", stroke: "#333", strokeWidth: 0.04 }
+  style: { fill: "#f7f5f0", stroke: "none" }
   childPlacement: "inside"
   edgeLengths: true
   show: "always"
@@ -1100,11 +1111,28 @@ element room {
 
   element entry_wall {
     compose: "wallWithDoor"
-    from: [2.5, 0]
-    to: [2.5, 1.6]
-    doorAt: 0.35
+    from: [0, 0]
+    to: [5, 0]
+    doorAt: 2.7
     doorWidth: 0.9
-    swing: "right"
+  }
+
+  element wall_right {
+    shape: "polyline"
+    points: [[5, 0], [5, 4]]
+    style: { stroke: "#444", strokeWidth: 0.1 }
+  }
+
+  element wall_bottom {
+    shape: "polyline"
+    points: [[5, 4], [0, 4]]
+    style: { stroke: "#444", strokeWidth: 0.1 }
+  }
+
+  element wall_left {
+    shape: "polyline"
+    points: [[0, 4], [0, 0]]
+    style: { stroke: "#444", strokeWidth: 0.1 }
   }
 }
 
