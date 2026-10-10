@@ -2476,35 +2476,45 @@ function updateActivePlanButton() {
 const CLOUD_API_BASE = "https://api.planagonia.com";
 const CLOUD_TOKEN_KEY = "planagonia:cloudToken";
 const CLOUD_USERNAME_KEY = "planagonia:cloudUsername";
+const CLOUD_NAME_KEY = "planagonia:cloudName";
 
 function cloudToken() {
   return safeStorageGet(sessionStorage, CLOUD_TOKEN_KEY);
 }
-// Reads the real username straight out of the session token's own payload rather than
-// trusting whatever the visitor typed into the sign-in form — since that field also
+// Reads the real username/name straight out of the session token's own payload rather
+// than trusting whatever the visitor typed into the sign-in form — since that field also
 // accepts an email now (WP's own Basic Auth already resolved it either way, confirmed
 // live), storing the raw input verbatim would show "Signed in as name@example.com"
-// anywhere this app displays it, instead of the actual username every other display of
+// anywhere this app displays it, instead of the actual identity every other display of
 // "who's signed in" already uses.
-function decodeSessionUsername(token) {
+function decodeSessionPayload(token) {
   try {
     let body = token.split(".")[0].replace(/-/g, "+").replace(/_/g, "/");
     while (body.length % 4) body += "=";
-    return JSON.parse(atob(body)).username || null;
+    return JSON.parse(atob(body));
   } catch (e) { return null; }
 }
 
 function setCloudSession(token) {
   if (token) {
+    const payload = decodeSessionPayload(token) || {};
     safeStorageSet(sessionStorage, CLOUD_TOKEN_KEY, token);
-    safeStorageSet(sessionStorage, CLOUD_USERNAME_KEY, decodeSessionUsername(token) || "");
+    safeStorageSet(sessionStorage, CLOUD_USERNAME_KEY, payload.username || "");
+    safeStorageSet(sessionStorage, CLOUD_NAME_KEY, payload.name || payload.username || "");
   } else {
     safeStorageRemove(sessionStorage, CLOUD_TOKEN_KEY);
     safeStorageRemove(sessionStorage, CLOUD_USERNAME_KEY);
+    safeStorageRemove(sessionStorage, CLOUD_NAME_KEY);
   }
 }
 function cloudUsername() {
   return safeStorageGet(sessionStorage, CLOUD_USERNAME_KEY);
+}
+// F-058: WordPress's own editable display name (profile/'s new "Display name" field) —
+// shown here in preference to the immutable cloudUsername above, now that it's something
+// a visitor can actually set to their own liking.
+function cloudName() {
+  return safeStorageGet(sessionStorage, CLOUD_NAME_KEY);
 }
 
 function updateCloudUi() {
@@ -2515,7 +2525,7 @@ function updateCloudUi() {
   // #account-menu-btn's own flyout, whose single `hidden` below already governs it (and
   // everything else in the menu) as one unit.
   document.getElementById("account-menu-btn").hidden = !signedIn;
-  document.getElementById("cloud-status").textContent = signedIn ? `Signed in as ${cloudUsername()}` : "";
+  document.getElementById("cloud-status").textContent = signedIn ? `Signed in as ${cloudName() || cloudUsername()}` : "";
 }
 
 async function cloudSignIn(username, password) {

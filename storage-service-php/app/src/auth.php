@@ -20,7 +20,13 @@ function base64url_decode(string $data): string {
 function session_ttl_seconds(): int { return 60 * 60; } // 1 hour — D-021's "short-lived"
 
 function issue_session_token(array $config, array $user): string {
-    $payload = ['sub' => $user['id'], 'username' => $user['username'], 'exp' => time() + session_ttl_seconds()];
+    // F-058: 'name' (WordPress's own editable display name, falling back to the username
+    // when unset -- a fresh account's name defaults to its username until changed) rides
+    // along from login so profile/index.html's and docs/index.html's own "Signed in as X"
+    // can show it without a separate round-trip. Goes stale only the same way 'username'
+    // already does -- for this token's own 1-hour TTL, until the next login re-reads it
+    // fresh from WordPress.
+    $payload = ['sub' => $user['id'], 'username' => $user['username'], 'name' => $user['name'] ?? $user['username'], 'exp' => time() + session_ttl_seconds()];
     $body = base64url_encode(json_encode($payload));
     $sig = base64url_encode(hash_hmac('sha256', $body, $config['session_secret'], true));
     return $body . '.' . $sig;
@@ -86,6 +92,10 @@ function verify_credentials(array $config, PDO $db, string $username, string $pa
     if (!is_array($wpUser) || !isset($wpUser['id'], $wpUser['username'])) return null;
     $user = ensure_user($db, (string) $wpUser['id'], $wpUser['username']); // WP's own id becomes this service's user id
     if (!$user['verified']) throw new AccountNotVerifiedException();
+    // F-058: 'name' is WP's own, read fresh here rather than cached in this service's local
+    // DB row (ensure_user's own table has no such column, deliberately -- it would only
+    // ever go stale between logins otherwise, with nothing to invalidate it).
+    $user['name'] = is_string($wpUser['name'] ?? null) && $wpUser['name'] !== '' ? $wpUser['name'] : $wpUser['username'];
     return $user;
 }
 

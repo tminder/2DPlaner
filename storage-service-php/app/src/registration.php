@@ -199,6 +199,42 @@ function consume_verify_token(PDO $db, string $token): ?array {
     return $valid ? ['id' => $row['id'], 'username' => $row['username']] : null;
 }
 
+// F-058: a signed-in user's own display name -- the one piece of self-service account
+// management that's actually achievable given WordPress's own constraints. WP's "name"
+// field is freely editable via the REST API; the real login credential (user_login) is
+// not -- confirmed directly, not assumed: wp_update_user() silently ignores a user_login
+// change no matter who asks, a WordPress core limitation (not a REST API restriction
+// closable with a plugin), so an actual username-change feature isn't offered at all, by
+// design. Uses the bot-admin credential like every other write in this file, matching
+// D-021's own token flow: a signed-in session only ever carries this service's own
+// self-signed token, never the user's real WP Application Password, so there's no user-
+// authenticated way to call this directly even if WordPress allowed it.
+function update_wp_display_name(array $config, string $userId, string $name): string {
+    $ch = curl_init(rtrim($config['wp_url'], '/') . "/wp-json/wp/v2/users/$userId");
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_USERPWD => $config['bot_username'] . ':' . $config['bot_password'],
+        CURLOPT_POST => true, // WP's REST API routes an authenticated POST to an existing resource as an update, same as create_wp_user's own POST does for a new one
+        CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+        CURLOPT_POSTFIELDS => json_encode(['name' => $name]),
+        CURLOPT_TIMEOUT => 10,
+    ]);
+    $body = curl_exec($ch);
+    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    if (curl_errno($ch)) {
+        error_log('update_wp_display_name: WP request failed: ' . curl_error($ch));
+        curl_close($ch);
+        throw new RegistrationException('Could not reach the account service — try again shortly');
+    }
+    curl_close($ch);
+    $data = json_decode($body, true);
+    if ($status !== 200 || !is_array($data) || !isset($data['name'])) {
+        $reason = is_array($data) && isset($data['message']) ? $data['message'] : 'Could not update your name';
+        throw new RegistrationException($reason);
+    }
+    return $data['name'];
+}
+
 const PLANAGONIA_APP_PASSWORD_NAME = 'Planagonia (registration)';
 
 // Deletes any Application Password this service itself previously issued for $userId —

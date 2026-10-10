@@ -215,6 +215,13 @@
         <p class="who">Signed in as <span class="name" id="who-username"></span></p>
         <button id="signout-btn" class="btn btn-ghost">Sign out</button>
       </div>
+      <form id="display-name-form">
+        <label for="display-name-input">Display name</label>
+        <input type="text" id="display-name-input" maxlength="60" required>
+        <p class="hint">Just how you're greeted here and in the app — not your sign-in username, which can't be changed.</p>
+        <button type="submit" class="btn btn-ghost">Save</button>
+        <p id="display-name-msg" class="msg" role="status"></p>
+      </form>
     </div>
 
     <div id="plans-view" class="card" hidden>
@@ -267,27 +274,50 @@
   const CLOUD_API_BASE = "https://api.planagonia.com";
   const CLOUD_TOKEN_KEY = "planagonia:cloudToken";
   const CLOUD_USERNAME_KEY = "planagonia:cloudUsername";
+  const CLOUD_NAME_KEY = "planagonia:cloudName";
 
   function cloudToken() { try { return sessionStorage.getItem(CLOUD_TOKEN_KEY); } catch (e) { return null; } }
   function cloudUsername() { try { return sessionStorage.getItem(CLOUD_USERNAME_KEY); } catch (e) { return null; } }
-  // Reads the real username straight out of the session token's own payload rather than
-  // trusting whatever the visitor typed into the sign-in form — that field also accepts
-  // an email now (WP's own Basic Auth already resolved it either way, confirmed live), so
-  // storing the raw input verbatim would show "Signed in as name@example.com" instead of
-  // the actual username every other display of "who's signed in" already uses.
-  function decodeSessionUsername(token) {
+  // F-058: WordPress's own editable display name (defaults to the username until changed)
+  // — separate from cloudUsername above, which stays the real, unchangeable login
+  // credential. "Signed in as X" below shows this instead, now that it's something a
+  // visitor can actually set to their own liking.
+  function cloudName() { try { return sessionStorage.getItem(CLOUD_NAME_KEY); } catch (e) { return null; } }
+  // Reads the real username/name straight out of the session token's own payload rather
+  // than trusting whatever the visitor typed into the sign-in form — that field also
+  // accepts an email now (WP's own Basic Auth already resolved it either way, confirmed
+  // live), so storing the raw input verbatim would show "Signed in as name@example.com"
+  // instead of the actual identity every other display of "who's signed in" already uses.
+  function decodeSessionPayload(token) {
     try {
       let body = token.split(".")[0].replace(/-/g, "+").replace(/_/g, "/");
       while (body.length % 4) body += "=";
-      return JSON.parse(atob(body)).username || null;
+      return JSON.parse(atob(body));
     } catch (e) { return null; }
   }
 
   function setCloudSession(token) {
     try {
-      if (token) { sessionStorage.setItem(CLOUD_TOKEN_KEY, token); sessionStorage.setItem(CLOUD_USERNAME_KEY, decodeSessionUsername(token) || ""); }
-      else { sessionStorage.removeItem(CLOUD_TOKEN_KEY); sessionStorage.removeItem(CLOUD_USERNAME_KEY); }
+      if (token) {
+        const payload = decodeSessionPayload(token) || {};
+        sessionStorage.setItem(CLOUD_TOKEN_KEY, token);
+        sessionStorage.setItem(CLOUD_USERNAME_KEY, payload.username || "");
+        sessionStorage.setItem(CLOUD_NAME_KEY, payload.name || payload.username || "");
+      } else {
+        sessionStorage.removeItem(CLOUD_TOKEN_KEY);
+        sessionStorage.removeItem(CLOUD_USERNAME_KEY);
+        sessionStorage.removeItem(CLOUD_NAME_KEY);
+      }
     } catch (e) { /* private mode — sign-in just won't persist across a reload */ }
+  }
+  // F-058: right after a successful name change -- updates the current tab's own session
+  // state immediately (the PUT response already confirms what WordPress actually stored),
+  // without needing a fresh sign-in for "Signed in as X" to catch up. A *different* tab/
+  // device's own already-issued token still shows the old name until its own next login —
+  // the same staleness window this token's 1-hour TTL already has for everything else in
+  // it, not a new gap this introduces.
+  function setCloudName(name) {
+    try { sessionStorage.setItem(CLOUD_NAME_KEY, name); } catch (e) { /* private mode */ }
   }
 
   async function cloudFetch(path, opts = {}) {
@@ -334,7 +364,9 @@
     document.getElementById("plans-view").hidden = !signedIn;
     document.getElementById("modules-view").hidden = !signedIn;
     if (signedIn) {
-      document.getElementById("who-username").textContent = cloudUsername();
+      document.getElementById("who-username").textContent = cloudName() || cloudUsername();
+      const nameInput = document.getElementById("display-name-input");
+      if (nameInput && document.activeElement !== nameInput) nameInput.value = cloudName() || cloudUsername() || "";
       loadPlans();
     }
   }
@@ -367,6 +399,33 @@
   document.getElementById("signout-btn").addEventListener("click", () => {
     setCloudSession(null);
     render();
+  });
+
+  // F-058: the one piece of self-service account editing WordPress's own constraints
+  // actually allow (see update_wp_display_name's own comment, storage-service-php) —
+  // changes what's shown, not the real sign-in credential.
+  document.getElementById("display-name-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const name = document.getElementById("display-name-input").value.trim();
+    const msgEl = document.getElementById("display-name-msg");
+    msgEl.className = "msg";
+    msgEl.textContent = "Saving…";
+    try {
+      const res = await cloudFetch("/profile.php", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || `Save failed (${res.status})`);
+      setCloudName(body.name);
+      document.getElementById("who-username").textContent = body.name;
+      msgEl.className = "msg ok";
+      msgEl.textContent = "Saved.";
+    } catch (err) {
+      msgEl.className = "msg error";
+      msgEl.textContent = err.message;
+    }
   });
 
   // Three modes sharing this one card rather than navigating to separate pages —
