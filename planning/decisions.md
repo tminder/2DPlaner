@@ -2977,3 +2977,29 @@ Raised directly after the SEO content review: the homepage led with "A floor pla
 - **Author section:** states plainly that AI-authoring today means pasting from a separate ChatGPT/Claude conversation into the editor, rather than leaving the mechanism ambiguous (a visitor could otherwise expect a built-in AI chat inside the app itself, which doesn't exist — D-023/F-008).
 
 **Status: built, deployed, byte-verified, live-confirmed** (`www.planagonia.com/`, direct fetch confirming the new headline, illustration caption, and author-section wording) and pushed. No automated test touches `homepage/` (confirmed via `grep` against `tests/` before skipping a full-suite run) — pure marketing copy and CSS, nothing to regress.
+
+## D-219 A real logo mark, site-wide, replacing a generic unicode glyph that never matched the actual favicon — plus a homepage header cleanup
+
+Raised directly, three concrete complaints: the homepage's header menu is overloaded ("was braucht ein User?"), the logo and favicon don't match, and "Profile" in the nav doesn't make sense. Confirmed each directly before designing anything.
+
+**Logo/favicon mismatch, confirmed real:** every page's header "logo" was just the unicode character "▦" (U+25A6) in amber, next to the wordmark text — it has zero visual relationship to the actual, deliberately-designed favicon (`favicon.svg`: a navy rounded square, a cream room outline, an L-shaped corner line, a small amber highlight). The two had never been the same mark.
+
+**Five directions sketched and compared side by side, at both favicon size (16px) and inline-wordmark size, before picking one — "möglichst einfach" (as simple as possible) was the explicit constraint, confirmed directly:**
+- The existing favicon unchanged — too much fine detail, visibly muddy at 16px.
+- A reduced 3-shape version of it — better, still a bit soft at 16px.
+- An asymmetric 2×2 room-subdivision grid — looked *busier*, not simpler, at small sizes; ruled out as not meeting its own goal.
+- A plain letter "P" monogram — the simplest and most legible of all, but drops the floor-plan metaphor entirely.
+- **A single amber L-shaped "plan corner" on a navy rounded square (2 shapes total) — chosen.** The strongest reduction of the existing favicon's own DNA (not an unrelated new concept), reads cleanly at every size from 16px up, and keeps the product's visual metaphor intact.
+
+**"Profile" in the nav, confirmed as a real confusion, not just a naming nitpick:** `/profile/` already *is* the sign-in page (D-055) — for a signed-out first-time visitor, "Profile" implies an account that doesn't exist yet. Relabeled to **"Sign in"**, same link.
+
+**Homepage nav decluttered, scoped there only (not the other 13 pages):** trimmed from *Open the app / Docs / Modules / Blog / Profile* to **Open the app / Docs / Sign in**. Modules (currently an empty store, D-125) and Blog (updates for returning visitors, not onboarding) matter less to a first-time visitor deciding whether to try the product than to someone already using it — both stay fully reachable via the footer, which still lists every section; nothing is actually removed from the site, just out of the first-impression header.
+
+**Rolled out to all 15 places this logo appears, not just the homepage:**
+- The 14 static marketing/docs pages (`homepage/`, all six blog posts plus the blog index, `modules/`, `impressum/`, `terms/`, `profile/`, `site-docs/`) each got new `favicon.svg`/`favicon.ico`/`apple-touch-icon.png` (rendered once via Playwright from the new SVG, then PIL-packed into a proper multi-size `.ico` — 16/32/48/256px, matching the old file's own size set — and a 180×180 `apple-touch-icon.png`) and their inline `.wordmark` markup/CSS swapped from the unicode glyph to a theme-aware inline SVG (`fill:var(--blue-deep)`/`var(--amber)`, so it recolors correctly in dark mode the way a static favicon file never could).
+- **`docs/index.html`'s own `#header-logo`**, confirmed directly with the user before touching it given how fragile this exact header has been this session (D-213–215's tab-baseline saga) — added the same inline SVG mark ahead of the "Planagonia" text. Verified live and visually, at 3× device-pixel-ratio, in both the File and Edit tab states: `updateTabBaseline()` already measures the element's own live `getBoundingClientRect()` rather than assuming a fixed width, so widening the logo by adding an icon needed no code change and broke nothing — the baseline gap still lands exactly under the active element in both states.
+- `homepage/og-image.png` regenerated with the new mark — it was still showing the old glyph *and* the pre-D-218 tagline ("A floor plan is code"), both stale.
+
+**Tests:** full suite (313 tests) re-run after the `docs/index.html` change — green.
+
+**Status: built, deployed to all four affected targets (`docs`, `site-docs`, `profile`, `homepage`), byte-verified (61 files), live-confirmed on both hosts** — `www.planagonia.com` (nav text, `logo-mark` present on both the homepage and the App, the new favicon's own path data, the OG image's new byte size) and GitHub Pages (confirmed rebuilt with `logo-mark` present), pushed.
