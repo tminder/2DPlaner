@@ -76,7 +76,7 @@ header('Content-Type: text/html; charset=utf-8');
 <main>
 <?php if ($verified && $appPassword): ?>
   <h1>You're confirmed and signed in</h1>
-  <p>Continue to your profile — or save this password first, if you'd rather sign in by hand another time (shown only once):</p>
+  <p>Continue to your account — or save this password first, if you'd rather sign in by hand another time (shown only once):</p>
   <dl class="credentials">
     <dt>Username</dt>
     <dd><?= htmlspecialchars($verified['username']) ?></dd>

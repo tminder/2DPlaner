@@ -40,9 +40,10 @@ below — none of which would have been caught by code review alone.
   with `429` and a `Retry-After` header.
 - **CORS is live**, locked to specific allowed origins (`config.local.php`'s
   `allowed_origins`) rather than `*` — this API carries session tokens, not public data.
-- **Wired to the real frontend** — `docs/index.html` (D-050) and `profile/index.html`
-  (D-055) both call this service for real, from multiple hosts (GitHub Pages,
-  `www.planagonia.com/app/`, `test.planagonia.com`), all covered by `allowed_origins`.
+- **Wired to the real frontend** — `docs/index.html` (D-050) and `account/index.html`
+  (D-055, renamed from `profile/` — D-227) both call this service for real, from multiple
+  hosts (GitHub Pages, `www.planagonia.com/app/`, `test.planagonia.com`), all covered by
+  `allowed_origins`.
 - **Self-service registration is real (D-058)** — `app/src/registration.php`,
   `httpdocs/register.php`/`verify.php`. A visitor creates an account, confirms it via an
   emailed link, and is handed a fresh Application Password on that confirmation page —
@@ -142,8 +143,9 @@ directly-requested `.php` file. All `plans.php` requests require
 | Method | Path | Body | Returns |
 |---|---|---|---|
 | POST | `/session.php` | `{ username, password }` | `{ token, expiresIn }`; `403` if the account exists but isn't verified yet; `429` past 10 attempts/15 min per IP |
-| POST | `/register.php` | `{ email, password }` | `{ message }` (201); `429` past 5/hour per IP |
-| GET | `/verify.php?token=X` | — | An HTML page (not JSON — this is a link clicked from an email), showing a fresh Application Password on success |
+| POST | `/register.php` | `{ email }` | `{ message }` (201); `429` past 5/hour per IP |
+| GET | `/verify.php?token=X` | — | An HTML page (not JSON — this is a link clicked from an email), showing a fresh Application Password and a "Continue to Account" link that also signs the visitor in directly (D-226) on success |
+| PUT | `/account.php` | `{ name }` | `{ name }` — changes the signed-in user's own WordPress display name; requires `Authorization: Bearer`. The real sign-in username can't be changed at all — a WordPress core limitation, not a gap in this endpoint (D-226) |
 | GET | `/plans.php` | — | `{ plans: [{ id, name, updatedAt }, ...] }` |
 | GET | `/plans.php?id=X` | — | `{ id, name, text, updatedAt }` |
 | POST | `/plans.php` | `{ name, text }` | `{ id, name, text, updatedAt }` (201) |
@@ -182,6 +184,18 @@ path for an unverified-but-somehow-credentialed account is real defensive code, 
 exercised by the normal registration flow itself, since that account genuinely has no
 working credential until verification generates one.
 
+**`register.php` doesn't even ask for a password anymore (D-228).** It never mattered what
+a visitor typed there in the first place — it became the WordPress account's real login
+password, which (per the paragraph above) is never the credential anything in this project
+actually authenticates with. `register.php` now generates a random, throwaway one itself
+purely to satisfy WordPress's own REST API requirement (WP core has no "passwordless
+account" concept) — never shown to anyone, never meant to authenticate anything. And since
+D-226, clicking the verification link doesn't just show a credential to copy anymore — it
+also signs the visitor in directly (`verify.php` issues a real session token and attaches
+it to the "Continue to Account" link as a one-time URL parameter the frontend reads once
+and strips immediately), so a fresh registration needs no password step anywhere in the
+flow at all, start to finish.
+
 **No `username` field either — WordPress needs one internally, a visitor doesn't need to
 invent it.** `derive_username()` builds one from the email's own local part (lowercased,
 stripped to what WP's username rules accept); `create_wp_user()` retries with a numeric
@@ -192,8 +206,12 @@ the `verify.php` confirmation page, since it's needed to sign in afterward.
 
 ## Not built yet
 
-- Any of this project's own UI for account management (rename, delete, rotate the
-  Application Password) — still WordPress's own tools, same as before D-058.
+- Deleting an account, or rotating/managing the Application Password directly — still
+  WordPress's own tools, same as before D-058.
+- A real username change. `PUT /account.php` (D-225) only ever changes the WordPress
+  *display name* — the sign-in username itself can't be renamed at all, by anyone, through
+  any WP core API (confirmed directly, not assumed — see D-226's own investigation); this
+  isn't a missing feature here, it's a wall this project ran into.
 
 Resending a verification email (the original didn't arrive, or the 24h link expired) was
 believed to be missing too, until re-checked directly while auditing this whole stack:

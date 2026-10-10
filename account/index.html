@@ -235,7 +235,7 @@
     </div>
 
     <div class="callout">
-      Renaming your account, deleting it, or managing Application Passwords isn't handled here yet — those live in WordPress's own account tools for now.
+      Deleting your account, or managing Application Passwords directly, isn't handled here yet — those live in WordPress's own account tools for now. Your sign-in username itself can't be renamed at all — a WordPress limitation, not something missing from this page (see decisions.md D-226 if you're curious why).
     </div>
   </main>
 </div>
@@ -409,7 +409,7 @@
     msgEl.className = "msg";
     msgEl.textContent = "Saving…";
     try {
-      const res = await cloudFetch("/profile.php", {
+      const res = await cloudFetch("/account.php", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),

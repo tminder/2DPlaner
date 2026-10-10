@@ -25,13 +25,13 @@ $userId = $payload['sub'];
 try {
     $db = get_db($config);
 } catch (Throwable $e) {
-    error_log('profile.php db connection: ' . $e->getMessage());
+    error_log('account.php db connection: ' . $e->getMessage());
     send_json(500, ['error' => 'Internal error']);
 }
 
 // A profile edit is a rare, deliberate action, not something a UI ever calls in a loop --
 // generous but real, same shape modules.php/plans.php's own limits already use.
-enforce_rate_limit($db, 'profile:' . $userId, 60, 900);
+enforce_rate_limit($db, 'account:' . $userId, 60, 900);
 
 $method = $_SERVER['REQUEST_METHOD'];
 
@@ -53,6 +53,6 @@ try {
 } catch (RegistrationException $e) {
     send_json(400, ['error' => $e->getMessage()]);
 } catch (Throwable $e) {
-    error_log('profile.php: ' . $e->getMessage());
+    error_log('account.php: ' . $e->getMessage());
     send_json(500, ['error' => 'Internal error']);
 }

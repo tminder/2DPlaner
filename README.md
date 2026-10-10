@@ -24,14 +24,15 @@ through D-050) is built and genuinely exercised, not just designed. The main dom
 carries the real site structure (D-051, D-053, D-054, D-055) — decided in
 [site-structure.md](planning/site-structure.md) — and all four sections it named are now
 built: a homepage at the root, the app under `/app`, human-facing documentation under
-`/docs`, and a profile page under `/profile`, with the storage API on its own subdomain.
+`/docs`, and an account page under `/account`, with the storage API on its own subdomain.
 
 - **[homepage/](homepage/)** — the public landing page, live at
   [www.planagonia.com](https://www.planagonia.com/) (D-054).
 - **[site-docs/](site-docs/)** — human-facing documentation, live at
   [www.planagonia.com/docs/](https://www.planagonia.com/docs/) (D-055).
-- **[profile/](profile/)** — sign in, see your cloud-saved plans, live at
-  [www.planagonia.com/profile/](https://www.planagonia.com/profile/) (D-055).
+- **[account/](account/)** — sign in, see your cloud-saved plans, edit your display name,
+  live at [www.planagonia.com/account/](https://www.planagonia.com/account/) (D-055,
+  renamed from `/profile/` — D-227).
 - **[docs/](docs/)** — the app itself, meant to be used, not thrown away. Auto-deployed to
   GitHub Pages on push (Settings → Pages → Deploy from a branch → `master` / `/docs`);
   manually mirrored to `www.planagonia.com/app/` and `test.planagonia.com`.
