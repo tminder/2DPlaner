@@ -32,6 +32,21 @@ element room {
 }
 """
 
+GRID_SNAP_PLAN = """
+module "grid-module.js"
+
+settings {
+  grid: { size: 1 }
+  snap: { size: 0.5 }
+}
+
+element room {
+  shape: "rect"
+  size: [4m, 3m]
+  position: [0m, 0m]
+}
+"""
+
 # Chosen so the rect's own width (0.60868m) hits the inch-rounding carry edge exactly:
 # 0.60868m -> 23.96in -> rounds to 12.0in remainder, which must roll into the next foot
 # (2'0") rather than ever printing literally as "1' 12.0"".
@@ -139,3 +154,53 @@ def test_toggling_units_is_undoable(app_page):
     app_page.keyboard.press("Control+z")
     app_page.wait_for_timeout(150)
     assert source_text(app_page) == before
+
+
+# ---- F-067: Grid/Snap's own "Size" field follows the same toggle ----
+
+def test_grid_and_snap_size_fields_follow_the_units_toggle_too(app_page):
+    load_plan(app_page, GRID_SNAP_PLAN)
+    app_page.click("#menu-tab-view")
+    app_page.hover("#grid-toggle-btn")
+    app_page.wait_for_timeout(100)
+    assert app_page.locator("#grid-size-label").inner_text() == "Size (m)"
+    assert app_page.locator("#grid-size-input").input_value() == "1"
+    app_page.hover("#snap-toggle-btn")
+    app_page.wait_for_timeout(100)
+    assert app_page.locator("#snap-size-label").inner_text() == "Size (m)"
+    assert app_page.locator("#snap-size-input").input_value() == "0.5"
+
+    toggle_units(app_page)
+
+    app_page.hover("#grid-toggle-btn")
+    app_page.wait_for_timeout(100)
+    assert app_page.locator("#grid-size-label").inner_text() == "Size (ft)"
+    assert app_page.locator("#grid-size-input").input_value() == "3.28"  # 1m
+    app_page.hover("#snap-toggle-btn")
+    app_page.wait_for_timeout(100)
+    assert app_page.locator("#snap-size-label").inner_text() == "Size (ft)"
+    assert app_page.locator("#snap-size-input").input_value() == "1.64"  # 0.5m
+
+    # toggling back reverts both, not just one
+    toggle_units(app_page)
+    app_page.hover("#grid-toggle-btn")
+    app_page.wait_for_timeout(100)
+    assert app_page.locator("#grid-size-label").inner_text() == "Size (m)"
+    assert app_page.locator("#grid-size-input").input_value() == "1"
+
+
+def test_typing_a_feet_value_into_grid_size_still_stores_meters(app_page):
+    """D-005's own invariant: settings.grid.size stays a plain metric literal regardless of
+    what unit the field is currently showing/accepting input in."""
+    load_plan(app_page, GRID_SNAP_PLAN)
+    toggle_units(app_page)
+    app_page.hover("#grid-toggle-btn")
+    app_page.wait_for_timeout(100)
+    app_page.fill("#grid-size-input", "6.56")  # ~2m
+    app_page.locator("#grid-size-input").press("Enter")
+    app_page.wait_for_timeout(150)
+
+    text = source_text(app_page)
+    m = re.search(r"grid: \{ size: ([\d.]+)m? \}", text)
+    assert m, text
+    assert abs(float(m.group(1)) - 2) < 0.01, text

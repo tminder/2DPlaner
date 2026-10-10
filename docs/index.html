@@ -683,7 +683,7 @@
           <li><button id="grid-layer-front-btn" type="button">In front</button></li>
           <li><button id="grid-layer-none-btn" type="button">Hidden</button></li>
           <li class="submenu-field">
-            <label for="grid-size-input">Size (m)</label>
+            <label for="grid-size-input" id="grid-size-label">Size (m)</label>
             <input type="number" id="grid-size-input" min="0.1" step="0.1">
           </li>
           <li class="submenu-field">
@@ -713,7 +713,7 @@
           <li><button id="snap-off-btn" type="button">Off</button></li>
           <li class="submenu-divider"></li>
           <li class="submenu-field">
-            <label for="snap-size-input">Size (m)</label>
+            <label for="snap-size-input" id="snap-size-label">Size (m)</label>
             <input type="number" id="snap-size-input" min="0.1" step="0.1">
           </li>
         </ul>
@@ -2192,6 +2192,20 @@ function formatMeasurement(meters) {
   return `${feet}' ${inches}"`;
 }
 
+// F-067: Grid/Snap's own "Size" field follows the same settings.displayUnit toggle every
+// other measurement on screen already does (formatMeasurement above) -- display and typed
+// input only, exactly like D-005's own invariant everywhere else: the *stored* value
+// (settings.grid.size / settings.snap.size) stays meters regardless, never feet. A
+// decimal-feet number (not formatMeasurement's own "5' 6.3"" combined style, which has no
+// sensible round-trip back into a single <input type="number">) -- simple division, rounded
+// to 2 decimal places purely to avoid a long float tail in the field, not a precision limit.
+function metersToSizeInputValue(meters) {
+  return getDisplayUnit() === "imperial" ? Math.round((meters / FT_TO_M) * 100) / 100 : meters;
+}
+function sizeInputValueToMeters(value) {
+  return getDisplayUnit() === "imperial" ? value * FT_TO_M : value;
+}
+
 function connectedNodeIds(startId, connections) {
   const adj = {};
   for (const c of connections) {
@@ -3131,8 +3145,10 @@ function updateGridToggleUi() {
   // other keystroke in the code pane re-renders) must not fight the value someone is in
   // the middle of typing into this same field.
   const sizeInput = document.getElementById("grid-size-input");
+  const sizeLabel = document.getElementById("grid-size-label");
+  if (sizeLabel) sizeLabel.textContent = getDisplayUnit() === "imperial" ? "Size (ft)" : "Size (m)";
   if (sizeInput && document.activeElement !== sizeInput) {
-    sizeInput.value = numOf(grid?.size ?? 1);
+    sizeInput.value = metersToSizeInputValue(numOf(grid?.size ?? 1));
   }
 
   // F-042: layer is its own independent radio group (see the HTML's own comment for why
@@ -3177,8 +3193,10 @@ function updateSnapToggleUi() {
   document.getElementById("snap-on-btn")?.classList.toggle("active", isOn);
   document.getElementById("snap-off-btn")?.classList.toggle("active", !isOn);
   const sizeInput = document.getElementById("snap-size-input");
+  const sizeLabel = document.getElementById("snap-size-label");
+  if (sizeLabel) sizeLabel.textContent = getDisplayUnit() === "imperial" ? "Size (ft)" : "Size (m)";
   if (sizeInput && document.activeElement !== sizeInput) {
-    sizeInput.value = numOf(snap?.size ?? 1);
+    sizeInput.value = metersToSizeInputValue(numOf(snap?.size ?? 1));
   }
 }
 
@@ -3429,7 +3447,7 @@ document.getElementById("grid-type-checker-btn").addEventListener("click", () =>
 document.getElementById("grid-type-lines-btn").addEventListener("click", () => setGridType("lines"));
 document.getElementById("grid-size-input").addEventListener("change", (e) => {
   const v = parseFloat(e.target.value);
-  if (Number.isFinite(v) && v > 0) setGridSize(v);
+  if (Number.isFinite(v) && v > 0) setGridSize(sizeInputValueToMeters(v));
 });
 document.getElementById("grid-layer-back-btn").addEventListener("click", () => setGridLayer("back"));
 document.getElementById("grid-layer-front-btn").addEventListener("click", () => setGridLayer("front"));
@@ -3449,7 +3467,7 @@ document.getElementById("snap-on-btn").addEventListener("click", () => setSnapEn
 document.getElementById("snap-off-btn").addEventListener("click", () => setSnapEnabled(false));
 document.getElementById("snap-size-input").addEventListener("change", (e) => {
   const v = parseFloat(e.target.value);
-  if (Number.isFinite(v) && v > 0) setSnapSize(v);
+  if (Number.isFinite(v) && v > 0) setSnapSize(sizeInputValueToMeters(v));
 });
 document.getElementById("connections-toggle-btn").addEventListener("click", toggleShowConnectionsSetting);
 document.getElementById("dimension-style-toggle-btn").addEventListener("click", toggleDimensionStyleSetting);
