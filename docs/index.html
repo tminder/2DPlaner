@@ -111,7 +111,16 @@
   .ribbon-btn { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 62px;
     padding: 5px 2px; border: 1px solid transparent; border-radius: 8px; background: none;
     font-size: 10.5px; text-align: center; white-space: normal; line-height: 1.2; cursor: pointer;
-    font-family: inherit; color: var(--ink-soft); position: relative; transition: background 0.1s, box-shadow 0.1s; }
+    font-family: inherit; color: var(--ink-soft); position: relative; transition: background 0.1s, box-shadow 0.1s;
+    /* Reported directly, still reproducing live after the pointerup fix above: .ribbon-group
+       scrolls horizontally on mobile (`overflow-x: auto`, below) -- without this, a real
+       finger's own natural micro-movement during a tap (never reproduced by a synthetic,
+       zero-jitter Playwright tap, which is exactly why automated testing alone missed this)
+       can get resolved by iOS as the start of that scroll instead of a tap, firing
+       `pointercancel` in place of `pointerup` -- the one event this app's whole touch-flyout
+       mechanism listens for. `manipulation` tells the browser this element's own taps/double-
+       taps are what matter, not panning it starts on, settling the ambiguity immediately. */
+    touch-action: manipulation; }
   /* D-133: inline SVGs (Lucide, ISC license) replaced the previous mix of plain Unicode
      glyphs and full-color emoji -- unified weight/size/style, and stroke="currentColor" in
      the source SVGs (untouched) means each icon now actually inherits .ribbon-btn's own
