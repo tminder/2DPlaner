@@ -1,14 +1,6 @@
 import requests
 
-
-def clear_session_rate_limit_bucket(db):
-    # These tests deliberately trip session.php's own per-IP bucket (10/15min) --
-    # tripping it is the whole point -- but every test in this suite shares one real IP
-    # (localhost), so leaving it tripped would starve every *other* test's own
-    # session.php calls for the rest of the 15-minute window. Cleans up the shared state
-    # it polluted rather than relying on file/test ordering to dodge the problem.
-    with db.cursor() as cur:
-        cur.execute("DELETE FROM rate_limits WHERE bucket_key LIKE 'session:%'")
+from conftest import clear_rate_limit_bucket
 
 
 def test_session_endpoint_rate_limits_repeated_attempts(base_url, db, register_and_verify):
@@ -31,7 +23,7 @@ def test_session_endpoint_rate_limits_repeated_attempts(base_url, db, register_a
             if res.status_code == 429:
                 break
     finally:
-        clear_session_rate_limit_bucket(db)
+        clear_rate_limit_bucket(db, "session:")
 
     assert 429 in statuses, f"never got rate-limited across 15 attempts: {statuses}"
     assert 401 in statuses, f"the real credential check never ran at all: {statuses}"
@@ -50,7 +42,7 @@ def test_rate_limited_response_carries_retry_after(base_url, db, register_and_ve
                 return
         assert False, "never got rate-limited across 15 attempts"
     finally:
-        clear_session_rate_limit_bucket(db)
+        clear_rate_limit_bucket(db, "session:")
 
 
 def test_register_endpoint_rate_limits_repeated_attempts(base_url, db):
@@ -59,8 +51,7 @@ def test_register_endpoint_rate_limits_repeated_attempts(base_url, db):
     # bucket before every call: almost every other test in this suite registers a fresh
     # account for reasons that have nothing to do with *this* limit. This is the one
     # test that's actually supposed to trip it.
-    with db.cursor() as cur:
-        cur.execute("DELETE FROM rate_limits WHERE bucket_key LIKE 'register:%'")
+    clear_rate_limit_bucket(db, "register:")
 
     statuses = []
     try:
@@ -73,8 +64,7 @@ def test_register_endpoint_rate_limits_repeated_attempts(base_url, db):
             if res.status_code == 429:
                 break
     finally:
-        with db.cursor() as cur:
-            cur.execute("DELETE FROM rate_limits WHERE bucket_key LIKE 'register:%'")
+        clear_rate_limit_bucket(db, "register:")
 
     assert 429 in statuses, f"never got rate-limited across 10 attempts: {statuses}"
     assert 201 in statuses, f"no registration was ever actually allowed through: {statuses}"
