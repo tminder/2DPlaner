@@ -108,6 +108,17 @@
 
   h2.section-title { font-size: 1.3rem; margin: 0 0 0.8rem; }
 
+  /* Raised directly: the "Your modules" panel (F-064) sat below the whole public list,
+     scroll-only, no quick way there -- tabs instead of a second scroll destination. */
+  .tabs { display: flex; gap: 1.75rem; border-bottom: 1px solid var(--line); margin: 0 0 1.8rem; }
+  .tab {
+    font: inherit; font-size: 0.95rem; font-weight: 600; color: var(--ink-soft);
+    background: none; border: none; border-bottom: 2px solid transparent;
+    padding: 0.7rem 0.1rem; margin-bottom: -1px; cursor: pointer;
+  }
+  .tab:hover { color: var(--ink); }
+  .tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--blue); }
+
   /* F-064: the signed-in "Your modules" dashboard, merged in from account/index.html so
      browsing what's available and managing your own both live on this one page. */
   section.your-modules { margin: 0 0 3.5rem; }
@@ -239,61 +250,71 @@
     <h1 class="page-title">Modules</h1>
     <p class="lede">A <a href="/docs/#settings-modules">module</a> extends a plan with new rendering, new interactivity, or a reusable higher-level building block — loaded straight from a URL with <code>module "&lt;url&gt;"</code>, the same mechanism for every module below, including the app's own editor tooling (drag-and-drop, syntax highlighting, the Layers panel). Below: every module Planagonia ships — a few have a matching toggle in the app's own header that writes the declaration for you, the rest (including every editor-tooling one) you add to the code pane by hand, already included by default in every shipped example — marked <span class="badge">Built-in</span>, plus anything the community has published since.</p>
 
-    <div class="callout">
-      <strong>Anything without the Built-in badge is third-party code — read it before you trust it</strong>
-      A community-listed module is someone else's code, not covered by Planagonia's own <a href="/impressum/">license</a>. It runs unsandboxed, with the same access to the page any script would have — the app still asks you to confirm before loading one it hasn't seen before, and that's worth taking seriously here too.
+    <div class="tabs" role="tablist" aria-label="Modules">
+      <button type="button" class="tab" id="tab-public" role="tab" aria-selected="true" aria-controls="panel-public">Public</button>
+      <button type="button" class="tab" id="tab-yours" role="tab" aria-selected="false" aria-controls="your-modules">Your modules</button>
     </div>
 
-    <div class="module-list">
-      <div class="module-card">
-        <h2>Interactivity <span class="badge">Built-in</span></h2>
-        <p class="desc">Click-to-select, drag-to-move, connect/disconnect, and the right-click context menu — editing a plan directly in the viewer, not just in the code pane.</p>
-        <p class="note">Included by default in every shipped example. By hand: <code>module "https://www.planagonia.com/app/interactivity-module.js"</code></p>
-        <p class="author">interactivity-module.js</p>
+    <div id="panel-public" role="tabpanel" aria-labelledby="tab-public">
+      <div class="callout">
+        <strong>Anything without the Built-in badge is third-party code — read it before you trust it</strong>
+        A community-listed module is someone else's code, not covered by Planagonia's own <a href="/impressum/">license</a>. It runs unsandboxed, with the same access to the page any script would have — the app still asks you to confirm before loading one it hasn't seen before, and that's worth taking seriously here too.
       </div>
-      <div class="module-card">
-        <h2>View <span class="badge">Built-in</span></h2>
-        <p class="desc">Mouse-wheel and pinch zoom, click-drag pan, the scale bar, and the Fit button — navigating the viewer, separate from editing what's in it.</p>
-        <p class="note">Included by default in every shipped example. By hand: <code>module "https://www.planagonia.com/app/view-module.js"</code></p>
-        <p class="author">view-module.js</p>
+
+      <div class="module-list">
+        <div class="module-card">
+          <h2>Interactivity <span class="badge">Built-in</span></h2>
+          <p class="desc">Click-to-select, drag-to-move, connect/disconnect, and the right-click context menu — editing a plan directly in the viewer, not just in the code pane.</p>
+          <p class="note">Included by default in every shipped example. By hand: <code>module "https://www.planagonia.com/app/interactivity-module.js"</code></p>
+          <p class="author">interactivity-module.js</p>
+        </div>
+        <div class="module-card">
+          <h2>View <span class="badge">Built-in</span></h2>
+          <p class="desc">Mouse-wheel and pinch zoom, click-drag pan, the scale bar, and the Fit button — navigating the viewer, separate from editing what's in it.</p>
+          <p class="note">Included by default in every shipped example. By hand: <code>module "https://www.planagonia.com/app/view-module.js"</code></p>
+          <p class="author">view-module.js</p>
+        </div>
+        <div class="module-card">
+          <h2>Code highlighting <span class="badge">Built-in</span></h2>
+          <p class="desc">Syntax coloring and selection highlighting in the code pane.</p>
+          <p class="note">Included by default in every shipped example. By hand: <code>module "https://www.planagonia.com/app/code-highlight-module.js"</code></p>
+          <p class="author">code-highlight-module.js</p>
+        </div>
+        <div class="module-card">
+          <h2>Layers panel <span class="badge">Built-in</span></h2>
+          <p class="desc">The full element tree, expandable, with show/hide and reorder controls.</p>
+          <p class="note">Included by default in every shipped example. By hand: <code>module "https://www.planagonia.com/app/hierarchy-module.js"</code></p>
+          <p class="author">hierarchy-module.js</p>
+        </div>
+        <div class="module-card">
+          <h2>Grid <span class="badge">Built-in</span></h2>
+          <p class="desc">A checkered or line background, a scale reference for the plan — also drives grid-snapped dragging.</p>
+          <p class="note">The app's own Grid button (View tab) declares and enables it together. By hand: <code>module "https://www.planagonia.com/app/grid-module.js"</code></p>
+          <p class="author">grid-module.js</p>
+        </div>
+        <div class="module-card">
+          <h2>Labels &amp; dimensions <span class="badge">Built-in</span></h2>
+          <p class="desc">Renders an element's own <code>label</code>, computed width/height/diameter, and per-edge lengths — plain text or arrow-tipped dimension lines.</p>
+          <p class="note">The app's own Connections/Dimensions buttons (View tab) declare it automatically; any element using <code>label</code>/<code>dimensions</code>/<code>edgeLengths</code> needs it too. By hand: <code>module "https://www.planagonia.com/app/annotations-module.js"</code></p>
+          <p class="author">annotations-module.js</p>
+        </div>
+        <div class="module-card">
+          <h2>Door <span class="badge">Built-in</span></h2>
+          <p class="desc">Real architectural door symbols — a quarter-circle swing arc from the hinge, not a dashed line. <code>compose: "wallWithDoor"</code> still expands one compact element into a matching wall/door/wall structure; a standalone door can also be dropped in on its own from the app's own New Element menu.</p>
+          <p class="note">Needs an explicit declaration — nothing in the app's own UI writes this one for you: <code>module "https://www.planagonia.com/app/door-module.js"</code></p>
+          <p class="author">door-module.js</p>
+        </div>
       </div>
-      <div class="module-card">
-        <h2>Code highlighting <span class="badge">Built-in</span></h2>
-        <p class="desc">Syntax coloring and selection highlighting in the code pane.</p>
-        <p class="note">Included by default in every shipped example. By hand: <code>module "https://www.planagonia.com/app/code-highlight-module.js"</code></p>
-        <p class="author">code-highlight-module.js</p>
-      </div>
-      <div class="module-card">
-        <h2>Layers panel <span class="badge">Built-in</span></h2>
-        <p class="desc">The full element tree, expandable, with show/hide and reorder controls.</p>
-        <p class="note">Included by default in every shipped example. By hand: <code>module "https://www.planagonia.com/app/hierarchy-module.js"</code></p>
-        <p class="author">hierarchy-module.js</p>
-      </div>
-      <div class="module-card">
-        <h2>Grid <span class="badge">Built-in</span></h2>
-        <p class="desc">A checkered or line background, a scale reference for the plan — also drives grid-snapped dragging.</p>
-        <p class="note">The app's own Grid button (View tab) declares and enables it together. By hand: <code>module "https://www.planagonia.com/app/grid-module.js"</code></p>
-        <p class="author">grid-module.js</p>
-      </div>
-      <div class="module-card">
-        <h2>Labels &amp; dimensions <span class="badge">Built-in</span></h2>
-        <p class="desc">Renders an element's own <code>label</code>, computed width/height/diameter, and per-edge lengths — plain text or arrow-tipped dimension lines.</p>
-        <p class="note">The app's own Connections/Dimensions buttons (View tab) declare it automatically; any element using <code>label</code>/<code>dimensions</code>/<code>edgeLengths</code> needs it too. By hand: <code>module "https://www.planagonia.com/app/annotations-module.js"</code></p>
-        <p class="author">annotations-module.js</p>
-      </div>
-      <div class="module-card">
-        <h2>Door <span class="badge">Built-in</span></h2>
-        <p class="desc">Real architectural door symbols — a quarter-circle swing arc from the hinge, not a dashed line. <code>compose: "wallWithDoor"</code> still expands one compact element into a matching wall/door/wall structure; a standalone door can also be dropped in on its own from the app's own New Element menu.</p>
-        <p class="note">Needs an explicit declaration — nothing in the app's own UI writes this one for you: <code>module "https://www.planagonia.com/app/door-module.js"</code></p>
-        <p class="author">door-module.js</p>
-      </div>
+
+      <p class="list-note">No community-submitted modules yet — be the first, see "Submitting a module" below.</p>
+
+      <section class="submit">
+        <h2 class="section-title">Submitting a module</h2>
+        <p>Built a module you'd like listed here? Open a pull request against this page on <a href="https://github.com/tminder/2DPlaner">GitHub</a>, adding a card with its name, a one-line description, the <code>module "&lt;url&gt;"</code> line to load it, and a link back to its own source — or email <a href="mailto:info@planagonia.com">info@planagonia.com</a> and it'll get added by hand.</p>
+      </section>
     </div>
 
-    <p class="list-note">No community-submitted modules yet — be the first, see "Submitting a module" below.</p>
-
-    <section class="your-modules">
-      <h2 class="section-title" id="your-modules">Your modules</h2>
-
+    <div id="your-modules" role="tabpanel" aria-labelledby="tab-yours" hidden>
       <div id="your-modules-signed-out" class="callout">
         <strong>Sign in to create and manage your own modules</strong>
         A module you create gets its own stable URL you can declare in any plan with <code>module "..."</code> — <a href="/account/">sign in or create an account</a> to get started.
@@ -323,12 +344,7 @@
           <p id="module-form-msg" class="msg" role="status"></p>
         </form>
       </div>
-    </section>
-
-    <section class="submit">
-      <h2 class="section-title">Submitting a module</h2>
-      <p>Built a module you'd like listed here? Open a pull request against this page on <a href="https://github.com/tminder/2DPlaner">GitHub</a>, adding a card with its name, a one-line description, the <code>module "&lt;url&gt;"</code> line to load it, and a link back to its own source — or email <a href="mailto:info@planagonia.com">info@planagonia.com</a> and it'll get added by hand.</p>
-    </section>
+    </div>
   </main>
 </div>
 
@@ -509,6 +525,27 @@
   }
 
   renderYourModules();
+
+  // Raised directly: "Your modules" sat below the whole public list, reachable only by
+  // scrolling. Tabs instead -- same two sections, just one click apart now. Existing
+  // /modules/#your-modules links (account/index.html, docs/index.html) still land on the
+  // right tab: the panel keeps that exact id, and the hash is checked on load below.
+  function activateTab(name) {
+    const showYours = name === "yours";
+    document.getElementById("tab-public").setAttribute("aria-selected", showYours ? "false" : "true");
+    document.getElementById("tab-yours").setAttribute("aria-selected", showYours ? "true" : "false");
+    document.getElementById("panel-public").hidden = showYours;
+    document.getElementById("your-modules").hidden = !showYours;
+  }
+  document.getElementById("tab-public").addEventListener("click", () => {
+    activateTab("public");
+    history.replaceState(null, "", location.pathname + location.search);
+  });
+  document.getElementById("tab-yours").addEventListener("click", () => {
+    activateTab("yours");
+    history.replaceState(null, "", "#your-modules");
+  });
+  activateTab(location.hash === "#your-modules" ? "yours" : "public");
 </script>
 
 </body>
