@@ -37,7 +37,13 @@ jobs:
       wordpress:
         image: wordpress:php8.2-apache
         env:
-          WORDPRESS_DB_HOST: 127.0.0.1:3306
+          # Reached from a sibling service container (this one), not from the runner's
+          # own steps -- those two are on different networks. Service containers share a
+          # Docker bridge network and reach each other by service name; "127.0.0.1" here
+          # would be the wordpress container's own loopback, not mysql's (confirmed by
+          # the actual failure this caused: WordPress returned a 500 from the moment
+          # Apache started, because wp-config.php could never reach a database).
+          WORDPRESS_DB_HOST: mysql:3306
           WORDPRESS_DB_USER: root
           WORDPRESS_DB_PASSWORD: root
           WORDPRESS_DB_NAME: wordpress
