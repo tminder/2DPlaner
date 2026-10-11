@@ -183,6 +183,7 @@
         <input type="password" id="password" autocomplete="current-password" required>
         <p class="hint">The credential shown on your confirmation page after verifying your email, alongside your username — not something you chose yourself.</p>
         <button type="submit" class="btn btn-primary">Sign in</button>
+        <button type="button" id="email-signin-btn" class="btn btn-ghost" style="display: block; margin-top: 0.7rem;">Sign in via email instead</button>
         <p id="signin-msg" class="msg" role="status"></p>
         <p class="hint"><a href="#" id="forgot-link">Forgot your password?</a></p>
       </form>
@@ -442,7 +443,12 @@
       document.getElementById("auth-heading").textContent = "Create an account";
       document.getElementById("toggle-auth-mode").textContent = "Already have an account? Sign in";
     } else if (mode === "forgot") {
-      document.getElementById("auth-heading").textContent = "Reset your sign-in";
+      // Reframed from "Reset your sign-in" -- this same form now also doubles as a
+      // first-class, equally-valid way to sign in at all (raised directly: "brauchen
+      // wir überhaupt ein passwort fürs login?"), not just a recovery detour for
+      // someone who forgot their password. Same mechanism either way (D-226) -- only
+      // the framing changed.
+      document.getElementById("auth-heading").textContent = "Sign in via email";
     } else {
       document.getElementById("auth-heading").textContent = "Sign in";
       document.getElementById("toggle-auth-mode").textContent = "Don't have an account? Register";
@@ -454,6 +460,10 @@
     setAuthMode(document.getElementById("signin-form").hidden === false ? "register" : "signin");
   });
   document.getElementById("forgot-link").addEventListener("click", (e) => {
+    e.preventDefault();
+    setAuthMode("forgot");
+  });
+  document.getElementById("email-signin-btn").addEventListener("click", (e) => {
     e.preventDefault();
     setAuthMode("forgot");
   });
