@@ -50,6 +50,13 @@ def register_and_verify(db):
         local = local or f"user{secrets.token_hex(8)}"
         email = email or f"{local}@example.test"
 
+        # register.php's own rate limit (5/hour per IP) is real and worth testing on its
+        # own (test_rate_limiting.py does) -- but every test in this suite shares one IP
+        # (localhost) and most of them need a fresh account for reasons that have
+        # nothing to do with *that* limit, so this fixture clears its own bucket first
+        # rather than letting unrelated tests start failing once enough of them have run.
+        with db.cursor() as cur:
+            cur.execute("DELETE FROM rate_limits WHERE bucket_key LIKE 'register:%'")
         res = requests.post(f"{BASE_URL}/register.php", json={"email": email})
         assert res.status_code == 201, res.text
 
