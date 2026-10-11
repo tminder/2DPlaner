@@ -291,6 +291,9 @@
   .modal .hint { font-size: 0.76rem; color: #888; margin-top: 0.35rem; }
   .modal .btn-primary { margin-top: 1rem; width: 100%; background: #2c5f7c; color: #fff; border-color: #2c5f7c; }
   .modal .btn-primary:hover { background: #1e4457; }
+  /* The plain base `button` look (line ~85) already reads as secondary next to the
+     filled .btn-primary right above it -- no new color needed, just matching layout. */
+  .modal .btn-secondary { margin-top: 0.5rem; width: 100%; }
   .auth-msg { font-size: 0.8rem; margin: 0.6rem 0 0; min-height: 1.1em; }
   .auth-msg.error { color: #a63d34; }
   /* F-060: plain muted text used to carry the same weight as any neutral .hint line --
@@ -819,6 +822,7 @@
       <input type="password" id="modal-password" autocomplete="current-password" required>
       <p class="hint">The credential shown on your confirmation page after verifying your email, alongside your username — not something you chose yourself.</p>
       <button type="submit" class="btn-primary">Sign in</button>
+      <button type="button" id="auth-modal-email-signin" class="btn-secondary">Sign in via email instead</button>
       <p id="app-signin-msg" class="auth-msg" role="status"></p>
       <p class="toggle-mode"><a id="auth-modal-forgot" href="#">Forgot your password?</a></p>
     </form>
@@ -890,7 +894,10 @@
         heading.textContent = "Create an account";
         toggleLink.textContent = "Already have an account? Sign in";
       } else if (mode === "forgot") {
-        heading.textContent = "Reset your sign-in";
+        // Reframed from "Reset your sign-in" to match account/index.html's own change
+        // -- this form now also doubles as a first-class way to sign in at all, not
+        // just a recovery detour (same mechanism either way, D-226).
+        heading.textContent = "Sign in via email";
       } else {
         heading.textContent = "Sign in";
         toggleLink.textContent = "Don't have an account? Register";
@@ -927,6 +934,10 @@
       setMode(signinForm.hidden === false ? "register" : "signin");
     });
     forgotLink.addEventListener("click", function (e) {
+      e.preventDefault();
+      setMode("forgot");
+    });
+    document.getElementById("auth-modal-email-signin").addEventListener("click", function (e) {
       e.preventDefault();
       setMode("forgot");
     });
@@ -3445,7 +3456,16 @@ document.getElementById("rename-btn").addEventListener("click", () => {
 
 // D-149: the wrapper's own click still toggles grid on/off -- guarded so a click that
 // bubbled up from inside the flyout (Squares/Lines/the size input) doesn't also fire it.
+// Mouse-only, not touch (`isTouchOnly()`, defined below) -- on touch this same tap is
+// already spoken for by the pointerup delegate just above, which opens the flyout
+// instead. `stopPropagation()` there only suppresses a same-type pointerup from
+// re-triggering this listener's own capture phase, not a *separate* `click` event this
+// element's own tap can still go on to produce -- found live, re-testing this exact fix:
+// without this guard, one tap both opened the flyout and flipped the grid on, which was
+// never the intent on touch (always: real buttons inside the flyout only, per the
+// original comment on the pointerup delegate itself).
 document.getElementById("grid-toggle-btn").addEventListener("click", (e) => {
+  if (isTouchOnly()) return;
   if (e.target.closest(".submenu")) return;
   toggleGridSetting();
 });
@@ -3465,8 +3485,11 @@ document.getElementById("grid-opacity-input").addEventListener("change", (e) => 
 });
 // D-161: same click-vs-flyout guard Grid's own wrapper already uses (grid-toggle-btn,
 // above) -- a click that bubbled up from inside the flyout (the Size field) must not also
-// flip the box's own on/off state.
+// flip the box's own on/off state, and (same reasoning as grid-toggle-btn's own fix) this
+// shortcut was always mouse-only -- touch already uses the explicit Snap On/Off buttons
+// inside the flyout instead.
 document.getElementById("snap-toggle-btn").addEventListener("click", (e) => {
+  if (isTouchOnly()) return;
   if (e.target.closest(".submenu")) return;
   toggleSnapSetting();
 });
@@ -3872,29 +3895,43 @@ for (const el of document.querySelectorAll(".ribbon-btn.has-submenu")) {
 // vanishing the moment the finger lifted or moved toward its own content, uncovering
 // whatever was underneath (the mobile Code/Viewer pane). `.submenu-open` (see the
 // `(hover: none)` CSS rule above) is the touch-driven equivalent of :hover, toggled here by
-// a single delegated, capture-phase click listener -- capture on `document` runs strictly
-// before any bubble-phase listener on the tapped button itself, which is what lets
+// a single delegated, capture-phase listener -- capture on `document` runs strictly before
+// any bubble-phase listener on the tapped button itself, which is what lets
 // `stopPropagation()` below actually prevent that box's own default click action (Grid's
 // own on/off toggle, Snap's own) from *also* firing for the same tap that just opened its
 // flyout: on a mouse, that shortcut only ever fires once someone's already hovering and
 // deliberately clicks anyway, but touch has no such "already looking at it" moment to make
 // that click deliberate.
+//
+// A second real bug found re-auditing this, not just the one originally reported: this
+// listener was on `click`, but `.ribbon-btn.has-submenu` (Export etc.) is a plain `<div>`,
+// not a `<button>` -- and a `<div>` with no event listener of its own, only a delegated one
+// far up the tree, never reliably gets a browser-synthesized `click` from a real touch on
+// iOS Safari at all (confirmed directly: WebKit, a real tap, zero `click` ever fired --
+// the flyout silently never opened, which is what actually produced the live report, not a
+// stacking/z-index issue the "hidden behind" wording suggested). `pointerup` fires
+// regardless of element type or native interactivity, so it's the one both mouse and touch
+// can be relied on for the same way -- the `isTouchOnly()` guard below already keeps mouse
+// users on their own unaffected :hover path either way.
+//
+// Split into two listeners on two different event types, not one -- found live, re-testing
+// this exact fix: moving *both* branches to `pointerup` broke Snap's own On/Off buttons
+// (and every other real item inside a flyout). Those items are real `<button>`s, which
+// (unlike the bare-div wrapper above) already get a reliably-synthesized `click` -- that
+// branch never needed to move. Closing the flyout on the *earlier* `pointerup` instead
+// raced ahead of a real touch's own click synthesis for that same tap: with the menu
+// already hidden by the time the browser got around to synthesizing the item's click, nothing
+// ever called `setSnapEnabled(true)`. Each branch now stays on whichever event type its own
+// target actually fires reliably.
 function isTouchOnly() { return window.matchMedia("(hover: none)").matches; }
 function closeAllSubmenus() {
   for (const el of document.querySelectorAll(".ribbon-btn.has-submenu.submenu-open")) {
     el.classList.remove("submenu-open");
   }
 }
-document.addEventListener("click", (e) => {
+document.addEventListener("pointerup", (e) => {
   if (!isTouchOnly()) return;
-  if (e.target.closest(".submenu")) {
-    // A real action inside the now-open flyout (Squares, Off, a preset...) is still on its
-    // own way to firing via this same click's normal bubble -- close the flyout right after
-    // instead of leaving it hover-stuck with no hover to ever end it, but not for a field
-    // someone just tapped into to type a value (closing mid-focus would yank it away).
-    if (e.target.tagName !== "INPUT") setTimeout(closeAllSubmenus, 0);
-    return;
-  }
+  if (e.target.closest(".submenu")) return; // handled on click, below
   const wrapper = e.target.closest(".ribbon-btn.has-submenu");
   if (!wrapper) return;
   const wasOpen = wrapper.classList.contains("submenu-open");
@@ -3904,6 +3941,15 @@ document.addEventListener("click", (e) => {
     positionSubmenu(wrapper);
   }
   e.stopPropagation();
+}, true);
+document.addEventListener("click", (e) => {
+  if (!isTouchOnly()) return;
+  if (!e.target.closest(".submenu")) return;
+  // A real action inside the now-open flyout (Squares, Off, a preset...) is still on its
+  // own way to firing via this same click's normal bubble -- close the flyout right after
+  // instead of leaving it hover-stuck with no hover to ever end it, but not for a field
+  // someone just tapped into to type a value (closing mid-focus would yank it away).
+  if (e.target.tagName !== "INPUT") setTimeout(closeAllSubmenus, 0);
 }, true);
 // Belt-and-braces close-on-outside-tap: `interactivity-module.js`'s own `handlePointerDown`
 // calls `preventDefault()` on every pointerdown inside `#plan-root`, which suppresses the
