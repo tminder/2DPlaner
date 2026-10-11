@@ -385,7 +385,9 @@
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || `Sign-in failed (${res.status})`);
       setCloudSession(body.token);
-      document.getElementById("password").value = "";
+      // F-062: clearing this immediately, right as the browser decides whether to offer
+      // saving the credential, likely wiped the one signal it was checking for -- the
+      // field goes out of view anyway once render() hides this whole form on sign-in.
       msgEl.textContent = "";
       render();
     } catch (err) {
