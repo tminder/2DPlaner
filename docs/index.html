@@ -3954,8 +3954,14 @@ document.addEventListener("pointerup", (e) => {
   const wasOpen = wrapper.classList.contains("submenu-open");
   closeAllSubmenus();
   if (!wasOpen) {
-    wrapper.classList.add("submenu-open");
+    // Position *before* revealing, not after -- reported directly: with the class added
+    // first, the flyout visibly jumped from .submenu's own inert fallback position (top: 0;
+    // left: 0) to its real one a frame later on a real device, slower to repaint between the
+    // two style changes than this always was in testing. positionSubmenu() already measures
+    // the wrapper, not the submenu itself (see its own comment on the hardcoded `width`), so
+    // it never needed the submenu visible to run correctly in the first place.
     positionSubmenu(wrapper);
+    wrapper.classList.add("submenu-open");
   }
   e.stopPropagation();
 }, true);
