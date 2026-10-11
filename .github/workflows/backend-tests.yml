@@ -131,8 +131,11 @@ jobs:
       - name: Start the storage service (PHP's built-in server)
         run: |
           php -S 127.0.0.1:8080 -t storage-service-php/httpdocs > php-server.log 2>&1 &
+          # No -f: session.php correctly answers a bodyless POST with a 400, not a 2xx --
+          # curl's own exit code (reached the server at all) is the actual readiness
+          # signal here, not the HTTP status.
           for i in $(seq 1 15); do
-            if curl -sf -o /dev/null -w '' http://127.0.0.1:8080/session.php -X POST -d '{}'; then exit 0; fi
+            if curl -s -o /dev/null http://127.0.0.1:8080/session.php -X POST -d '{}'; then exit 0; fi
             sleep 1
           done
           echo "storage service never came up" >&2
