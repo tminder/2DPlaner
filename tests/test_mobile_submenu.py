@@ -107,3 +107,49 @@ def test_desktop_hover_and_click_behavior_is_completely_unaffected(app_page):
     assert app_page.evaluate(
         "getComputedStyle(document.querySelector('#grid-toggle-btn .submenu')).display"
     ) == "block"
+
+
+# A real, live bug (reported directly: "Untermenü im iphone hinter coder versteckt") that
+# every test above completely missed, despite this file already existing to cover exactly
+# this mechanism -- `has_touch=True` on a *Chromium* context (every fixture above) still
+# reliably synthesizes a `click` from a dispatched tap, but real iOS Safari/WebKit does not
+# do this for a plain `<div>` (`.ribbon-btn.has-submenu`, e.g. Export) that has no element-
+# level listener of its own, only a delegated one -- confirmed directly, not assumed: the
+# exact same `.tap()` call that works above produced zero `click` event at all under real
+# WebKit. Chromium's own touch emulation is a synthetic approximation, not a stand-in for
+# engine-specific quirks like this one -- these tests run against a real WebKit browser
+# instead, the only way this class of bug is actually catchable at all.
+@pytest.fixture
+def webkit_touch_app_page(playwright):
+    browser = playwright.webkit.launch()
+    context = browser.new_context(viewport={"width": 390, "height": 750}, has_touch=True, is_mobile=True)
+    page = context.new_page()
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(DOCS_URL)
+    page.wait_for_timeout(400)
+    yield page
+    browser.close()
+    assert errors == [], f"unexpected console error(s): {errors}"
+
+
+def test_webkit_tapping_export_actually_opens_its_flyout(webkit_touch_app_page):
+    page = webkit_touch_app_page
+    page.tap(".ribbon-btn.has-submenu:has-text('Export')")
+    page.wait_for_timeout(200)
+    wrapper = page.locator(".ribbon-btn.has-submenu", has_text="Export")
+    assert wrapper.evaluate("el => el.classList.contains('submenu-open')")
+
+
+def test_webkit_tapping_grid_opens_its_flyout_without_also_toggling_it(webkit_touch_app_page):
+    page = webkit_touch_app_page
+    page.click("#menu-tab-view")
+    page.tap("#grid-toggle-btn")
+    page.wait_for_timeout(200)
+    btn = page.locator("#grid-toggle-btn")
+    assert btn.evaluate("el => el.classList.contains('submenu-open')")
+    # The regression found live while fixing the above: switching the open mechanism off
+    # `click` (unreliable on WebKit for this element) created a second bug -- the wrapper's
+    # own separate "plain click toggles on/off" shortcut started firing *too*, from the same
+    # tap, since stopPropagation() on one event type never suppresses a different one.
+    assert not btn.evaluate("el => el.classList.contains('active')")

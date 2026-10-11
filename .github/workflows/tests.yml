@@ -21,8 +21,13 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r tests/requirements.txt
 
-      - name: Install Playwright's Chromium + OS dependencies
-        run: playwright install --with-deps chromium
+      - name: Install Playwright's Chromium/WebKit + OS dependencies
+        # WebKit too, not just Chromium: a real live bug (test_mobile_submenu.py's own
+        # webkit_touch_app_page tests) was only catchable against a real WebKit engine --
+        # Chromium's own touch emulation reliably synthesizes a `click` from a tap even
+        # where real iOS Safari does not, for the exact element this app's touch-flyout
+        # mechanism depends on.
+        run: playwright install --with-deps chromium webkit
 
       - name: Run the test suite
         run: pytest tests/ -v --screenshot=only-on-failure --video=retain-on-failure
