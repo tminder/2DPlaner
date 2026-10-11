@@ -53,10 +53,13 @@ def test_resend_path_survives_a_stale_orphaned_username_row(base_url, db):
     # username this email derives to, but under a *different* id than the WordPress
     # account for this email currently has (e.g. the WordPress account was deleted and
     # re-created outside this app entirely, which happened for real during that
-    # incident). Registering again used to crash with a raw, unhandled PHP fatal error
-    # instead of the same clean JSON every other failure path here returns -- fixed by
-    # giving register.php's resend handler its own try/catch. This reproduces the exact
-    # DB shape that triggered it, not just the ordinary "already registered" case.
+    # incident). This DB-level conflict is never actually resolved by register.php
+    # itself -- that needs the same manual migration D-229 describes doing live -- so
+    # the *correct* fixed behavior is a clean JSON 500, not a success. What D-229 fixed
+    # was register.php leaking a raw, unhandled PHP fatal error (full server file paths
+    # included) instead of that same clean response every other failure path here
+    # already returns -- this asserts the response is well-formed JSON, not that the
+    # underlying conflict magically resolves.
     local = "orphan-row-regression"
     email = f"{local}@example.test"
     first = requests.post(f"{base_url}/register.php", json={"email": email})
@@ -69,5 +72,6 @@ def test_resend_path_survives_a_stale_orphaned_username_row(base_url, db):
         cur.execute("UPDATE users SET id = %s WHERE id = %s", (fake_id, real_id))
 
     second = requests.post(f"{base_url}/register.php", json={"email": email})
-    assert second.status_code == 201, second.text
+    assert second.status_code == 500, second.text
     assert second.headers["content-type"].startswith("application/json"), second.text
+    assert second.json() == {"error": "Internal error"}
