@@ -57,13 +57,25 @@ try {
     // account and emails it — functionally a resend, exactly what a visitor who forgot
     // they already registered actually needs — then returns the exact same 201 and
     // message a brand-new registration would.
-    $wpUser = find_wp_user_by_email($config, $email);
-    if ($wpUser) {
-        ensure_user($db, $wpUser['id'], $wpUser['username']);
-        $token = issue_password_reset_token($db, $wpUser['id']);
-        send_verification_email($config, $email, $wpUser['username'], $token);
+    // A real bug found re-auditing this flow: a Throwable thrown in here (e.g. ensure_user's
+    // own INSERT colliding with a stale, orphaned local row under a different id for the
+    // same username -- a one-off data inconsistency, confirmed live, not a routine case) was
+    // never caught by anything -- a catch block isn't covered by its own try's *other* catch
+    // clauses, only by an enclosing one, which this try doesn't have. The result was a raw,
+    // unhandled PHP fatal error sent straight to the visitor (full server file paths
+    // included) instead of the same clean 500 every other failure path here already gives.
+    try {
+        $wpUser = find_wp_user_by_email($config, $email);
+        if ($wpUser) {
+            ensure_user($db, $wpUser['id'], $wpUser['username']);
+            $token = issue_password_reset_token($db, $wpUser['id']);
+            send_verification_email($config, $email, $wpUser['username'], $token);
+        }
+        send_json(201, ['message' => 'Check your email to confirm your account before signing in.']);
+    } catch (Throwable $inner) {
+        error_log('register.php (resend path): ' . $inner->getMessage());
+        send_json(500, ['error' => 'Internal error']);
     }
-    send_json(201, ['message' => 'Check your email to confirm your account before signing in.']);
 } catch (RegistrationException $e) {
     send_json(400, ['error' => $e->getMessage()]);
 } catch (Throwable $e) {
