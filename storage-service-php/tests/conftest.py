@@ -35,6 +35,21 @@ def db():
     conn.close()
 
 
+def clear_rate_limit_bucket(db, prefix):
+    """"Clear this bucket, if it's even there yet" -- rate_limits (like every table in
+    db.php) is created lazily by the app itself on its first real request, not by any
+    setup step here. Whichever test file happens to run first alphabetically may call
+    this before the app has ever been hit at all, which a plain DELETE would fail
+    against outright (confirmed live: MySQL error 1146, "table doesn't exist") -- there
+    being nothing to clear yet is the expected case there, not a real error."""
+    try:
+        with db.cursor() as cur:
+            cur.execute("DELETE FROM rate_limits WHERE bucket_key LIKE %s", (f"{prefix}%",))
+    except pymysql.err.ProgrammingError as e:
+        if e.args[0] != 1146:
+            raise
+
+
 @pytest.fixture
 def register_and_verify(db):
     """Registers a brand-new account and walks it through the exact same verification
@@ -50,6 +65,12 @@ def register_and_verify(db):
         local = local or f"user{secrets.token_hex(8)}"
         email = email or f"{local}@example.test"
 
+        # register.php's own rate limit (5/hour per IP) is real and worth testing on its
+        # own (test_rate_limiting.py does) -- but every test in this suite shares one IP
+        # (localhost) and most of them need a fresh account for reasons that have
+        # nothing to do with *that* limit, so this fixture clears its own bucket first
+        # rather than letting unrelated tests start failing once enough of them have run.
+        clear_rate_limit_bucket(db, "register:")
         res = requests.post(f"{BASE_URL}/register.php", json={"email": email})
         assert res.status_code == 201, res.text
 

@@ -1,5 +1,7 @@
 import requests
 
+from conftest import clear_rate_limit_bucket
+
 
 def test_register_then_signin_with_issued_app_password(base_url, register_and_verify):
     creds = register_and_verify()
@@ -38,7 +40,8 @@ def test_invalid_token_shows_not_valid_page(base_url):
     assert "This link isn't valid" in res.text
 
 
-def test_registering_same_email_twice_resends_instead_of_erroring(base_url):
+def test_registering_same_email_twice_resends_instead_of_erroring(base_url, db):
+    clear_rate_limit_bucket(db, "register:")
     email = "repeat-register@example.test"
     first = requests.post(f"{base_url}/register.php", json={"email": email})
     assert first.status_code == 201, first.text
@@ -60,6 +63,7 @@ def test_resend_path_survives_a_stale_orphaned_username_row(base_url, db):
     # included) instead of that same clean response every other failure path here
     # already returns -- this asserts the response is well-formed JSON, not that the
     # underlying conflict magically resolves.
+    clear_rate_limit_bucket(db, "register:")
     local = "orphan-row-regression"
     email = f"{local}@example.test"
     first = requests.post(f"{base_url}/register.php", json={"email": email})
