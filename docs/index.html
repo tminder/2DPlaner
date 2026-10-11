@@ -423,8 +423,16 @@
        flex-shrink: 0 is load-bearing here, found live -- flex items shrink by default, so
        without it the row never actually overflowed (nothing to scroll to) and instead
        silently squeezed every button (the divider down to under 1px) to force-fit them all
-       in one line, the opposite of the ask. */
-    .ribbon-group { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+       in one line, the opposite of the ask.
+       No `-webkit-overflow-scrolling: touch` -- reported directly, still reproducing live
+       after both prior fixes above: a `position: fixed` descendant (`.submenu`) of a
+       container using this property gets trapped inside that container's own compositing
+       layer on real iOS Safari instead of escaping to the viewport like `position: fixed`
+       is supposed to -- clipped to the ribbon's own height, exactly matching "the options
+       don't extend past the header" reported live. This property was iOS's own pre-13 fix
+       for momentum scrolling on an overflow container; modern iOS scrolls one natively
+       without it, so it's no longer doing the job it was added for, only the side effect. */
+    .ribbon-group { flex-wrap: nowrap; overflow-x: auto; }
     .ribbon-btn, .ribbon-divider { flex-shrink: 0; }
     button, select { font-size: 0.78rem; padding: 0.32rem 0.55rem; }
     header .spacer { display: none; }
