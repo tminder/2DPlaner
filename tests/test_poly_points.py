@@ -156,6 +156,22 @@ def page_count(page, corner):
     return page.locator(f'.resize-handle[data-corner="{corner}"]').count()
 
 
+def test_insert_handles_also_show_a_plus_mark(app_page):
+    # Raised directly ("plus symbole auch zwischen den punkten"): the mid-segment insert
+    # handles now share the same plusHandleMarkup <g> (base circle + two crossing lines) the
+    # extend-handle already used, instead of a bare <circle> -- a consistent "insert a point
+    # here" symbol everywhere it applies, not just at the open ends.
+    load_plan(app_page, QUAD)
+    select(app_page, "quad")
+    tag, children = app_page.evaluate(
+        """() => {
+            const h = document.querySelector('.resize-handle[data-corner="insert-vertex"]');
+            return [h.tagName, h.children.length];
+        }"""
+    )
+    assert tag == "g" and children == 3  # base circle + the plus mark's two lines
+
+
 def test_clicking_an_insert_handle_adds_a_literal_point_at_the_midpoint(app_page):
     load_plan(app_page, QUAD)
     select(app_page, "quad")
@@ -332,6 +348,8 @@ def test_extend_handle_distance_is_screen_relative_not_segment_length(app_page):
     # segment would have put the old handle 500m from the endpoint -- entirely off-screen
     # regardless of zoom. The new handle should instead stay within a comfortable, constant
     # on-screen reach, because Fit zooms out to show the whole (now much larger) plan.
+    # Reopened a second time ("näher am letzten Element"): the handle itself moved closer
+    # in (EXTEND_HANDLE_PX 60 -> 24), so the comfortable range tightens with it.
     LONG_LINE = FRAME_LINE.replace("[4,4], [8,4]", "[4,4], [504,4]")
     load_plan(app_page, LONG_LINE)
     select(app_page, "wall")
@@ -340,10 +358,14 @@ def test_extend_handle_distance_is_screen_relative_not_segment_length(app_page):
     ppm = px_per_meter(app_page)
     dist_m = (end_x / m) - 504
     dist_px = dist_m * ppm
-    assert 20 < dist_px < 150  # a reachable on-screen distance, not anywhere close to 500m away
+    assert 10 < dist_px < 60  # a reachable, compact on-screen distance, not 500m away
 
 
-def test_clicking_the_end_handle_appends_a_point_exactly_where_the_handle_itself_was(app_page):
+def test_clicking_the_end_handle_appends_a_point_further_than_the_handle_itself(app_page):
+    # Reopened live: the handle is kept close to the endpoint for a compact affordance
+    # ("näher am letzten Element"), but the segment it actually creates on click is deliberately
+    # longer than that ("neuer Punkt muss mehr Abstand haben") -- no longer WYSIWYG by design,
+    # see extensionHandlePoint/extensionInsertPoint's own comment.
     load_plan(app_page, FRAME_LINE)
     select(app_page, "wall")
     handle_x, handle_y = handle_svg_point(app_page, "extend-end")
@@ -353,10 +375,14 @@ def test_clicking_the_end_handle_appends_a_point_exactly_where_the_handle_itself
     points_line = [l for l in text.split("\n") if l.strip().startswith("points: [[4,4]")][0]
     literal = points_line.strip().removeprefix("points: [[4,4], [8,4], [").removesuffix("]]")
     px, py = (float(v.rstrip("m")) for v in literal.split(", "))
-    assert abs(px - handle_x / m) < 0.01 and abs(py - handle_y / m) < 0.01  # WYSIWYG
+    assert py == 4  # stays on the flat segment's own line
+    assert px == 9  # [8,4] + EXTEND_INSERT_METERS (1m) along the segment's own direction
+    handle_dist = abs(handle_x / m - 8)
+    insert_dist = abs(px - 8)
+    assert insert_dist > handle_dist  # the inserted point lands further out than the handle itself sat
 
 
-def test_clicking_the_start_handle_prepends_a_point_exactly_where_the_handle_itself_was(app_page):
+def test_clicking_the_start_handle_prepends_a_point_further_than_the_handle_itself(app_page):
     load_plan(app_page, FRAME_LINE)
     select(app_page, "wall")
     handle_x, handle_y = handle_svg_point(app_page, "extend-start")
@@ -366,7 +392,11 @@ def test_clicking_the_start_handle_prepends_a_point_exactly_where_the_handle_its
     points_line = [l for l in text.split("\n") if "4,4" in l and "8,4" in l][0]
     literal = points_line.strip().removeprefix("points: [[").removesuffix("], [4,4], [8,4]]")
     px, py = (float(v.rstrip("m")) for v in literal.split(", "))
-    assert abs(px - handle_x / m) < 0.01 and abs(py - handle_y / m) < 0.01  # WYSIWYG
+    assert py == 4  # stays on the flat segment's own line
+    assert px == 3  # [4,4] - EXTEND_INSERT_METERS (1m), continuing away from the segment
+    handle_dist = abs(handle_x / m - 4)
+    insert_dist = abs(4 - px)
+    assert insert_dist > handle_dist  # the inserted point lands further out than the handle itself sat
 
 
 def test_a_newly_extended_point_is_draggable_afterward(app_page):

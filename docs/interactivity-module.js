@@ -58,16 +58,18 @@
       /* F-059: a lighter-weight variant for the "insert a point here" edge-midpoint handles
          -- same purple family as every other handle, but visibly less prominent (semi-
          transparent fill, thinner stroke, smaller radius already set per-element) so it
-         reads as a secondary, optional action next to the solid per-vertex handles. */
+         reads as a secondary, optional action next to the solid per-vertex handles. Raised
+         directly (F-069's own reopening, round 2): every insert-type handle now carries the
+         same "+" mark (plusHandleMarkup), not just the extend-handle below -- the line rule
+         here covers both. */
       svg .resize-handle.insert-vertex { fill: rgba(124, 58, 237, 0.35); stroke-width: 1px; }
       svg .resize-handle.insert-vertex:hover { fill: #7c3aed; }
+      svg .resize-handle.insert-vertex line { stroke: #fff; stroke-width: 1.5px; pointer-events: none; }
       /* F-069: the extend-a-polyline handle, told apart from a plain mid-segment insert-vertex
-         dot (above) with a "+" mark and a more solid fill -- it's no longer positioned right
-         at the line's own natural continuation, so it needs to read as its own affordance
-         rather than just another faint dot. */
+         dot (above) with a more solid fill -- it's no longer positioned right at the line's
+         own natural continuation, so it needs to read as its own affordance. */
       svg .resize-handle.extend-handle { fill: rgba(124, 58, 237, 0.55); }
       svg .resize-handle.extend-handle:hover { fill: #7c3aed; }
-      svg .resize-handle.extend-handle line { stroke: #fff; stroke-width: 1.5px; pointer-events: none; }
       #plan-root:not(.dragging) .anchor-hit:hover { fill: #e33; opacity: 0.7; }
       /* Live feedback for the Ctrl/Cmd-drag relate gesture: whichever other element is
          currently under the cursor while the source itself stays put — a distinct color
@@ -3785,35 +3787,51 @@
   // F-069: reopened live -- continuing by the adjacent segment's own length (the original
   // F-051 default) put the handle arbitrarily far away whenever that segment happened to be
   // long, confirmed directly as a real, reported problem, not reasoned away a second time.
-  // Now a fixed on-screen distance instead, in the same direction as the adjacent segment --
+  // Replaced with a fixed on-screen distance, in the same direction as the adjacent segment --
   // reachable regardless of the line's own scale or current zoom. currentPxPerMeter() (D-198)
   // already accounts for the SVG's actual on-screen size vs. its viewBox, the same conversion
   // every mouse-pixel-delta drag calculation in this file already relies on.
   //
-  // Not perfectly WYSIWYG across a zoom change with no re-render in between, the same accepted
-  // simplification every other handle in this file already has (HANDLE_HALF's own comment,
-  // "fixed size in viewBox units, not zoom-compensated") -- this handle's own position is
-  // likewise fixed once rendered, so zooming without reselecting could in principle insert a
-  // point not exactly under where the handle still visually sits. Narrower than the original
-  // problem (which affected every click, not only ones with an intervening zoom) and consistent
-  // with how every other handle here already behaves.
-  const EXTEND_HANDLE_PX = 60; // a comfortable on-screen reach, not tied to the line's own scale
-  function extensionPoint(from, to) {
+  // Reopened a second time, live again: the screen-relative handle (still a deliberately
+  // compact, close-to-the-endpoint marker -- "näher am letzten Element") and the point it
+  // actually inserts on click were originally the same WYSIWYG spot, but a handle kept close
+  // enough to read as attached to the line produces an uncomfortably short new segment when
+  // clicked. Split into two distances instead of one: pointAlongDirection(from, to, meters)
+  // is the one shared direction/offset primitive; the handle's own on-screen position
+  // (extensionHandlePoint) and the point a click actually inserts (extensionInsertPoint) now
+  // call it with two different, independently-tuned distances. No longer WYSIWYG by design --
+  // the handle is a compact affordance, not a preview of where the new point lands.
+  const EXTEND_HANDLE_PX = 24; // how close the "+" marker itself renders to the endpoint
+  const EXTEND_INSERT_METERS = 1; // the new segment's actual length on click -- a fixed
+    // real-world distance, not screen-relative, so it reads the same regardless of zoom;
+    // matches STANDARD_ELEMENTS's own default line preset (one of F-069's own originally
+    // unresolved options, "a typical first-segment default elsewhere").
+  function pointAlongDirection(from, to, meters) {
     const dx = to[0] - from[0], dy = to[1] - from[1];
     const len = Math.hypot(dx, dy);
     if (!len) return [to[0], to[1]]; // degenerate (duplicate consecutive points) -- nowhere to extend toward
-    const meters = EXTEND_HANDLE_PX / currentPxPerMeter();
     return [to[0] + (dx / len) * meters, to[1] + (dy / len) * meters];
   }
-  // A "+" over the same base circle every other insert handle uses -- a <g> rather than a
-  // plain <circle> so the plus's own two lines can sit on top in a contrasting stroke; click
-  // detection (handlePointerDown, e.target.closest(".resize-handle")) finds this element
-  // regardless of which child (circle or either line) was actually under the pointer.
-  function extendHandleMarkup(nodeId, corner, x, y) {
+  function extensionHandlePoint(from, to) {
+    return pointAlongDirection(from, to, EXTEND_HANDLE_PX / currentPxPerMeter());
+  }
+  function extensionInsertPoint(from, to) {
+    return pointAlongDirection(from, to, EXTEND_INSERT_METERS);
+  }
+  // A "+" over the same base circle every insert-type handle uses -- both the mid-segment
+  // insert-vertex handles and the extend-a-line handles (F-051/F-069) now share this one
+  // markup function, raised directly ("plus symbole auch zwischen den punkten"). A <g>
+  // rather than a plain <circle> so the plus's own two lines can sit on top in a contrasting
+  // stroke; click detection (handlePointerDown, e.target.closest(".resize-handle")) finds
+  // this element regardless of which child (circle or either line) was actually under the
+  // pointer. extraClass/extraAttrs cover the two things that still differ per caller: the
+  // extend-handle's own distinguishing fill (still a different action from a plain insert,
+  // even sharing the same mark), and the mid-segment handle's own data-edge-index.
+  function plusHandleMarkup(nodeId, corner, x, y, { extraClass = "", extraAttrs = "" } = {}) {
     const r = HANDLE_HALF * 0.65;
     const half = r * 0.55;
     const cx = x * core.M, cy = y * core.M;
-    return `<g class="resize-handle insert-vertex extend-handle" data-node-id="${nodeId}" data-corner="${corner}" transform="translate(${cx},${cy})">` +
+    return `<g class="resize-handle insert-vertex${extraClass}" data-node-id="${nodeId}" data-corner="${corner}"${extraAttrs} transform="translate(${cx},${cy})">` +
       `<circle r="${r}" />` +
       `<line x1="${-half}" y1="0" x2="${half}" y2="0" />` +
       `<line x1="0" y1="${-half}" x2="0" y2="${half}" />` +
@@ -3900,26 +3918,24 @@
         if (!a || !b) continue;
         const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
         svgEl.insertAdjacentHTML("beforeend",
-          `<circle class="resize-handle insert-vertex" data-node-id="${selectedId}" data-corner="insert-vertex" data-edge-index="${i}" ` +
-          `cx="${mx * core.M}" cy="${my * core.M}" r="${HANDLE_HALF * 0.65}" />`);
+          plusHandleMarkup(selectedId, "insert-vertex", mx, my, { extraAttrs: ` data-edge-index="${i}"` }));
       }
 
       // F-051: a polyline's own two open ends each get an "extend the line" handle too --
       // a polygon has none, it already wraps, there's no open end to extend from. Rendered
-      // exactly where clicking it would place the new point (see extensionPoint, F-069) so
-      // the handle is WYSIWYG, not a surprise. A "+" mark over the same base circle every
-      // other insert handle uses -- raised directly (F-069's own reopening): plain dots read
-      // identically for "insert a point here" (mid-segment) and "extend the line" (past an
-      // open end), worth telling apart now that the extend handle no longer sits right at the
-      // line's own natural continuation and needs to read as its own, distinct affordance.
+      // close to the endpoint (extensionHandlePoint, F-069) -- deliberately *not* where
+      // clicking it will actually insert the new point (extensionInsertPoint is a separate,
+      // further distance; see that pair's own comment) -- a compact "+" mark over the same
+      // base circle every other insert handle uses, told apart from a plain mid-segment
+      // insert-vertex dot by its own distinguishing fill (extend-handle class).
       if (node.props.shape === "polyline" && resolvedPts.length >= 2 && resolvedPts[0] && resolvedPts[1]) {
-        const [sx, sy] = extensionPoint(resolvedPts[1], resolvedPts[0]);
-        svgEl.insertAdjacentHTML("beforeend", extendHandleMarkup(selectedId, "extend-start", sx, sy));
+        const [sx, sy] = extensionHandlePoint(resolvedPts[1], resolvedPts[0]);
+        svgEl.insertAdjacentHTML("beforeend", plusHandleMarkup(selectedId, "extend-start", sx, sy, { extraClass: " extend-handle" }));
       }
       const lastIdx = resolvedPts.length - 1;
       if (node.props.shape === "polyline" && lastIdx >= 1 && resolvedPts[lastIdx] && resolvedPts[lastIdx - 1]) {
-        const [ex, ey] = extensionPoint(resolvedPts[lastIdx - 1], resolvedPts[lastIdx]);
-        svgEl.insertAdjacentHTML("beforeend", extendHandleMarkup(selectedId, "extend-end", ex, ey));
+        const [ex, ey] = extensionHandlePoint(resolvedPts[lastIdx - 1], resolvedPts[lastIdx]);
+        svgEl.insertAdjacentHTML("beforeend", plusHandleMarkup(selectedId, "extend-end", ex, ey, { extraClass: " extend-handle" }));
       }
 
       // D-143: proportional scale, from the shape's own bounding box — offered only when
@@ -4237,7 +4253,7 @@
       let worldAnchor, worldNext;
       try { worldAnchor = core.resolvePointAbs(points[i], ownAbs, positions); worldNext = core.resolvePointAbs(points[j], ownAbs, positions); }
       catch (e) { return; } // an unresolved corner ref -- nothing to extend from
-      const [worldX, worldY] = extensionPoint(worldNext, worldAnchor);
+      const [worldX, worldY] = extensionInsertPoint(worldNext, worldAnchor);
       const localX = worldX - ownAbs[0], localY = worldY - ownAbs[1];
       const unit = core.newLiteralUnit(base.settings);
       const literal = `[${core.formatNumber(localX, unit)}, ${core.formatNumber(localY, unit)}]`;
