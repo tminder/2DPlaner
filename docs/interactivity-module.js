@@ -70,7 +70,12 @@
          own natural continuation, so it needs to read as its own affordance. */
       svg .resize-handle.extend-handle { fill: rgba(124, 58, 237, 0.55); }
       svg .resize-handle.extend-handle:hover { fill: #7c3aed; }
-      #plan-root:not(.dragging) .anchor-hit:hover { fill: #e33; opacity: 0.7; }
+      /* F-072: raised directly -- #e33 (this app's own error/warning red, see the shared
+         #error banner's own color) read as "something's wrong here" on hover, when this is
+         just an ordinary selectable point. Matches .resize-handle's own purple hover instead,
+         plus a real tooltip (the anchor-hit circle's own <title>, docs/index.html) now
+         explains what it actually is. */
+      #plan-root:not(.dragging) .anchor-hit:hover { fill: #7c3aed; opacity: 0.7; }
       /* Live feedback for the Ctrl/Cmd-drag relate gesture: whichever other element is
          currently under the cursor while the source itself stays put — a distinct color
          (green, matching the old connect icon's own color) so it doesn't read as plain hover
@@ -3621,7 +3626,12 @@
 
     const node = program.nodesById[chosenId];
     if (!node.props.position && !node.props.points) {
-      core.dragmsgEl.textContent = `${node.id}: has no explicit position/points in source, nothing to drag`;
+      // F-072: raised directly -- the old message just named the raw id with no indication
+      // of *why* there's nothing to drag, especially confusing for the plan root (reached via
+      // its own otherwise-invisible anchor-hit hover point, not a real on-screen shape).
+      core.dragmsgEl.textContent = node.parentId
+        ? `'${node.id}' is a container with no position of its own — try dragging one of its children instead.`
+        : "This is the plan itself, not an element in it — there's nothing to drag here.";
       return;
     }
     // F-031: the node's own absolute anchor at gesture-start, captured once — every kind

@@ -2119,7 +2119,15 @@ function renderShape(node, positions, cornerUsers, shapesOut, anchorsOut, bboxes
     shapesOut.push(window.PlanModules[shape](node, ownAbs, M, { numOf, idAttr }));
   } else {
     const users = (cornerUsers[node.id] || []).join(",");
-    anchorsOut.push(`<circle class="anchor-hit" ${idAttr} data-corner-users="${users}" pointer-events="all" cx="${ownAbs[0]*M}" cy="${ownAbs[1]*M}" r="10" />`);
+    // F-072: raised directly -- this point (a node with no shape of its own, only an id to
+    // click/select) has nothing else on screen to hint at what it is, especially the plan
+    // root's own anchor at its local (0,0), which can land in otherwise-empty space far from
+    // any real content. A real <title> (native browser tooltip on hover) now explains it,
+    // instead of just the bare hover-color change.
+    const title = node.parentId
+      ? `'${node.id}' — a container with no shape of its own`
+      : "The plan itself — not an element you can drag";
+    anchorsOut.push(`<circle class="anchor-hit" ${idAttr} data-corner-users="${users}" pointer-events="all" cx="${ownAbs[0]*M}" cy="${ownAbs[1]*M}" r="10"><title>${escapeHtml(title)}</title></circle>`);
   }
 
   for (const child of node.children) renderShape(child, positions, cornerUsers, shapesOut, anchorsOut, bboxes, settings);
