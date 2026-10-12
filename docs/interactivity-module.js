@@ -1920,10 +1920,17 @@
     action(text, base);
   }
 
+  // F-071: raised directly -- placing/editing an element was re-fitting the whole viewBox
+  // to the plan's new content extent, panning/zooming the view out from under the user
+  // mid-edit. Every one of this function's 18 call sites is an in-place edit to the
+  // *existing* plan (attach, duplicate, add/delete element, reorder, rename, style, point
+  // add/remove/extend, placement change) -- never "load a different plan" (that's
+  // switchToPlan/newPlanFromExample, which call core.rerender() bare on purpose, same as
+  // every drag/resize/select path in this file already does via { preserveViewBox: true }.
   function commitSourceEdit(newText, message) {
     core.sourceEl.value = newText;
     if (message) core.dragmsgEl.textContent = message;
-    core.rerender();
+    core.rerender({ preserveViewBox: true });
     core.commitUndoStep();
   }
 

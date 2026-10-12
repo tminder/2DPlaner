@@ -123,11 +123,16 @@ def test_place_inside_snaps_out_of_bounds_element(app_page):
 
 
 def test_make_flush_then_clear_placement(app_page):
+    # F-071: placing/clamping sofa genuinely moves it on screen (expected -- its own position
+    # changed), and the viewBox no longer re-fits around that move the way it used to, so each
+    # context-menu open re-reads sofa's *current* on-screen center rather than reusing a stale
+    # one from before the previous click moved it.
     load_plan(app_page, OUT_OF_BOUNDS_PLAN)
     cx, cy = element_center(app_page, "sofa")
     open_context_menu(app_page, cx, cy)
     click_menu_item(app_page, "Inside room")
 
+    cx, cy = element_center(app_page, "sofa")
     open_context_menu(app_page, cx, cy)
     # Now checked (just placed inside), and Inside itself becomes disabled (already set)
     # -- clicking an already-checked radio-style option would be a no-op.
@@ -136,6 +141,7 @@ def test_make_flush_then_clear_placement(app_page):
     click_menu_item(app_page, "Snapped to room's edge")
     assert "flush: true" in source_text(app_page)
 
+    cx, cy = element_center(app_page, "sofa")
     open_context_menu(app_page, cx, cy)
     assert menu_item_state(app_page, "Snapped to room's edge") == {"checked": True, "disabled": False}
     # Free is enabled: sofa has its own placement+flush, and room has no childPlacement
