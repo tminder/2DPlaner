@@ -61,6 +61,13 @@
          reads as a secondary, optional action next to the solid per-vertex handles. */
       svg .resize-handle.insert-vertex { fill: rgba(124, 58, 237, 0.35); stroke-width: 1px; }
       svg .resize-handle.insert-vertex:hover { fill: #7c3aed; }
+      /* F-069: the extend-a-polyline handle, told apart from a plain mid-segment insert-vertex
+         dot (above) with a "+" mark and a more solid fill -- it's no longer positioned right
+         at the line's own natural continuation, so it needs to read as its own affordance
+         rather than just another faint dot. */
+      svg .resize-handle.extend-handle { fill: rgba(124, 58, 237, 0.55); }
+      svg .resize-handle.extend-handle:hover { fill: #7c3aed; }
+      svg .resize-handle.extend-handle line { stroke: #fff; stroke-width: 1.5px; pointer-events: none; }
       #plan-root:not(.dragging) .anchor-hit:hover { fill: #e33; opacity: 0.7; }
       /* Live feedback for the Ctrl/Cmd-drag relate gesture: whichever other element is
          currently under the cursor while the source itself stays put — a distinct color
@@ -3775,11 +3782,42 @@
   // (the exact bug D-112 hit once already). No manual removal of last render's handles
   // needed: core.rerender() already replaces #plan-root's whole innerHTML every time.
   const HANDLE_HALF = 7; // viewBox units — a touch-usable ~14x14 square/circle at 1x zoom
-  // F-051: continues the segment from `from` to `to`, past `to`, by that same segment's own
-  // length and direction -- a parameter-free "extend the line" default, used both for where
-  // an extend handle renders and for the actual new point extendPolyline writes.
+  // F-069: reopened live -- continuing by the adjacent segment's own length (the original
+  // F-051 default) put the handle arbitrarily far away whenever that segment happened to be
+  // long, confirmed directly as a real, reported problem, not reasoned away a second time.
+  // Now a fixed on-screen distance instead, in the same direction as the adjacent segment --
+  // reachable regardless of the line's own scale or current zoom. currentPxPerMeter() (D-198)
+  // already accounts for the SVG's actual on-screen size vs. its viewBox, the same conversion
+  // every mouse-pixel-delta drag calculation in this file already relies on.
+  //
+  // Not perfectly WYSIWYG across a zoom change with no re-render in between, the same accepted
+  // simplification every other handle in this file already has (HANDLE_HALF's own comment,
+  // "fixed size in viewBox units, not zoom-compensated") -- this handle's own position is
+  // likewise fixed once rendered, so zooming without reselecting could in principle insert a
+  // point not exactly under where the handle still visually sits. Narrower than the original
+  // problem (which affected every click, not only ones with an intervening zoom) and consistent
+  // with how every other handle here already behaves.
+  const EXTEND_HANDLE_PX = 60; // a comfortable on-screen reach, not tied to the line's own scale
   function extensionPoint(from, to) {
-    return [to[0] + (to[0] - from[0]), to[1] + (to[1] - from[1])];
+    const dx = to[0] - from[0], dy = to[1] - from[1];
+    const len = Math.hypot(dx, dy);
+    if (!len) return [to[0], to[1]]; // degenerate (duplicate consecutive points) -- nowhere to extend toward
+    const meters = EXTEND_HANDLE_PX / currentPxPerMeter();
+    return [to[0] + (dx / len) * meters, to[1] + (dy / len) * meters];
+  }
+  // A "+" over the same base circle every other insert handle uses -- a <g> rather than a
+  // plain <circle> so the plus's own two lines can sit on top in a contrasting stroke; click
+  // detection (handlePointerDown, e.target.closest(".resize-handle")) finds this element
+  // regardless of which child (circle or either line) was actually under the pointer.
+  function extendHandleMarkup(nodeId, corner, x, y) {
+    const r = HANDLE_HALF * 0.65;
+    const half = r * 0.55;
+    const cx = x * core.M, cy = y * core.M;
+    return `<g class="resize-handle insert-vertex extend-handle" data-node-id="${nodeId}" data-corner="${corner}" transform="translate(${cx},${cy})">` +
+      `<circle r="${r}" />` +
+      `<line x1="${-half}" y1="0" x2="${half}" y2="0" />` +
+      `<line x1="0" y1="${-half}" x2="0" y2="${half}" />` +
+      `</g>`;
   }
   // D-136: reported directly -- with several elements selected, the resize handles (below)
   // were more visually obvious than the actual multi-selection, and since they only ever
@@ -3868,23 +3906,20 @@
 
       // F-051: a polyline's own two open ends each get an "extend the line" handle too --
       // a polygon has none, it already wraps, there's no open end to extend from. Rendered
-      // exactly where clicking it would place the new point (continuing the adjacent
-      // segment's own direction and length, see extensionPoint) so the handle is WYSIWYG,
-      // not a surprise. Reuses .insert-vertex's own visual family unchanged -- one handle
-      // style continues to mean "click to add a point here" wherever it appears, whether
-      // that's between two points (F-059) or past an open end (here).
+      // exactly where clicking it would place the new point (see extensionPoint, F-069) so
+      // the handle is WYSIWYG, not a surprise. A "+" mark over the same base circle every
+      // other insert handle uses -- raised directly (F-069's own reopening): plain dots read
+      // identically for "insert a point here" (mid-segment) and "extend the line" (past an
+      // open end), worth telling apart now that the extend handle no longer sits right at the
+      // line's own natural continuation and needs to read as its own, distinct affordance.
       if (node.props.shape === "polyline" && resolvedPts.length >= 2 && resolvedPts[0] && resolvedPts[1]) {
         const [sx, sy] = extensionPoint(resolvedPts[1], resolvedPts[0]);
-        svgEl.insertAdjacentHTML("beforeend",
-          `<circle class="resize-handle insert-vertex" data-node-id="${selectedId}" data-corner="extend-start" ` +
-          `cx="${sx * core.M}" cy="${sy * core.M}" r="${HANDLE_HALF * 0.65}" />`);
+        svgEl.insertAdjacentHTML("beforeend", extendHandleMarkup(selectedId, "extend-start", sx, sy));
       }
       const lastIdx = resolvedPts.length - 1;
       if (node.props.shape === "polyline" && lastIdx >= 1 && resolvedPts[lastIdx] && resolvedPts[lastIdx - 1]) {
         const [ex, ey] = extensionPoint(resolvedPts[lastIdx - 1], resolvedPts[lastIdx]);
-        svgEl.insertAdjacentHTML("beforeend",
-          `<circle class="resize-handle insert-vertex" data-node-id="${selectedId}" data-corner="extend-end" ` +
-          `cx="${ex * core.M}" cy="${ey * core.M}" r="${HANDLE_HALF * 0.65}" />`);
+        svgEl.insertAdjacentHTML("beforeend", extendHandleMarkup(selectedId, "extend-end", ex, ey));
       }
 
       // D-143: proportional scale, from the shape's own bounding box — offered only when

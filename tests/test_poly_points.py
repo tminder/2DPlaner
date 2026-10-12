@@ -280,46 +280,93 @@ def test_extend_handles_appear_only_for_an_open_polyline(app_page):
 
 
 def handle_svg_point(page, corner):
-    """The handle's own cx/cy, in the plan's SVG user-space units (world coordinates *
-    core.M) -- exact and independent of screen pixels/circle radius, unlike a bounding box."""
+    """The handle's own position, in the plan's SVG user-space units (world coordinates *
+    core.M) -- exact and independent of screen pixels/circle radius, unlike a bounding box.
+    extend-start/extend-end (F-069) render as a <g transform="translate(x,y)"> (so the "+"
+    mark's own lines can sit on top of the base circle); every other handle is still a plain
+    <circle cx="" cy="">, read directly."""
     return page.evaluate(
         """(corner) => {
             const h = document.querySelector(`.resize-handle[data-corner="${corner}"]`);
+            if (h.tagName === 'g') {
+                const m = h.getAttribute('transform').match(/translate\\(([-\\d.]+),([-\\d.]+)\\)/);
+                return [Number(m[1]), Number(m[2])];
+            }
             return [Number(h.getAttribute('cx')), Number(h.getAttribute('cy'))];
         }""",
         corner,
     )
 
 
-def test_extend_handles_render_at_the_computed_continuation_point(app_page):
-    # wall: [4,4] -> [8,4], a flat segment along y=4. Continuing it by its own length
-    # puts extend-start at [0,4] and extend-end at [12,4] -- frame's own left/right edges
-    # at that height, so the computed position doubles as a geometry check.
+def test_extend_handles_stay_on_the_segment_s_own_line_in_its_own_direction(app_page):
+    # wall: [4,4] -> [8,4], a flat segment along y=4. F-069: distance from the endpoint is
+    # no longer the segment's own length (see the dedicated screen-relative test below) --
+    # but direction is unchanged, continuing straight out past each open end.
     load_plan(app_page, FRAME_LINE)
     select(app_page, "wall")
-    m = app_page.evaluate("window.PlanCore.M")  # world-unit -> SVG-user-space scale
     start_x, start_y = handle_svg_point(app_page, "extend-start")
     end_x, end_y = handle_svg_point(app_page, "extend-end")
-    assert start_x == 0 and end_x == 12 * m  # exactly one segment-length beyond either end
+    m = app_page.evaluate("window.PlanCore.M")
     assert start_y == end_y == 4 * m  # both stay on the flat segment's own line
+    assert start_x < 4 * m  # extend-start continues past [4,4], away from the segment
+    assert end_x > 8 * m  # extend-end continues past [8,4], away from the segment
 
 
-def test_clicking_the_end_handle_appends_a_continuing_literal_point(app_page):
+def px_per_meter(page):
+    """Independently replicates currentPxPerMeter()'s own formula (viewBox vs. the SVG's
+    actual on-screen size) rather than calling the function under test -- an honest check,
+    not a tautology."""
+    return page.evaluate(
+        """() => {
+            const svg = document.querySelector('#plan-root svg');
+            const vb = svg.viewBox.baseVal;
+            const rect = svg.getBoundingClientRect();
+            return window.PlanCore.M * Math.min(rect.width / vb.width, rect.height / vb.height);
+        }"""
+    )
+
+
+def test_extend_handle_distance_is_screen_relative_not_segment_length(app_page):
+    # F-069's own actual complaint, reproduced directly: continuing by the segment's own
+    # length put the handle arbitrarily far away for a long last segment. A 500m-long
+    # segment would have put the old handle 500m from the endpoint -- entirely off-screen
+    # regardless of zoom. The new handle should instead stay within a comfortable, constant
+    # on-screen reach, because Fit zooms out to show the whole (now much larger) plan.
+    LONG_LINE = FRAME_LINE.replace("[4,4], [8,4]", "[4,4], [504,4]")
+    load_plan(app_page, LONG_LINE)
+    select(app_page, "wall")
+    end_x, end_y = handle_svg_point(app_page, "extend-end")
+    m = app_page.evaluate("window.PlanCore.M")
+    ppm = px_per_meter(app_page)
+    dist_m = (end_x / m) - 504
+    dist_px = dist_m * ppm
+    assert 20 < dist_px < 150  # a reachable on-screen distance, not anywhere close to 500m away
+
+
+def test_clicking_the_end_handle_appends_a_point_exactly_where_the_handle_itself_was(app_page):
     load_plan(app_page, FRAME_LINE)
     select(app_page, "wall")
+    handle_x, handle_y = handle_svg_point(app_page, "extend-end")
+    m = app_page.evaluate("window.PlanCore.M")
     click_center(app_page, extend_handle(app_page, "end"))
     text = source_text(app_page)
     points_line = [l for l in text.split("\n") if l.strip().startswith("points: [[4,4]")][0]
-    assert points_line.strip() == 'points: [[4,4], [8,4], [12m, 4m]]'
+    literal = points_line.strip().removeprefix("points: [[4,4], [8,4], [").removesuffix("]]")
+    px, py = (float(v.rstrip("m")) for v in literal.split(", "))
+    assert abs(px - handle_x / m) < 0.01 and abs(py - handle_y / m) < 0.01  # WYSIWYG
 
 
-def test_clicking_the_start_handle_prepends_a_continuing_literal_point(app_page):
+def test_clicking_the_start_handle_prepends_a_point_exactly_where_the_handle_itself_was(app_page):
     load_plan(app_page, FRAME_LINE)
     select(app_page, "wall")
+    handle_x, handle_y = handle_svg_point(app_page, "extend-start")
+    m = app_page.evaluate("window.PlanCore.M")
     click_center(app_page, extend_handle(app_page, "start"))
     text = source_text(app_page)
     points_line = [l for l in text.split("\n") if "4,4" in l and "8,4" in l][0]
-    assert points_line.strip() == 'points: [[0m, 4m], [4,4], [8,4]]'
+    literal = points_line.strip().removeprefix("points: [[").removesuffix("], [4,4], [8,4]]")
+    px, py = (float(v.rstrip("m")) for v in literal.split(", "))
+    assert abs(px - handle_x / m) < 0.01 and abs(py - handle_y / m) < 0.01  # WYSIWYG
 
 
 def test_a_newly_extended_point_is_draggable_afterward(app_page):
@@ -328,12 +375,13 @@ def test_a_newly_extended_point_is_draggable_afterward(app_page):
     click_center(app_page, extend_handle(app_page, "end"))
     app_page.wait_for_timeout(150)
     select(app_page, "wall")
+    original_line = [l for l in source_text(app_page).split("\n") if l.strip().startswith("points: [[4,4]")][0]
     handle = vertex_handle(app_page, 2)  # the new point just appended
     box = handle.bounding_box()
     drag(app_page, box["x"] + box["width"] / 2, box["y"] + box["height"] / 2, box["x"] + 40, box["y"] + 20)
     text = source_text(app_page)
     points_line = [l for l in text.split("\n") if l.strip().startswith("points: [[4,4]")][0]
-    assert "[12m, 4m]" not in points_line  # the point moved from where extend placed it
+    assert points_line != original_line  # the point moved from wherever extend placed it
 
 
 def test_extending_from_a_shared_corner_reference_leaves_it_untouched(app_page):
